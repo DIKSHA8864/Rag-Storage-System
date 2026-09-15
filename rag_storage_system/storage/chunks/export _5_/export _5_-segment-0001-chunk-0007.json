@@ -1,0 +1,21 @@
+{
+  "chunk_id": "export _5_-segment-0001-chunk-0007",
+  "segment_id": "export _5_-segment-0001",
+  "document_id": "export _5_",
+  "filename": "export _5_.pdf",
+  "chunk_index": 7,
+  "start_page": 1,
+  "end_page": 1,
+  "page_count": 1,
+  "chapter": null,
+  "section": null,
+  "subsection": null,
+  "text": "10000364 Price 0 2026-08-2 4 fs-604 4 Annual Subscription 44 $22,072.46 New 2026-04-1 6 Proposal Vivek Tiwari 10000942 50 2026-08-0 5 fs-604 5 Implementation 45 $290,382.8 9 Renewal 2026-07-1 2 Closed Lost Ananya Bhatt 10000332 Price 0 2026-08-0 4 fs-604 6 Annual Subscription 46 $585,651.2 5 New 2026-05-1 1 Proposal Anjali Trivedi 10000545 50 2026-09-1 7 fs-604 7 Annual Subscription 47 $322,154.6 5 New 2026-04-1 4 Negotiation Shreya Bhat 10000629 75 2026-08-0 4 fs-604 8 Expansion 48 $445,625.9 9 New 2026-08-1 8 Proposal Divya Banerjee 10000926 50 2026-09-1 0 fs-604 9 Pilot 49 $426,628.9 5 New 2026-04-2 5 Qualificatio n Vikram Mishra 10000137 25 2026-08-1 8",
+  "word_count": 106,
+  "approx_token_count": 138,
+  "split_reason": "sentence_pack",
+  "metadata": {
+    "file_type": "pdf",
+    "page_count": 5
+  }
+}

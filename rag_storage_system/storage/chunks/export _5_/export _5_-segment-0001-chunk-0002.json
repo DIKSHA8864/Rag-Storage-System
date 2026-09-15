@@ -1,0 +1,21 @@
+{
+  "chunk_id": "export _5_-segment-0001-chunk-0002",
+  "segment_id": "export _5_-segment-0001",
+  "document_id": "export _5_",
+  "filename": "export _5_.pdf",
+  "chunk_index": 2,
+  "start_page": 1,
+  "end_page": 1,
+  "page_count": 1,
+  "chapter": null,
+  "section": null,
+  "subsection": null,
+  "text": "Chart Data (Weekly Aggregates) Created At Amount Probability Company Ref 2026-03-23 3388010.09 595.0 100003040.0 2026-03-30 18053310.16 2255.0 550024738.0 2026-04-06 13720776.99 1955.0 490027545.0 2026-04-13 14505435.24 2660.0 480022851.0 2026-04-20 7959911.71 1365.0 300014617.0 2026-04-27 10787676.8 2325.0 420022027.0 2026-05-04 13051951.45 1820.0 450025435.0 2026-05-11 14455067.01 3205.0 540026550.0 2026-05-18 14413800.32 2610.0 480025284.0 2026-05-25 13296712.21 2355.0 480024507.0 2026-06-01 15248635.4 1950.0 470023435.0 2026-06-08 16097124.91 2355.0 600027539.0 2026-06-15 15405346.77 1960.0 440021906.0 2026-06-22 11577907.94 1510.0 370016664.0 2026-06-29 11605406.23 2060.0 420021168.0 2026-07-06 15488906.86 2050.0 480020776.0 2026-07-13 11210318.12 1905.0 440021558.0 2026-07-20 9271192.17 1435.0 280011488.0 2026-07-27 17010840.06 2555.0 570033811.0 2026-08-03 13405534.87 2200.0 420020619.0 Created At Amount Probability Company Ref 2026-08-10 11219299.58 1550.0 400020144.0 2026-08-17 18702779.94 2355.0 560030819.0 2026-08-24 8031834.47 1210.0 260014031.0 Deal Records ID Name Amount Type Created Stage Owner Company Ref Lost Reason Prob % Close Date fs-600 0 Implementation 0 $397,904.7 2 Renewal 2026-05-0 7 Qualificatio n Kiran Bhatt 10000334 25 2026-07-0 3 fs-600 1 Support Contract 1 $583,673.1 1 Renewal 2026-03-3 1 Proposal Suresh Das 10000928 50 2026-07-2 6 fs-600 2 Support Contract 2 $215,935.9 4 Renewal 2026-07-0 8 Negotiation Arjun Ansari 10000010 75 2026-08-1 6 fs-600 3 Annual Subscription",
+  "word_count": 180,
+  "approx_token_count": 234,
+  "split_reason": "sentence_pack",
+  "metadata": {
+    "file_type": "pdf",
+    "page_count": 5
+  }
+}

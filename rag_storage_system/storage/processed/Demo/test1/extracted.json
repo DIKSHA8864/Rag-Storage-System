@@ -1,0 +1,18 @@
+{
+  "filename": "test1.txt",
+  "file_type": "txt",
+  "character_count": 52,
+  "line_count": 1,
+  "page_count": 1,
+  "pages": [
+    {
+      "page_number": 1,
+      "text": "This is a test document for the RAG storage system."
+    }
+  ],
+  "text": "This is a test document for the RAG storage system.\n",
+  "lines": [
+    "This is a test document for the RAG storage system."
+  ],
+  "source_path": "E:\\rag_storage\\rag_storage_system\\storage\\originals\\Demo\\test1.txt"
+}

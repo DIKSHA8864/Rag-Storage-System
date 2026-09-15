@@ -1,0 +1,17 @@
+{
+  "segment_id": "test1-segment-0001",
+  "document_id": "test1",
+  "filename": "test1.txt",
+  "start_page": 1,
+  "end_page": 1,
+  "page_count": 1,
+  "chapter": null,
+  "section": null,
+  "subsection": null,
+  "text": "This is a test document for the RAG storage system.",
+  "structural_elements": [],
+  "metadata": {
+    "file_type": "txt",
+    "page_count": 1
+  }
+}

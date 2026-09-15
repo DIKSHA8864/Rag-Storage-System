@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Dashboard - Secure RAG Storage</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --border: #e1e4e8;
+    --text: #1f2328;
+    --muted: #6a737d;
+    --accent: #2563eb;
+    --accent-dark: #1d4ed8;
+    --ok: #1a7f37;
+    --warn: #b35900;
+    --err: #cf222e;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.9rem 1.5rem;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { font-size: 1.1rem; margin: 0; }
+  header .actions { display: flex; gap: 0.5rem; align-items: center; }
+  main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+  button {
+    font-size: 0.85rem;
+    padding: 0.45rem 0.9rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--panel);
+    cursor: pointer;
+    color: var(--text);
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  button.primary:hover { background: var(--accent-dark); }
+  button.danger { color: var(--err); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  input, select {
+    font-size: 0.85rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+  }
+  .hidden { display: none !important; }
+
+  /* Login */
+  #login-view {
+    max-width: 380px;
+    margin: 8vh auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem;
+  }
+  #login-view h1 { font-size: 1.2rem; margin-top: 0; }
+  #login-view form { display: flex; flex-direction: column; gap: 0.75rem; }
+  #login-view label { font-size: 0.8rem; color: var(--muted); }
+  #login-error { color: var(--err); font-size: 0.85rem; min-height: 1.2em; }
+
+  /* Stat cards */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+  .stat-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.9rem 1rem;
+  }
+  .stat-card .value { font-size: 1.5rem; font-weight: 600; }
+  .stat-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+  .stat-card.indexed .value { color: var(--ok); }
+  .stat-card.failed .value { color: var(--err); }
+  .stat-card.processing .value { color: var(--warn); }
+
+  section.panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  section.panel h2 { font-size: 0.95rem; margin: 0 0 0.75rem 0; }
+  .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  #process-status { font-size: 0.8rem; color: var(--muted); }
+
+  /* Tree */
+  .tree-node { margin-left: 1.1rem; }
+  .tree-node.root { margin-left: 0; }
+  .folder-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.3rem;
+    border-radius: 6px;
+  }
+  .folder-row:hover { background: #f0f2f5; }
+  .folder-row .toggle { cursor: pointer; width: 1rem; display: inline-block; text-align: center; color: var(--muted); user-select: none; }
+  .folder-row .name { font-weight: 600; cursor: pointer; }
+  .folder-row .count { color: var(--muted); font-size: 0.78rem; }
+  .folder-row .spacer { flex: 1; }
+  .folder-row .mini-btn {
+    font-size: 0.72rem;
+    padding: 0.2rem 0.5rem;
+    display: none;
+  }
+  .folder-row:hover .mini-btn { display: inline-block; }
+  .doc-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.3rem;
+    margin-left: 1.1rem;
+    font-size: 0.82rem;
+    border-radius: 6px;
+  }
+  .doc-row:hover { background: #f0f2f5; }
+  .doc-row .fname { flex: 1; }
+  .doc-row .size { color: var(--muted); font-size: 0.75rem; }
+  .badge {
+    font-size: 0.68rem;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+  .badge.Uploaded { background: #eef1f4; color: var(--muted); }
+  .badge.Processing { background: #fff2d9; color: var(--warn); }
+  .badge.Embedding { background: #e0e7ff; color: #4338ca; }
+  .badge.Indexed { background: #dcf5e0; color: var(--ok); }
+  .badge.Failed { background: #ffe3e3; color: var(--err); }
+  .empty-note { color: var(--muted); font-size: 0.82rem; padding: 0.5rem 0; }
+
+  dialog {
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    padding: 1.25rem;
+    min-width: 320px;
+  }
+  dialog h3 { margin-top: 0; font-size: 1rem; }
+  dialog form { display: flex; flex-direction: column; gap: 0.6rem; }
+  dialog .dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
+  #toast {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    background: var(--text);
+    color: white;
+    padding: 0.6rem 1rem;
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    max-width: 360px;
+  }
+  #toast.show { opacity: 0.95; }
+  #toast.err { background: var(--err); }
+</style>
+</head>
+<body>
+
+<div id="login-view">
+  <h1>Admin Dashboard</h1>
+  <p style="color: var(--muted); font-size: 0.85rem; margin-top: -0.5rem;">Sign in with your Owner account.</p>
+  <form id="login-form">
+    <label for="login-email">Email</label>
+    <input type="email" id="login-email" required autocomplete="username">
+    <label for="login-password">Password</label>
+    <input type="password" id="login-password" required autocomplete="current-password">
+    <div id="login-error"></div>
+    <button type="submit" class="primary">Log in</button>
+  </form>
+</div>
+
+<div id="app-view" class="hidden">
+  <header>
+    <h1>Secure RAG Storage - Admin Dashboard</h1>
+    <div class="actions">
+      <span id="whoami" style="font-size: 0.8rem; color: var(--muted);"></span>
+      <button id="refresh-btn">Refresh</button>
+      <button id="logout-btn">Log out</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="stats-grid" id="stats-grid"></div>
+
+    <section class="panel">
+      <h2>Processing</h2>
+      <div class="row">
+        <button id="process-btn" class="primary">Process all documents</button>
+        <span id="process-status"></span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Create a top-level category</h2>
+      <form id="create-category-form" class="row">
+        <input type="text" id="new-category-name" placeholder="Category name" required>
+        <button type="submit">Create</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="row" style="justify-content: space-between; margin-bottom: 0.5rem;">
+        <h2 style="margin: 0;">Folder structure</h2>
+      </div>
+      <div id="tree-container"></div>
+    </section>
+  </main>
+</div>
+
+<dialog id="prompt-dialog">
+  <h3 id="prompt-title">Prompt</h3>
+  <form id="prompt-form">
+    <input type="text" id="prompt-input" autocomplete="off">
+    <input type="file" id="prompt-file" multiple class="hidden">
+    <div class="dialog-actions">
+      <button type="button" id="prompt-cancel">Cancel</button>
+      <button type="submit" class="primary" id="prompt-ok">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const state = { token: sessionStorage.getItem("admin_token") || null, email: sessionStorage.getItem("admin_email") || "" };
+
+  const $ = (id) => document.getElementById(id);
+
+  function toast(message, isError) {
+    const el = $("toast");
+    el.textContent = message;
+    el.className = isError ? "show err" : "show";
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { el.className = ""; }, 3500);
+  }
+
+  function formatBytes(n) {
+    if (!n) return "0 B";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let i = 0;
+    let v = n;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+  }
+
+  async function api(path, opts = {}) {
+    const headers = opts.headers || {};
+    if (state.token) headers["Authorization"] = `Bearer ${state.token}`;
+    const res = await fetch(path, { ...opts, headers });
+    if (res.status === 401) {
+      doLogout();
+      throw new Error("Session expired. Please log in again.");
+    }
+    let body = null;
+    try { body = await res.json(); } catch (e) { /* no body */ }
+    if (!res.ok) {
+      const detail = (body && (body.detail || JSON.stringify(body))) || res.statusText;
+      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+    return body;
+  }
+
+  // ---------------------------------------------------------------
+  // Auth
+  // ---------------------------------------------------------------
+
+  $("login-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("login-error").textContent = "";
+    const email = $("login-email").value.trim();
+    const password = $("login-password").value;
+    try {
+      const body = await fetch("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await body.json();
+      if (!body.ok) throw new Error(data.detail || "Login failed.");
+      state.token = data.access_token;
+      state.email = email;
+      sessionStorage.setItem("admin_token", state.token);
+      sessionStorage.setItem("admin_email", email);
+      showApp();
+    } catch (err) {
+      $("login-error").textContent = err.message;
+    }
+  });
+
+  function doLogout() {
+    state.token = null;
+    sessionStorage.removeItem("admin_token");
+    sessionStorage.removeItem("admin_email");
+    $("app-view").classList.add("hidden");
+    $("login-view").classList.remove("hidden");
+  }
+
+  $("logout-btn").addEventListener("click", doLogout);
+  $("refresh-btn").addEventListener("click", loadAll);
+
+  function showApp() {
+    $("login-view").classList.add("hidden");
+    $("app-view").classList.remove("hidden");
+    $("whoami").textContent = state.email;
+    loadAll();
+  }
+
+  // ---------------------------------------------------------------
+  // Data loading + stats
+  // ---------------------------------------------------------------
+
+  let lastCategories = [];
+  let lastDocuments = [];
+
+  async function loadAll() {
+    try {
+      const [cats, docs] = await Promise.all([
+        api("/categories"),
+        api("/documents"),
+      ]);
+      lastCategories = cats.categories;
+      lastDocuments = docs.documents;
+      renderStats(lastCategories, lastDocuments);
+      renderTree(lastCategories, lastDocuments);
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  function renderStats(categories, documents) {
+    const statusCounts = { Uploaded: 0, Processing: 0, Embedding: 0, Indexed: 0, Failed: 0 };
+    let totalSize = 0;
+    for (const d of documents) {
+      statusCounts[d.status] = (statusCounts[d.status] || 0) + 1;
+      totalSize += d.size || 0;
+    }
+
+    const cards = [
+      { label: "Total folders", value: categories.length, cls: "" },
+      { label: "Total documents", value: documents.length, cls: "" },
+      { label: "Uploaded", value: statusCounts.Uploaded, cls: "" },
+      { label: "Processing", value: statusCounts.Processing, cls: "processing" },
+      { label: "Embedding", value: statusCounts.Embedding, cls: "processing" },
+      { label: "Indexed", value: statusCounts.Indexed, cls: "indexed" },
+      { label: "Failed", value: statusCounts.Failed, cls: "failed" },
+      { label: "Storage used", value: formatBytes(totalSize), cls: "" },
+    ];
+
+    $("stats-grid").innerHTML = cards.map(c => `
+      <div class="stat-card ${c.cls}">
+        <div class="value">${c.value}</div>
+        <div class="label">${c.label}</div>
+      </div>
+    `).join("");
+  }
+
+  // ---------------------------------------------------------------
+  // Tree view
+  // ---------------------------------------------------------------
+
+  function buildTree(categories, documents) {
+    const root = { name: "", path: "", children: new Map(), documents: [] };
+
+    function ensureNode(path) {
+      const parts = path.split("/").filter(Boolean);
+      let node = root;
+      let acc = [];
+      for (const part of parts) {
+        acc.push(part);
+        const currentPath = acc.join("/");
+        if (!node.children.has(part)) {
+          node.children.set(part, { name: part, path: currentPath, children: new Map(), documents: [] });
+        }
+        node = node.children.get(part);
+      }
+      return node;
+    }
+
+    for (const cat of categories) ensureNode(cat.name);
+    for (const doc of documents) ensureNode(doc.category).documents.push(doc);
+
+    return root;
+  }
+
+  function renderTree(categories, documents) {
+    const root = buildTree(categories, documents);
+    const container = $("tree-container");
+    container.innerHTML = "";
+    if (root.children.size === 0) {
+      container.innerHTML = `<div class="empty-note">No categories yet. Create one above to get started.</div>`;
+      return;
+    }
+    for (const child of [...root.children.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+      container.appendChild(renderNode(child, true));
+    }
+  }
+
+  function renderNode(node, isRoot) {
+    const wrap = document.createElement("div");
+    wrap.className = "tree-node" + (isRoot ? " root" : "");
+
+    const row = document.createElement("div");
+    row.className = "folder-row";
+
+    const totalDocs = countDocs(node);
+    row.innerHTML = `
+      <span class="toggle">▾</span>
+      <span>📁</span>
+      <span class="name">${escapeHtml(node.name)}</span>
+      <span class="count">${totalDocs} file${totalDocs === 1 ? "" : "s"}</span>
+      <span class="spacer"></span>
+      <button class="mini-btn" data-action="upload">Upload</button>
+      <button class="mini-btn" data-action="subfolder">+ Subfolder</button>
+      <button class="mini-btn" data-action="rename">Rename</button>
+      <button class="mini-btn danger" data-action="delete">Delete</button>
+    `;
+
+    const body = document.createElement("div");
+
+    row.querySelector(".toggle").addEventListener("click", () => {
+      const collapsed = body.classList.toggle("hidden");
+      row.querySelector(".toggle").textContent = collapsed ? "▸" : "▾";
+    });
+    row.querySelector(".name").addEventListener("click", () => row.querySelector(".toggle").click());
+
+    row.querySelector('[data-action="upload"]').addEventListener("click", () => uploadToCategory(node.path));
+    row.querySelector('[data-action="subfolder"]').addEventListener("click", () => createSubfolder(node.path));
+    row.querySelector('[data-action="rename"]').addEventListener("click", () => renameCategory(node.path));
+    row.querySelector('[data-action="delete"]').addEventListener("click", () => deleteCategory(node.path));
+
+    wrap.appendChild(row);
+    wrap.appendChild(body);
+
+    for (const doc of [...node.documents].sort((a, b) => a.filename.localeCompare(b.filename))) {
+      body.appendChild(renderDocRow(node.path, doc));
+    }
+
+    for (const child of [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+      body.appendChild(renderNode(child, false));
+    }
+
+    return wrap;
+  }
+
+  function renderDocRow(categoryPath, doc) {
+    const row = document.createElement("div");
+    row.className = "doc-row";
+    row.innerHTML = `
+      <span>📄</span>
+      <span class="fname">${escapeHtml(doc.filename)}</span>
+      <span class="badge ${doc.status}">${doc.status}</span>
+      <span class="size">${formatBytes(doc.size)}</span>
+      <button class="mini-btn danger" style="display:inline-block;">Delete</button>
+    `;
+    row.querySelector("button").addEventListener("click", () => deleteDocument(categoryPath, doc.filename));
+    return row;
+  }
+
+  function countDocs(node) {
+    let count = node.documents.length;
+    for (const child of node.children.values()) count += countDocs(child);
+    return count;
+  }
+
+  function escapeHtml(s) {
+    const div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  // ---------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------
+
+  $("create-category-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("new-category-name").value.trim();
+    if (!name) return;
+    try {
+      await api("/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      $("new-category-name").value = "";
+      toast(`Category '${name}' created.`);
+      loadAll();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  async function createSubfolder(parentPath) {
+    const name = await promptText(`New subfolder under '${parentPath}'`, "Subfolder name");
+    if (!name) return;
+    try {
+      await api("/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, parent: parentPath }),
+      });
+      toast(`Subfolder '${parentPath}/${name}' created.`);
+      loadAll();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  async function renameCategory(categoryPath) {
+    const newName = await promptText(`Rename '${categoryPath}' to:`, "New name");
+    if (!newName) return;
+    try {
+      await api(`/categories/${encodeURIComponent(categoryPath)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_name: newName }),
+      });
+      toast(`Renamed to '${newName}'.`);
+      loadAll();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  async function deleteCategory(categoryPath) {
+    if (!confirm(`Delete category '${categoryPath}' and everything inside it?`)) return;
+    try {
+      await api(`/categories/${encodeURIComponent(categoryPath)}?force=true`, { method: "DELETE" });
+      toast(`Category '${categoryPath}' deleted.`);
+      loadAll();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  async function deleteDocument(categoryPath, filename) {
+    if (!confirm(`Delete '${filename}' from '${categoryPath}'?`)) return;
+    try {
+      await api(`/categories/${encodeURIComponent(categoryPath)}/documents/${encodeURIComponent(filename)}`, { method: "DELETE" });
+      toast(`Deleted '${filename}'.`);
+      loadAll();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  async function uploadToCategory(categoryPath) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.onchange = async () => {
+      if (!input.files.length) return;
+      const formData = new FormData();
+      for (const f of input.files) formData.append("files", f);
+      try {
+        const result = await api(`/categories/${encodeURIComponent(categoryPath)}/documents/batch`, {
+          method: "POST",
+          body: formData,
+        });
+        toast(`Uploaded ${result.total_stored} file(s), ${result.total_rejected} rejected.`);
+        loadAll();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    };
+    input.click();
+  }
+
+  function promptText(title, placeholder) {
+    return new Promise((resolve) => {
+      const dialog = $("prompt-dialog");
+      $("prompt-title").textContent = title;
+      const input = $("prompt-input");
+      input.placeholder = placeholder || "";
+      input.value = "";
+      dialog.showModal();
+      const form = $("prompt-form");
+      const cancelBtn = $("prompt-cancel");
+
+      function cleanup() {
+        form.removeEventListener("submit", onSubmit);
+        cancelBtn.removeEventListener("click", onCancel);
+        dialog.close();
+      }
+      function onSubmit(e) {
+        e.preventDefault();
+        cleanup();
+        resolve(input.value.trim());
+      }
+      function onCancel() {
+        cleanup();
+        resolve(null);
+      }
+      form.addEventListener("submit", onSubmit);
+      cancelBtn.addEventListener("click", onCancel);
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Processing
+  // ---------------------------------------------------------------
+
+  $("process-btn").addEventListener("click", async () => {
+    $("process-btn").disabled = true;
+    $("process-status").textContent = "Enqueuing job...";
+    try {
+      const { job_id } = await api("/process", { method: "POST" });
+      pollJob(job_id);
+    } catch (err) {
+      toast(err.message, true);
+      $("process-btn").disabled = false;
+    }
+  });
+
+  async function pollJob(jobId) {
+    $("process-status").textContent = `Job ${jobId}: queued...`;
+    const poll = async () => {
+      try {
+        const data = await api(`/process/${jobId}`);
+        if (data.status === "finished") {
+          const r = data.result;
+          $("process-status").textContent =
+            `Finished: ${r.documents_extracted} extracted, ${r.embeddings_created} embedded` +
+            (r.documents_extraction_failed ? `, ${r.documents_extraction_failed} failed` : "") + ".";
+          $("process-btn").disabled = false;
+          loadAll();
+        } else if (data.status === "failed") {
+          $("process-status").textContent = `Job failed: ${data.error || "unknown error"}`;
+          $("process-btn").disabled = false;
+          loadAll();
+        } else {
+          $("process-status").textContent = `Job ${jobId}: ${data.status}...`;
+          setTimeout(poll, 1500);
+        }
+      } catch (err) {
+        toast(err.message, true);
+        $("process-btn").disabled = false;
+      }
+    };
+    poll();
+  }
+
+  // ---------------------------------------------------------------
+  // Init
+  // ---------------------------------------------------------------
+
+  if (state.token) showApp();
+})();
+</script>
+</body>
+</html>

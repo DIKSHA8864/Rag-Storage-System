@@ -1,0 +1,65 @@
+{
+  "filename": "export _4_.docx",
+  "file_type": "docx",
+  "page_count": 6,
+  "pages": [
+    {
+      "page_number": 9,
+      "text": "Renewal Deals — Lens Export"
+    },
+    {
+      "page_number": 10,
+      "text": "Lens Export"
+    },
+    {
+      "page_number": 11,
+      "text": "2026-09-04"
+    },
+    {
+      "page_number": 13,
+      "text": "Renewal Deals — Lens Export"
+    },
+    {
+      "page_number": 14,
+      "text": "The table view didn't render — the system returned no formatted output for that request, likely because \"show me in table\" needs a more explicit column spec to trigger the layout.\n\nSince the 25 Renewal deals are fresh from **freshsales_Deal.csv**, try: *\"Show all Renewal type deals in a table with columns: deal ID, deal name, owner, stage, amount, and close date\"* — spelling out the columns directly tends to force the table format cleanly across all 25 rows."
+    },
+    {
+      "page_number": 15,
+      "text": "Deal Data"
+    }
+  ],
+  "paragraph_count": 6,
+  "paragraphs": [
+    {
+      "paragraph_number": 9,
+      "text": "Renewal Deals — Lens Export",
+      "style": "Normal"
+    },
+    {
+      "paragraph_number": 10,
+      "text": "Lens Export",
+      "style": "Normal"
+    },
+    {
+      "paragraph_number": 11,
+      "text": "2026-09-04",
+      "style": "Normal"
+    },
+    {
+      "paragraph_number": 13,
+      "text": "Renewal Deals — Lens Export",
+      "style": "Heading 1"
+    },
+    {
+      "paragraph_number": 14,
+      "text": "The table view didn't render — the system returned no formatted output for that request, likely because \"show me in table\" needs a more explicit column spec to trigger the layout.\n\nSince the 25 Renewal deals are fresh from **freshsales_Deal.csv**, try: *\"Show all Renewal type deals in a table with columns: deal ID, deal name, owner, stage, amount, and close date\"* — spelling out the columns directly tends to force the table format cleanly across all 25 rows.",
+      "style": "Normal"
+    },
+    {
+      "paragraph_number": 15,
+      "text": "Deal Data",
+      "style": "Heading 2"
+    }
+  ],
+  "source_path": "E:\\rag_storage\\rag_storage_system\\storage\\originals\\Legal\\export _4_.docx"
+}

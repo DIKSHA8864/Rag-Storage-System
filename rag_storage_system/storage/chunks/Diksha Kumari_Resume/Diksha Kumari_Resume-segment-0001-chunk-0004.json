@@ -1,0 +1,21 @@
+{
+  "chunk_id": "Diksha Kumari_Resume-segment-0001-chunk-0004",
+  "segment_id": "Diksha Kumari_Resume-segment-0001",
+  "document_id": "Diksha Kumari_Resume",
+  "filename": "Diksha Kumari_Resume.pdf",
+  "chunk_index": 4,
+  "start_page": 1,
+  "end_page": 1,
+  "page_count": 1,
+  "chapter": null,
+  "section": "dikshitya0603@gmail.com | +91 8864044626 | Lucknow, Uttar Pradesh | LinkedIn | GitHub",
+  "subsection": null,
+  "text": "INTERNSHIP EXPERIENCE Data Science & Analytics Intern — Proxenix May 2025 - Jul 2025 ● Applied data preprocessing and feature engineering techniques in Python to improve dataset quality and model performance. ● Performed data cleaning, EDA, and dashboard reporting using Python and Excel to support business decision-making. Data Engineering & Visualization Intern — HCL Tech Oct 2024 - Mar 2025 ● Executed EDA, cleaned datasets, and built SQL-based ETL pipelines for downstream reporting. ● Created interactive Power BI and Tableau dashboards and automated recurring data workflows, reducing manual reporting time. Machine Learning Intern — Acmegrade Pvt. Ltd. May 2024 - Jul 2024 ● Developed machine learning models in Python (Pandas, Scikit-learn) for classification and prediction tasks. ● Improved model accuracy through feature engineering, preprocessing, and systematic performance evaluation.",
+  "word_count": 128,
+  "approx_token_count": 166,
+  "split_reason": "sentence_pack",
+  "metadata": {
+    "file_type": "pdf",
+    "page_count": 1
+  }
+}

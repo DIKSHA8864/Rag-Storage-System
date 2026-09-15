@@ -1,0 +1,17 @@
+{
+  "segment_id": "export _3_-segment-0001",
+  "document_id": "export _3_",
+  "filename": "export _3_.docx",
+  "start_page": 9,
+  "end_page": 17,
+  "page_count": 9,
+  "chapter": null,
+  "section": null,
+  "subsection": null,
+  "text": "Freshsales Deal Data: Field-Parsing Issue & Raw Sample\nLens Export\n2026-09-04\nFreshsales Deal Data: Field-Parsing Issue & Raw Sample\nSummary\nThe table view hit the same wall — the verified computation layer returned no structured rows to render, which is consistent with every query this session against **freshsales_Deal.csv**. This isn't a data absence problem; it's the same field-parsing/encoding issue preventing the computation layer from reading the file correctly.\n\nMost direct fix right now: **re-upload freshsales_Deal.csv through csv_upload** to trigger a clean re-ingestion. That's the single most likely step to resolve the zero-result pattern across deal stage, owner name, amount, and now table rendering.\n\nIn the meantime, if you want to work with what's confirmed visible, I can pull details on any of the deals from the raw sample — the top 5 by amount are already surfaced (fs-6030 at $597K through fs\nDeal Data (Raw Sample)",
+  "structural_elements": [],
+  "metadata": {
+    "file_type": "docx",
+    "page_count": 7
+  }
+}

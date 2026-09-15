@@ -1,0 +1,21 @@
+{
+  "chunk_id": "Diksha Kumari_Resume-segment-0001-chunk-0003",
+  "segment_id": "Diksha Kumari_Resume-segment-0001",
+  "document_id": "Diksha Kumari_Resume",
+  "filename": "Diksha Kumari_Resume.pdf",
+  "chunk_index": 3,
+  "start_page": 1,
+  "end_page": 1,
+  "page_count": 1,
+  "chapter": null,
+  "section": "dikshitya0603@gmail.com | +91 8864044626 | Lucknow, Uttar Pradesh | LinkedIn | GitHub",
+  "subsection": null,
+  "text": "AI Voice Sales Agent | Python, LLM, Speech-to-Text (Whisper), Text-to-Speech (Piper) ● Built an end-to-end AI voice sales agent combining Speech-to-Text (Whisper), LLM-based conversational reasoning, and Text- to-Speech (Piper) to automate sales calls. ● Implemented lead qualification logic and AI-generated call summaries, and integrated the agent with a CRM/database layer to persist call outcomes and lead status. INET: Cognitive Image Segmentation | Python, Flask, TensorFlow, OpenCV, NumPy, Pandas, HTML, CSS, JavaScript, Bootstrap ● Built and deployed a Flask-based backend that accepts dermoscopic skin image uploads and returns AI-driven segmentation results through a REST endpoint. ● Handled dataset preprocessing, model integration, and backend-to-frontend data flow end-to-end, with a responsive UI for displaying predictions. Multi-Object Tracking System | Python, Flask, YOLO, OpenCV, TensorFlow, NumPy, Pandas, HTML, CSS, JavaScript, Bootstrap ● Built a Flask backend with API endpoints that streams real-time object detection/tracking results using YOLO, processing live video frames via OpenCV and visualizing them on a Bootstrap dashboard.",
+  "word_count": 156,
+  "approx_token_count": 203,
+  "split_reason": "sentence_pack",
+  "metadata": {
+    "file_type": "pdf",
+    "page_count": 1
+  }
+}

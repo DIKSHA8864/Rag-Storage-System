@@ -1,0 +1,17 @@
+{
+  "segment_id": "test3-segment-0001",
+  "document_id": "test3",
+  "filename": "test3.txt",
+  "start_page": 1,
+  "end_page": 1,
+  "page_count": 1,
+  "chapter": null,
+  "section": null,
+  "subsection": null,
+  "text": "This file is inside a nested folder.",
+  "structural_elements": [],
+  "metadata": {
+    "file_type": "txt",
+    "page_count": 1
+  }
+}

@@ -1,0 +1,41 @@
+services:
+  postgres:
+    # pgvector/pgvector:pg16 is upstream postgres:16 with the pgvector
+    # extension compiled in (see database/migrations/0002_pgvector.sql's
+    # CREATE EXTENSION) - the plain postgres:16 image doesn't have it,
+    # and app/vector_store/vector_repository.py needs it for chunk
+    # similarity search.
+    image: pgvector/pgvector:pg16
+    container_name: rag_storage_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rag_storage
+      POSTGRES_USER: raguser
+      POSTGRES_PASSWORD: ragpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raguser -d rag_storage"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: rag_storage_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+  redis_data:

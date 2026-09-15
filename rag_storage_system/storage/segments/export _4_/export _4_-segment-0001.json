@@ -1,0 +1,17 @@
+{
+  "segment_id": "export _4_-segment-0001",
+  "document_id": "export _4_",
+  "filename": "export _4_.docx",
+  "start_page": 9,
+  "end_page": 15,
+  "page_count": 7,
+  "chapter": null,
+  "section": null,
+  "subsection": null,
+  "text": "Renewal Deals — Lens Export\nLens Export\n2026-09-04\nRenewal Deals — Lens Export\nThe table view didn't render — the system returned no formatted output for that request, likely because \"show me in table\" needs a more explicit column spec to trigger the layout.\n\nSince the 25 Renewal deals are fresh from **freshsales_Deal.csv**, try: *\"Show all Renewal type deals in a table with columns: deal ID, deal name, owner, stage, amount, and close date\"* — spelling out the columns directly tends to force the table format cleanly across all 25 rows.\nDeal Data",
+  "structural_elements": [],
+  "metadata": {
+    "file_type": "docx",
+    "page_count": 6
+  }
+}

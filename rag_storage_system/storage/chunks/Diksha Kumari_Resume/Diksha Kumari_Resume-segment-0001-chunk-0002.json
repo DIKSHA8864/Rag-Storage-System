@@ -1,0 +1,21 @@
+{
+  "chunk_id": "Diksha Kumari_Resume-segment-0001-chunk-0002",
+  "segment_id": "Diksha Kumari_Resume-segment-0001",
+  "document_id": "Diksha Kumari_Resume",
+  "filename": "Diksha Kumari_Resume.pdf",
+  "chunk_index": 2,
+  "start_page": 1,
+  "end_page": 1,
+  "page_count": 1,
+  "chapter": null,
+  "section": "dikshitya0603@gmail.com | +91 8864044626 | Lucknow, Uttar Pradesh | LinkedIn | GitHub",
+  "subsection": null,
+  "text": "Backed by three internships across data engineering, ML, and analytics, with solid grounding in SQL, ETL pipelines, Git/GitHub, and Agile workflows. TECHNICAL SKILLS Languages: Python, JavaScript, SQL, HTML5, CSS3 Backend Development: Flask, Django, FastAPI, REST API Development, OOP, Express.js, JWT, OAuth Databases: MySQL, PostgreSQL, Relational Database Design AI/LLM Engineering: LangChain, LangGraph, RAG Pipelines, Hugging Face, Ollama, Groq API, Whisper STT, Piper TTS, TensorFlow, Scikit-learn, OpenCV, YOLO Front-End: React.js (fundamentals), HTML, CSS, JavaScript, Bootstrap, Responsive Web Design Tools & Practices: GitHub, VS Code, Postman, Jupyter Notebook, Google Colab, Power BI PROJECTS AI-First CRM | Python, FastAPI, PostgreSQL, LangGraph, RAG / Context Retrieval ● Architected an AI-first CRM backend with FastAPI and PostgreSQL, exposing REST APIs for lead, contact, and pipeline management. ● Designed a LangGraph-based agentic workflow to orchestrate multi-step AI reasoning across CRM operations, including data retrieval, summarization, and follow-up generation. ● Implemented RAG-based context retrieval to ground AI responses in customer/knowledge-base data, improving the relevance of AI-suggested actions. ● Built and integrated multiple AI-powered functions (lead scoring, email drafting, meeting summarization) directly into the backend service layer.",
+  "word_count": 178,
+  "approx_token_count": 231,
+  "split_reason": "sentence_pack",
+  "metadata": {
+    "file_type": "pdf",
+    "page_count": 1
+  }
+}

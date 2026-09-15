@@ -1,0 +1,21 @@
+{
+  "chunk_id": "test3-segment-0001-chunk-0001",
+  "segment_id": "test3-segment-0001",
+  "document_id": "test3",
+  "filename": "test3.txt",
+  "chunk_index": 1,
+  "start_page": 1,
+  "end_page": 1,
+  "page_count": 1,
+  "chapter": null,
+  "section": null,
+  "subsection": null,
+  "text": "This file is inside a nested folder.",
+  "word_count": 7,
+  "approx_token_count": 9,
+  "split_reason": "whole_segment",
+  "metadata": {
+    "file_type": "txt",
+    "page_count": 1
+  }
+}

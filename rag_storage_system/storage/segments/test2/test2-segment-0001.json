@@ -1,0 +1,17 @@
+{
+  "segment_id": "test2-segment-0001",
+  "document_id": "test2",
+  "filename": "test2.txt",
+  "start_page": 1,
+  "end_page": 1,
+  "page_count": 1,
+  "chapter": null,
+  "section": null,
+  "subsection": null,
+  "text": "This is the second test document.",
+  "structural_elements": [],
+  "metadata": {
+    "file_type": "txt",
+    "page_count": 1
+  }
+}

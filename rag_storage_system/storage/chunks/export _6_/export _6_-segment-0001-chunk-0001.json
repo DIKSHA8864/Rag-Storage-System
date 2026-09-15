@@ -1,0 +1,21 @@
+{
+  "chunk_id": "export _6_-segment-0001-chunk-0001",
+  "segment_id": "export _6_-segment-0001",
+  "document_id": "export _6_",
+  "filename": "export _6_.pdf",
+  "chunk_index": 1,
+  "start_page": 1,
+  "end_page": 1,
+  "page_count": 1,
+  "chapter": null,
+  "section": null,
+  "subsection": null,
+  "text": "Renewal Deals — Lens Export Lens Export 2026-09-04 Renewal Deals — Lens Export The table view didn't render — the system returned no formatted output for that request, likely because \"show me in table\" needs a more explicit column spec to trigger the layout. Since the 25 Renewal deals are fresh from freshsales_Deal.csv, try: *\"Show all Renewal type deals in a table with columns: deal ID, deal name, owner, stage, amount, and close date\"* — spelling out the columns directly tends to force the table format cleanly across all 25 rows.",
+  "word_count": 91,
+  "approx_token_count": 118,
+  "split_reason": "sentence_pack",
+  "metadata": {
+    "file_type": "pdf",
+    "page_count": 4
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "chunk_id": "test1-segment-0001-chunk-0001",
+  "segment_id": "test1-segment-0001",
+  "document_id": "test1",
+  "filename": "test1.txt",
+  "chunk_index": 1,
+  "start_page": 1,
+  "end_page": 1,
+  "page_count": 1,
+  "chapter": null,
+  "section": null,
+  "subsection": null,
+  "text": "This is a test document for the RAG storage system.",
+  "word_count": 10,
+  "approx_token_count": 13,
+  "split_reason": "whole_segment",
+  "metadata": {
+    "file_type": "txt",
+    "page_count": 1
+  }
+}
