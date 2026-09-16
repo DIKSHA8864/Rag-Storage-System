@@ -9,9 +9,12 @@ backends or tightening a limit later is an environment-variable
 change, not a code change.
 """
 
+import warnings
 from functools import lru_cache
 from pathlib import Path
+from typing import ClassVar
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -37,6 +40,27 @@ class Settings(BaseSettings):
 
     vector_db_path: str = "vector_db/chroma"
     database_path: str = "database/metadata.db"
+
+    # ------------------------------------------------------------------
+    # Storage backend - "local" (disk; the default, and what the test
+    # suite uses) or "s3" (any S3-compatible object store).
+    #
+    # One implementation covers three deployments; only the endpoint
+    # and credentials change:
+    #   MinIO (local dev)  S3_ENDPOINT_URL=http://localhost:9000
+    #   AWS S3             S3_ENDPOINT_URL=          (leave blank)
+    #   Cloudflare R2      S3_ENDPOINT_URL=https://<account>.r2.cloudflarestorage.com
+    #
+    # See app/storage/s3_backend.py and app/storage/__init__.py.
+    # ------------------------------------------------------------------
+    storage_backend: str = "local"
+
+    s3_bucket: str = "rag-storage"
+    s3_quarantine_bucket: str = "rag-quarantine"
+    s3_region: str = "us-east-1"
+    s3_endpoint_url: str = "http://localhost:9000"
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
 
     # ------------------------------------------------------------------
     # Metadata database backend - "postgres" (production/default) or
@@ -99,7 +123,13 @@ class Settings(BaseSettings):
     # anyone who can hit the port. Change this via .env for anything
     # beyond a local demo.
     # ------------------------------------------------------------------
-    jwt_secret_key: str = "Diksha@321#"
+    # No default: a signing key committed to the repo is a signing key
+    # every reader of the repo can forge Owner tokens with. Set
+    # JWT_SECRET_KEY in .env - generate one with:
+    #     python -c "import secrets; print(secrets.token_urlsafe(48))"
+    # Blueprint section 9 / Work Plan Milestone 0: secrets live in the
+    # environment (later a secrets manager), never in code.
+    jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
@@ -164,6 +194,43 @@ class Settings(BaseSettings):
     # app/security/audit_log.py.
     # ------------------------------------------------------------------
     audit_log_path: str = "logs/audit.log"
+
+    # Placeholder used when JWT_SECRET_KEY is unset in development, so
+    # the app and the test suite still boot. Deliberately obvious, and
+    # deliberately constant: a random per-boot key would silently
+    # invalidate every token on --reload.
+    # ClassVar, not a field - pydantic treats every annotated class
+    # attribute as a settable setting otherwise.
+    DEV_JWT_SECRET_KEY: ClassVar[str] = "dev-only-insecure-jwt-secret-change-me"
+
+    @model_validator(mode="after")
+    def _require_jwt_secret(self):
+        """
+        Refuse to start without a real signing key outside development.
+
+        In development an obvious placeholder is substituted (with a
+        warning) so `pytest` and a local `uvicorn` run need no setup;
+        anywhere else, a missing key is a hard error rather than a
+        quietly insecure deployment.
+        """
+
+        if not self.jwt_secret_key:
+            if self.environment == "development":
+                warnings.warn(
+                    "JWT_SECRET_KEY is not set - using an insecure development "
+                    "placeholder. Generate a real one with: "
+                    'python -c "import secrets; print(secrets.token_urlsafe(48))"',
+                    stacklevel=2,
+                )
+                self.jwt_secret_key = self.DEV_JWT_SECRET_KEY
+            else:
+                raise ValueError(
+                    f"JWT_SECRET_KEY must be set when ENVIRONMENT={self.environment!r}. "
+                    'Generate one with: python -c "import secrets; '
+                    'print(secrets.token_urlsafe(48))"'
+                )
+
+        return self
 
     def resolve(self, relative_path: str) -> Path:
         """Resolve a configured path relative to the project root."""

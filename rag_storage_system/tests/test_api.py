@@ -29,6 +29,12 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(storage_api, "storage_backend", backend)
     monkeypatch.setattr(storage_api, "metadata_repository", repository)
 
+    # app/extraction/extractor_manager.py reads documents through
+    # get_storage_backend(), so the extraction phase must resolve
+    # to this same throwaway backend and not real project storage.
+    import app.storage
+    monkeypatch.setattr(app.storage, "get_storage_backend", lambda: backend)
+
     return TestClient(storage_api.app)
 
 
@@ -233,7 +239,6 @@ def test_process_transitions_document_status_to_indexed(client, tmp_path, monkey
     from app.extraction import extractor_manager
     from app.segmentation import chunker, segmentation_manager
 
-    monkeypatch.setattr(extractor_manager, "ORIGINALS_DIR", tmp_path / "originals")
     monkeypatch.setattr(extractor_manager, "PROCESSED_DIR", tmp_path / "processed")
     monkeypatch.setattr(segmentation_manager, "PROCESSED_DIR", tmp_path / "processed")
     monkeypatch.setattr(segmentation_manager, "SEGMENTS_DIR", tmp_path / "segments")
@@ -275,7 +280,6 @@ def test_process_marks_extraction_failure(client, tmp_path, monkeypatch):
     from app.extraction import extractor_manager
     from app.segmentation import chunker, segmentation_manager
 
-    monkeypatch.setattr(extractor_manager, "ORIGINALS_DIR", tmp_path / "originals")
     monkeypatch.setattr(extractor_manager, "PROCESSED_DIR", tmp_path / "processed")
     monkeypatch.setattr(segmentation_manager, "PROCESSED_DIR", tmp_path / "processed")
     monkeypatch.setattr(segmentation_manager, "SEGMENTS_DIR", tmp_path / "segments")
@@ -285,9 +289,10 @@ def test_process_marks_extraction_failure(client, tmp_path, monkeypatch):
     monkeypatch.setattr(embedding_manager, "EMBEDDINGS_DIR", tmp_path / "embeddings")
 
     # A .pdf extension containing non-PDF bytes fails extraction.
+    # A .pdf extension containing non-PDF bytes, uploaded through
+    # the API so it lands in whatever backend is configured.
     client.post("/categories", json={"name": "Docs"})
-    (tmp_path / "originals" / "Docs").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "originals" / "Docs" / "broken.pdf").write_text("not a pdf", encoding="utf-8")
+    _upload(client, "Docs", "broken.pdf", content=b"not a pdf")
     storage_api.metadata_repository.upsert_document("Docs", "broken.pdf", ".pdf", 9, "x")
 
     response = client.post("/process")

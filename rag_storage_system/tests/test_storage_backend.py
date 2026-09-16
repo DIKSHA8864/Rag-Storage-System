@@ -2,12 +2,22 @@
 Tests for the storage backend abstraction (app/storage) and the
 path-sanitization helpers it relies on (app/security/path_security).
 
-These exercise LocalStorageBackend directly - the same backend the
-API uses - so a future S3/R2/Azure/GCS/MinIO backend can be tested
-by pointing these exact test cases at the new class instead.
+Every test below runs against BOTH backends via the parametrized
+`backend` fixture - LocalStorageBackend always, and S3StorageBackend
+when MinIO is up. That's the point of the StorageBackend interface:
+if the same contract tests pass against both, the two really are
+interchangeable and app/api/storage_api.py cannot tell them apart.
+
+The S3 pass is skipped unless RUN_S3_TESTS=1, so the default
+`pytest tests/` still needs nothing running:
+
+    docker compose up -d
+    RUN_S3_TESTS=1 pytest tests/test_storage_backend.py -q
 """
 
 import io
+import os
+import uuid
 
 import pytest
 
@@ -15,11 +25,31 @@ from app.security.path_security import resolve_within, sanitize_path_segment
 from app.storage.local_backend import LocalStorageBackend
 
 
-@pytest.fixture
-def backend(tmp_path):
-    originals = tmp_path / "originals"
-    quarantine = tmp_path / "quarantine"
-    return LocalStorageBackend(originals_dir=originals, quarantine_dir=quarantine)
+@pytest.fixture(params=["local", "s3"])
+def backend(request, tmp_path):
+    if request.param == "local":
+        return LocalStorageBackend(
+            originals_dir=tmp_path / "originals",
+            quarantine_dir=tmp_path / "quarantine",
+        )
+
+    if os.environ.get("RUN_S3_TESTS") != "1":
+        pytest.skip("Set RUN_S3_TESTS=1 with MinIO running to test the S3 backend.")
+
+    from app.storage.s3_backend import S3StorageBackend
+
+    # Fresh buckets per test: an object store has no tmp_path
+    # equivalent, and these tests must not see each other's objects.
+    suffix = uuid.uuid4().hex[:12]
+
+    return S3StorageBackend(
+        bucket=f"test-{suffix}",
+        quarantine_bucket=f"test-q-{suffix}",
+        region=os.environ.get("S3_REGION", "us-east-1"),
+        endpoint_url=os.environ.get("S3_ENDPOINT_URL", "http://localhost:9000"),
+        access_key_id=os.environ.get("S3_ACCESS_KEY_ID", "ragminio"),
+        secret_access_key=os.environ.get("S3_SECRET_ACCESS_KEY", "ragminio123"),
+    )
 
 
 # ---------------------------------------------------------------------
@@ -65,8 +95,11 @@ def test_create_and_list_category(backend):
 def test_create_category_sanitizes_traversal(backend):
     name = backend.create_category("../../etc")
     assert name == "etc"
-    # must land inside originals_dir, not actually /etc
-    assert (backend.originals_dir / "etc").exists()
+    # A plain category named "etc" inside storage - never a path that
+    # climbed out to the real /etc. Asserted through the interface so
+    # this holds for object stores too, which have no filesystem path
+    # to inspect.
+    assert {c["name"] for c in backend.list_categories()} == {"etc"}
 
 
 def test_rename_category(backend):
@@ -190,7 +223,8 @@ def test_filename_traversal_is_sanitized_on_save(backend):
 
     # sanitized to a plain filename, stored safely inside the category
     assert "/" not in result["stored_filename"]
-    assert (backend.originals_dir / "Docs" / result["stored_filename"]).exists()
+    assert result["category"] == "Docs"
+    assert backend.exists("Docs", result["stored_filename"])
 
 
 # ---------------------------------------------------------------------
@@ -202,8 +236,44 @@ def test_quarantine_stores_outside_protected_storage(backend):
     result = backend.quarantine("Docs", "bad.exe", io.BytesIO(b"MZ..."))
 
     assert result["stored_filename"] == "bad.exe"
-    quarantined_path = backend.quarantine_dir / "Docs" / "bad.exe"
-    assert quarantined_path.exists()
+    assert result["category"] == "Docs"
 
-    # must NOT show up in protected storage listings
+    # The point of quarantine: it must NOT be reachable through
+    # protected storage - not listed, and not retrievable.
     assert backend.list_files("Docs") == []
+    assert backend.exists("Docs", "bad.exe") is False
+
+
+# ---------------------------------------------------------------------
+# Pre-signed URLs
+# ---------------------------------------------------------------------
+
+
+def test_presigned_urls(backend):
+    """
+    Object stores issue a time-limited signed URL; local disk has no
+    URL space of its own and must say so explicitly rather than
+    returning something that doesn't work.
+    """
+
+    backend.create_category("Docs")
+    backend.save("Docs", "report.txt", io.BytesIO(b"data"))
+
+    if isinstance(backend, LocalStorageBackend):
+        with pytest.raises(NotImplementedError):
+            backend.presigned_download_url("Docs", "report.txt")
+        with pytest.raises(NotImplementedError):
+            backend.presigned_upload_url("Docs", "report.txt")
+        return
+
+    download_url = backend.presigned_download_url("Docs", "report.txt")
+    upload_url = backend.presigned_upload_url("Docs", "new.txt")
+
+    for url in (download_url, upload_url):
+        assert url.startswith("http")
+        # Signed, and time-limited - not a bare public object URL.
+        assert "X-Amz-Signature" in url
+        assert "X-Amz-Expires" in url
+
+    assert "Docs/report.txt" in download_url
+    assert "Docs/new.txt" in upload_url

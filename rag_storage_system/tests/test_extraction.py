@@ -10,6 +10,7 @@ import pymupdf
 import pytest
 
 from app.extraction import extractor_manager
+from app.storage.local_backend import LocalStorageBackend
 from app.extraction.docx_extractor import extract_docx
 from app.extraction.extractor_manager import extract_all_documents, extract_document
 from app.extraction.pdf_extractor import extract_pdf
@@ -139,14 +140,16 @@ def test_extract_all_documents_mirrors_category_structure(tmp_path, monkeypatch)
     originals = tmp_path / "originals"
     processed = tmp_path / "processed"
 
-    monkeypatch.setattr(extractor_manager, "ORIGINALS_DIR", originals)
     monkeypatch.setattr(extractor_manager, "PROCESSED_DIR", processed)
+    backend = LocalStorageBackend(
+        originals_dir=originals, quarantine_dir=tmp_path / "quarantine"
+    )
 
     category_dir = originals / "Contracts" / "2024"
     category_dir.mkdir(parents=True)
     (category_dir / "note.txt").write_text("Some content.", encoding="utf-8")
 
-    results = extract_all_documents()
+    results = extract_all_documents(backend)
 
     assert len(results) == 1
     assert results[0]["status"] == "extracted"
@@ -164,15 +167,17 @@ def test_extract_all_documents_records_failures(tmp_path, monkeypatch):
     originals = tmp_path / "originals"
     processed = tmp_path / "processed"
 
-    monkeypatch.setattr(extractor_manager, "ORIGINALS_DIR", originals)
     monkeypatch.setattr(extractor_manager, "PROCESSED_DIR", processed)
+    backend = LocalStorageBackend(
+        originals_dir=originals, quarantine_dir=tmp_path / "quarantine"
+    )
 
     # A .pdf extension with non-PDF bytes fails inside pymupdf.
     bad_dir = originals / "Bad"
     bad_dir.mkdir(parents=True)
     (bad_dir / "broken.pdf").write_text("not a real pdf", encoding="utf-8")
 
-    results = extract_all_documents()
+    results = extract_all_documents(backend)
 
     assert len(results) == 1
     assert results[0]["status"] == "failed"
@@ -180,5 +185,8 @@ def test_extract_all_documents_records_failures(tmp_path, monkeypatch):
 
 
 def test_extract_all_documents_empty_when_no_originals(tmp_path, monkeypatch):
-    monkeypatch.setattr(extractor_manager, "ORIGINALS_DIR", tmp_path / "does_not_exist")
-    assert extract_all_documents() == []
+    backend = LocalStorageBackend(
+        originals_dir=tmp_path / "does_not_exist",
+        quarantine_dir=tmp_path / "quarantine",
+    )
+    assert extract_all_documents(backend) == []

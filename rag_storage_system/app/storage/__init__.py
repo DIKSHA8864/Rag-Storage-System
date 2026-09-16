@@ -36,20 +36,35 @@ _backend_instance: StorageBackend | None = None
 
 def get_storage_backend() -> StorageBackend:
     """
-    Returns the active storage backend (singleton).
+    Returns the active storage backend (singleton), chosen by
+    STORAGE_BACKEND (config/settings.py):
 
-    Swap the implementation here later - e.g.:
-
-        from app.storage.s3_backend import S3StorageBackend
-        return S3StorageBackend(bucket=os.environ["S3_BUCKET"], ...)
+        "local"  LocalStorageBackend - disk. The default, and what the
+                 test suite uses (tests/conftest.py injects its own
+                 instance pointed at tmp_path).
+        "s3"     S3StorageBackend - MinIO locally, AWS S3 or
+                 Cloudflare R2 in production. Imported lazily so boto3
+                 is only needed when it's actually selected.
     """
 
     global _backend_instance
 
     if _backend_instance is None:
-        _backend_instance = LocalStorageBackend(
-            originals_dir=ORIGINALS_DIR,
-            quarantine_dir=QUARANTINE_DIR,
-        )
+        if _settings.storage_backend == "s3":
+            from app.storage.s3_backend import S3StorageBackend
+
+            _backend_instance = S3StorageBackend(
+                bucket=_settings.s3_bucket,
+                quarantine_bucket=_settings.s3_quarantine_bucket,
+                region=_settings.s3_region,
+                endpoint_url=_settings.s3_endpoint_url,
+                access_key_id=_settings.s3_access_key_id,
+                secret_access_key=_settings.s3_secret_access_key,
+            )
+        else:
+            _backend_instance = LocalStorageBackend(
+                originals_dir=ORIGINALS_DIR,
+                quarantine_dir=QUARANTINE_DIR,
+            )
 
     return _backend_instance

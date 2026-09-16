@@ -1,4 +1,3 @@
-cat > .gitignore << 'EOF'
 node_modules/
 venv/
 .venv/
@@ -12,4 +11,18 @@ target/
 .env
 *.log
 .DS_Store
-EOF
+
+# Runtime data - never commit. The pipeline regenerates everything
+# under storage/ from the originals, and database/*.db is a local
+# SQLite file. Blueprint section 9: no production library or client
+# data ever lives in the repo.
+storage/originals/*
+storage/processed/*
+storage/quarantine/*
+storage/segments/*
+storage/chunks/*
+storage/embeddings/*
+storage/metadata/*
+!storage/**/.gitkeep
+database/*.db
+vector_db/

@@ -36,6 +36,31 @@ services:
       timeout: 5s
       retries: 10
 
+  # Local S3-compatible object storage - free, no account, no card.
+  # app/storage/s3_backend.py talks to this in development and to real
+  # AWS S3 / Cloudflare R2 in production; only S3_ENDPOINT_URL and the
+  # credentials change. Buckets are created on first use by the
+  # backend's _ensure_bucket(), so there's nothing to set up by hand.
+  minio:
+    image: minio/minio:latest
+    container_name: rag_storage_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ragminio
+      MINIO_ROOT_PASSWORD: ragminio123
+    ports:
+      - "9000:9000"   # S3 API - S3_ENDPOINT_URL points here
+      - "9001:9001"   # web console, for eyeballing objects
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres_data:
   redis_data:
+  minio_data:

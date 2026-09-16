@@ -156,3 +156,30 @@ class StorageBackend(ABC):
         protected storage. Same return shape as save().
         """
         raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Pre-signed URLs
+    #
+    # A time-limited URL that lets a browser PUT or GET bytes directly
+    # to/from storage, without them passing through this API at all.
+    # The Blueprint's client-intake uploads (Phase 3 step 6) require
+    # this, and it can't be expressed with save()/open_file() alone.
+    #
+    # Backends with no URL space of their own (LocalStorageBackend)
+    # raise NotImplementedError - callers that need pre-signed URLs
+    # must run on an object-store backend.
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def presigned_upload_url(
+        self, category: str, filename: str, expires_in: int = 900
+    ) -> str:
+        """Return a URL a client can PUT this file's bytes to directly."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def presigned_download_url(
+        self, category: str, filename: str, expires_in: int = 900
+    ) -> str:
+        """Return a time-limited URL to read one stored file."""
+        raise NotImplementedError

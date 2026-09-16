@@ -22,6 +22,7 @@ from app.metadata.base import MetadataRepository
 from app.metadata.models import DocumentStatus
 from app.segmentation.chunker import process_all_segments
 from app.segmentation.segmentation_manager import process_all_documents
+from app.storage.base import StorageBackend
 from app.vector_store import get_vector_store
 from app.vector_store.base import VectorStore
 
@@ -29,6 +30,7 @@ from app.vector_store.base import VectorStore
 def run_processing_job(
     metadata_repository: Optional[MetadataRepository] = None,
     vector_store: Optional[VectorStore] = None,
+    storage_backend: Optional[StorageBackend] = None,
 ) -> dict:
     """
     Run every stored document through extraction, segmentation,
@@ -54,7 +56,10 @@ def run_processing_job(
     metadata_repository = metadata_repository or get_metadata_repository()
     vector_store = vector_store or get_vector_store()
 
-    extraction_results = extract_all_documents()
+    # Left as None by POST /process: a live S3 client can't be
+    # pickled onto the RQ queue, so the worker resolves the
+    # backend from its own config instead of receiving one.
+    extraction_results = extract_all_documents(storage_backend)
 
     documents_extracted = sum(
         1 for result in extraction_results if result["status"] == "extracted"

@@ -262,3 +262,23 @@ class LocalStorageBackend(StorageBackend):
             "size": destination.stat().st_size,
             "sha256": _hash_file(destination),
         }
+
+    # ------------------------------------------------------------------
+    # Pre-signed URLs - not available on local disk
+    # ------------------------------------------------------------------
+
+    def presigned_upload_url(
+        self, category: str, filename: str, expires_in: int = 900
+    ) -> str:
+        raise NotImplementedError(
+            "LocalStorageBackend has no URL space of its own - set "
+            "STORAGE_BACKEND=s3 to issue pre-signed URLs."
+        )
+
+    def presigned_download_url(
+        self, category: str, filename: str, expires_in: int = 900
+    ) -> str:
+        raise NotImplementedError(
+            "LocalStorageBackend has no URL space of its own - set "
+            "STORAGE_BACKEND=s3 to issue pre-signed URLs."
+        )
