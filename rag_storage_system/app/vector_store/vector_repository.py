@@ -170,6 +170,24 @@ class PgVectorRepository(VectorStore):
             row = conn.execute("SELECT COUNT(*) AS count FROM chunk_embeddings").fetchone()
             return row["count"]
 
+    def delete_by_document(self, category: str, filename: str) -> int:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM chunk_embeddings WHERE category = %s AND filename = %s",
+                (category, filename),
+            )
+            return cursor.rowcount
+
+    def delete_by_category(self, category: str) -> int:
+        # Same subfolder matching similarity_search() uses, so deleting
+        # "Contracts" also clears "Contracts/2024".
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM chunk_embeddings WHERE category = %s OR category LIKE %s",
+                (category, f"{category}/%"),
+            )
+            return cursor.rowcount
+
     # ------------------------------------------------------------------
     # Postgres-specific extras (not part of the VectorStore interface)
     # ------------------------------------------------------------------

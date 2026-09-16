@@ -171,6 +171,27 @@ class _FakeVectorStore:
     def count(self) -> int:
         return len(self._rows)
 
+    def delete_by_document(self, category, filename):
+        doomed = [
+            chunk_id
+            for chunk_id, row in self._rows.items()
+            if row["category"] == category and row["filename"] == filename
+        ]
+        for chunk_id in doomed:
+            del self._rows[chunk_id]
+        return len(doomed)
+
+    def delete_by_category(self, category):
+        doomed = [
+            chunk_id
+            for chunk_id, row in self._rows.items()
+            if row["category"] == category
+            or row["category"].startswith(f"{category}/")
+        ]
+        for chunk_id in doomed:
+            del self._rows[chunk_id]
+        return len(doomed)
+
 
 @pytest.fixture(autouse=True)
 def _fake_vector_store(monkeypatch):

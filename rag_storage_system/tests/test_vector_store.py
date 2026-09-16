@@ -152,3 +152,69 @@ def test_keyword_search_matches_literal_text(repo):
 def test_keyword_search_no_match_returns_empty(repo):
     _seed(repo, ["Nothing relevant here."])
     assert repo.keyword_search("zzz_no_such_term_zzz", top_k=5) == []
+
+
+# ---------------------------------------------------------------------
+# delete_by_document / delete_by_category
+#
+# Blueprint acceptance test 6: a deleted document must stop being
+# retrievable. These are the real-Postgres half of that - the API-level
+# behaviour is covered against the fake store in tests/test_api.py.
+# ---------------------------------------------------------------------
+
+
+def _seed_one(repo, category: str, filename: str, chunk_id: str) -> None:
+    (embedding,) = embed_texts([f"content of {category}/{filename}"])
+    repo.upsert_chunk_embedding(
+        chunk_id=chunk_id,
+        document_id=filename.rsplit(".", 1)[0],
+        category=category,
+        filename=filename,
+        chunk_text=f"content of {category}/{filename}",
+        embedding=embedding,
+        model_name="all-MiniLM-L6-v2",
+    )
+
+
+def test_delete_by_document_removes_only_that_document(repo):
+    _seed_one(repo, "Docs", "keep.txt", "keep-1")
+    _seed_one(repo, "Docs", "drop.txt", "drop-1")
+    assert repo.count() == 2
+
+    assert repo.delete_by_document("Docs", "drop.txt") == 1
+    assert repo.count() == 1
+
+
+def test_delete_by_document_does_not_cross_categories(repo):
+    """Two files sharing a name in different categories are distinct documents."""
+
+    _seed_one(repo, "Legal", "report.txt", "legal-1")
+    _seed_one(repo, "HR", "report.txt", "hr-1")
+
+    assert repo.delete_by_document("Legal", "report.txt") == 1
+    assert repo.count() == 1
+
+
+def test_delete_by_document_missing_returns_zero(repo):
+    assert repo.delete_by_document("Docs", "never-existed.txt") == 0
+
+
+def test_delete_by_category_includes_subfolders(repo):
+    """Mirrors similarity_search()'s subfolder matching."""
+
+    _seed_one(repo, "Contracts", "a.txt", "a-1")
+    _seed_one(repo, "Contracts/2024", "b.txt", "b-1")
+    _seed_one(repo, "Other", "c.txt", "c-1")
+
+    assert repo.delete_by_category("Contracts") == 2
+    assert repo.count() == 1
+
+
+def test_delete_by_category_does_not_match_name_prefix(repo):
+    """"Contracts" must not delete "ContractsArchive" - only real subfolders."""
+
+    _seed_one(repo, "Contracts", "a.txt", "a-1")
+    _seed_one(repo, "ContractsArchive", "b.txt", "b-1")
+
+    assert repo.delete_by_category("Contracts") == 1
+    assert repo.count() == 1

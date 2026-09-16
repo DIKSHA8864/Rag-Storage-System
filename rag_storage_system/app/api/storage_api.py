@@ -88,6 +88,7 @@ from app.api.schemas import (
     UploadResponse,
 )
 from app.ingestion.file_validator import validate_file_object
+from app.jobs.cleanup import purge_category_artifacts, purge_document_artifacts
 from app.jobs.processing import run_processing_job
 from app.jobs.queue import get_job_queue
 from app.metadata import get_metadata_repository
@@ -582,7 +583,20 @@ def delete_document(category: str, filename: str) -> MessageResponse:
     safe_filename = sanitize_path_segment(Path(filename).name)
     metadata_repository.delete_document(safe_category, safe_filename)
 
-    log_audit_event("delete_document", category=safe_category, filename=safe_filename)
+    # Blueprint acceptance test 6: a deleted document must stop being
+    # retrievable. Removing the file and its metadata row alone leaves
+    # its vectors in chunk_embeddings (still returned by /search) and
+    # its chunk JSON on disk, which the next POST /process would
+    # re-embed - silently undoing this delete.
+    removed_vectors = get_vector_store().delete_by_document(safe_category, safe_filename)
+    purge_document_artifacts(safe_category, safe_filename, storage_backend)
+
+    log_audit_event(
+        "delete_document",
+        category=safe_category,
+        filename=safe_filename,
+        detail=f"vectors_removed={removed_vectors}",
+    )
 
     return MessageResponse(message=f"'{filename}' deleted from '{category}'.")
 
@@ -666,6 +680,12 @@ def delete_category(category: str, force: bool = False) -> MessageResponse:
 
     safe_category = sanitize_category_path(category)
 
+    # Captured before deletion - afterwards there is nothing to list,
+    # and these are the documents whose artifacts need purging.
+    doomed_filenames = [
+        document["filename"] for document in storage_backend.list_files(safe_category)
+    ]
+
     try:
         deleted = storage_backend.delete_category(category, force=force)
     except ValueError as exc:
@@ -680,8 +700,14 @@ def delete_category(category: str, force: bool = False) -> MessageResponse:
 
     metadata_repository.delete_folder(safe_category)
 
+    # Same reasoning as delete_document - see its comment.
+    removed_vectors = get_vector_store().delete_by_category(safe_category)
+    purge_category_artifacts(safe_category, doomed_filenames, storage_backend)
+
     log_audit_event(
-        "delete_category", category=safe_category, detail=f"force={force}"
+        "delete_category",
+        category=safe_category,
+        detail=f"force={force} vectors_removed={removed_vectors}",
     )
 
     return MessageResponse(message=f"Category '{category}' deleted.")

@@ -9,6 +9,7 @@ storage.
 """
 
 import io
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -361,3 +362,115 @@ def test_search_returns_reranked_chunks(client, monkeypatch):
 def test_search_rejects_empty_query(client):
     response = client.post("/search", json={"query": ""})
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------
+# Deletion cleanup - Blueprint acceptance test 6
+#
+# Deleting a document has to remove its vectors and its derived
+# artifacts too, or it stays retrievable via /search and the next
+# POST /process re-embeds the leftover chunk JSON, undoing the delete.
+# ---------------------------------------------------------------------
+
+
+def _seed_vector(store, category, filename, chunk_id):
+    store.upsert_chunk_embedding(
+        chunk_id=chunk_id,
+        document_id=Path(filename).stem,
+        category=category,
+        filename=filename,
+        chunk_text=f"content of {category}/{filename}",
+        embedding=[0.1] * 384,
+        model_name="all-MiniLM-L6-v2",
+    )
+
+
+def test_deleting_document_removes_its_vectors(client, _fake_vector_store):
+    _upload(client, "Docs", "report.txt", content=b"Some real content.")
+    _seed_vector(_fake_vector_store, "Docs", "report.txt", "report-chunk-1")
+    assert _fake_vector_store.count() == 1
+
+    assert client.delete("/categories/Docs/documents/report.txt").status_code == 200
+    assert _fake_vector_store.count() == 0
+
+
+def test_deleting_document_leaves_a_same_named_document_alone(client, _fake_vector_store):
+    """Two files sharing a stem in different categories must not delete each other."""
+
+    _upload(client, "Legal", "report.txt", content=b"Legal content.")
+    _upload(client, "HR", "report.txt", content=b"HR content.")
+    _seed_vector(_fake_vector_store, "Legal", "report.txt", "legal-report-1")
+    _seed_vector(_fake_vector_store, "HR", "report.txt", "hr-report-1")
+
+    client.delete("/categories/Legal/documents/report.txt")
+
+    assert _fake_vector_store.count() == 1
+    assert list(_fake_vector_store._rows.values())[0]["category"] == "HR"
+
+
+def test_deleting_category_removes_vectors_including_subfolders(client, _fake_vector_store):
+    _upload(client, "Contracts", "a.txt", content=b"A.")
+    _upload(client, "Contracts/2024", "b.txt", content=b"B.")
+    _upload(client, "Other", "c.txt", content=b"C.")
+    _seed_vector(_fake_vector_store, "Contracts", "a.txt", "a-1")
+    _seed_vector(_fake_vector_store, "Contracts/2024", "b.txt", "b-1")
+    _seed_vector(_fake_vector_store, "Other", "c.txt", "c-1")
+
+    assert client.delete("/categories/Contracts?force=true").status_code == 200
+
+    remaining = [row["category"] for row in _fake_vector_store._rows.values()]
+    assert remaining == ["Other"]
+
+
+def test_deleting_document_purges_its_chunk_artifacts(client, tmp_path, monkeypatch):
+    """
+    The leftover that matters most: chunk JSON left on disk would be
+    re-embedded by the next POST /process, resurrecting the document.
+    """
+
+    from app.jobs import cleanup
+
+    for name in ("PROCESSED_DIR", "SEGMENTS_DIR", "CHUNKS_DIR", "EMBEDDINGS_DIR"):
+        monkeypatch.setattr(cleanup, name, tmp_path / name.lower())
+
+    _upload(client, "Docs", "report.txt", content=b"Some real content.")
+
+    chunks = tmp_path / "chunks_dir" / "report"
+    chunks.mkdir(parents=True)
+    (chunks / "report-segment-0001-chunk-0001.json").write_text("{}", encoding="utf-8")
+
+    processed = tmp_path / "processed_dir" / "Docs" / "report"
+    processed.mkdir(parents=True)
+    (processed / "extracted.json").write_text("{}", encoding="utf-8")
+
+    client.delete("/categories/Docs/documents/report.txt")
+
+    assert not chunks.exists()
+    assert not processed.exists()
+
+
+def test_purge_keeps_shared_artifacts_of_a_surviving_document(client, tmp_path, monkeypatch):
+    """A same-stem document elsewhere still needs those shared directories."""
+
+    from app.jobs import cleanup
+
+    for name in ("PROCESSED_DIR", "SEGMENTS_DIR", "CHUNKS_DIR", "EMBEDDINGS_DIR"):
+        monkeypatch.setattr(cleanup, name, tmp_path / name.lower())
+
+    _upload(client, "Legal", "report.txt", content=b"Legal content.")
+    _upload(client, "HR", "report.txt", content=b"HR content.")
+
+    chunks = tmp_path / "chunks_dir" / "report"
+    chunks.mkdir(parents=True)
+    (chunks / "report-segment-0001-chunk-0001.json").write_text("{}", encoding="utf-8")
+
+    legal_processed = tmp_path / "processed_dir" / "Legal" / "report"
+    legal_processed.mkdir(parents=True)
+    (legal_processed / "extracted.json").write_text("{}", encoding="utf-8")
+
+    client.delete("/categories/Legal/documents/report.txt")
+
+    # Legal's own extraction output goes; the stem-keyed chunks stay,
+    # because HR/report.txt still needs them.
+    assert not legal_processed.exists()
+    assert chunks.exists()

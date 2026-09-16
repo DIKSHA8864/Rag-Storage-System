@@ -71,3 +71,26 @@ class VectorStore(ABC):
     def count(self) -> int:
         """Total number of chunk embeddings currently stored."""
         raise NotImplementedError
+
+    @abstractmethod
+    def delete_by_document(self, category: str, filename: str) -> int:
+        """
+        Delete every chunk embedding belonging to one document.
+        Returns how many rows were removed.
+
+        Matched on (category, filename) rather than document_id:
+        document_id is only the filename stem (see
+        app/jobs/processing.py), so two files named report.pdf in
+        different categories share one - and deleting either must
+        never take the other's vectors with it.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_by_category(self, category: str) -> int:
+        """
+        Delete every chunk embedding in a category and its
+        subcategories, mirroring similarity_search()'s subfolder
+        matching. Returns how many rows were removed.
+        """
+        raise NotImplementedError
