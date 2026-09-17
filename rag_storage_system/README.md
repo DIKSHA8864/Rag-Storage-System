@@ -12,92 +12,160 @@ back a structured match report - not just a chatbot answer. See
 
 ## Setup
 
+Every command below is run from the `rag_storage_system/` directory.
+
 ```bash
 # 1. Create and activate a virtual environment
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 source .venv/bin/activate       # macOS/Linux
 
-# 2. Install dependencies
+# 2. Install dependencies (pulls torch + sentence-transformers, a
+#    multi-GB download the first time)
 pip install -r requirements.txt
 
-# 3. Copy the example environment file and set an admin key
+# 3. Copy the example environment file
 copy .env.example .env          # Windows
 cp .env.example .env            # macOS/Linux
 
-# 4. Start Postgres (the default metadata backend) and Redis (the
-#    background processing queue's message broker)
+# 4. Start Postgres (metadata + pgvector) and Redis (the background
+#    processing queue's message broker)
 docker compose up -d
+
+# 5. Create the Owner account you'll log in with (prompts for email
+#    and password; pass them as arguments instead if you don't mind
+#    the password landing in your shell history)
+python scripts/create_owner.py
 ```
+
+`docker compose up -d` returns as soon as the containers start, a moment
+before Postgres finishes initializing on a first run - if step 5 fails with a
+connection error, wait for the healthcheck to pass
+(`docker compose ps` shows `healthy`) and run it again.
+
+Open `.env` and set `JWT_SECRET_KEY` to a long random secret - it signs every
+Owner access token (see [Authentication](#authentication)), and the fallback
+in `config/settings.py` is a placeholder committed to this repository, so
+anyone who can read the source could mint a valid Owner token against a
+deployment that never overrode it. Change `END_USER_API_KEY` too before
+running this anywhere beyond your own machine. Leave `ANTHROPIC_API_KEY` blank
+unless you want `/end-user/compare`'s report prose written by Claude instead
+of the free built-in template - see [End User API](#end-user-api).
+
+Step 5 is required - there is no default login. `scripts/create_owner.py`
+creates the `owners` table if it doesn't exist yet and inserts one Owner with
+an Argon2-hashed password; without it `POST /auth/login` has nothing to
+authenticate against and every Owner/Admin endpoint stays locked. Run it again
+with a different email to add another Owner:
+
+```bash
+python scripts/create_owner.py second-owner@example.com their-password
+```
+
+No separate migration step is needed - every file in `database/migrations/`
+is applied automatically (idempotently) the first time the app opens a
+Postgres connection.
 
 Don't want to run Redis yourself? Point `REDIS_URL` in `.env` at a free tier
 like [Upstash](https://upstash.com/) instead - `app/jobs/queue.py` just needs
 a reachable Redis URL, it doesn't care where it's hosted.
 
-Open `.env` and change `ADMIN_API_KEY` **and** `END_USER_API_KEY` to real,
-different secrets before running this anywhere beyond your own machine - both
-default to an obvious placeholder, fine for local testing only. Leave
-`ANTHROPIC_API_KEY` blank unless you want `/end-user/compare`'s report prose
-written by Claude instead of the free built-in template - see
-[End User API](#end-user-api).
-
-No separate migration step is needed - the schema
-(`database/migrations/0001_initial_schema.sql`) is applied automatically
-(idempotently) whenever the app starts.
-
-Don't have Docker, or want zero external dependencies for a quick local run?
-Set `METADATA_BACKEND=sqlite` in `.env` instead - same behavior, a local file
-at `database/metadata.db` instead of Postgres. The test suite always uses
-SQLite regardless of this setting, so it never needs Postgres running.
-Note this only swaps the *metadata* backend - chunk embeddings always go to
-pgvector on the real Postgres (see [Retrieval](#retrieval) below), since
-there's no sqlite equivalent for vector search; `POST /process` and
-`POST /search` need `docker compose up -d` regardless of `METADATA_BACKEND`.
+Postgres, however, is not optional. `METADATA_BACKEND=sqlite` swaps only the
+*folder/document* metadata store for a local file at `database/metadata.db`.
+Owner accounts (`app/security/owner_repository.py`) and chunk embeddings
+(`app/vector_store/`, pgvector - there's no sqlite equivalent for vector
+search, see [Retrieval](#retrieval)) both connect to Postgres directly and
+ignore that setting, so `POST /auth/login`, `POST /process` and `POST /search`
+all need `docker compose up -d` whichever backend you pick. The test suite is
+the exception - it always uses SQLite and skips the cases that need a real
+Postgres (see [Testing](#testing)).
 
 ## Run
 
-```bash
-uvicorn app.api.storage_api:app --reload
-```
-
-`POST /process` doesn't run the pipeline itself - it enqueues a job onto
-Redis and a separate worker process picks it up (see
-[Background processing](#background-processing)), so start that worker too:
-
-```bash
-python scripts/worker.py
-```
-
-Then open **http://127.0.0.1:8000/docs** for the interactive Swagger UI.
-Click **Authorize** (top right) and paste your `ADMIN_API_KEY` once - every
-"Try it out" call will then include it automatically.
-
-Before a live demo, run the health check to catch a broken environment early:
+Check the environment first - a broken one is much cheaper to catch here than
+mid-demo:
 
 ```bash
 python scripts/health_check.py
 ```
 
 It verifies every storage folder is writable, the metadata database is
-reachable, and the embedding model can load - exits non-zero if anything
-fails.
+reachable, and the embedding model can load (downloading it on first run,
+~90MB) - exits non-zero if anything fails.
+
+Then start the two processes, each in its own terminal:
+
+```bash
+# Terminal 1 - the API
+uvicorn app.api.storage_api:app --reload
+
+# Terminal 2 - the background worker
+python scripts/worker.py
+```
+
+The worker is not optional. `POST /process` doesn't run the pipeline itself -
+it enqueues a job onto Redis and the worker picks it up (see
+[Background processing](#background-processing)). With no worker running, jobs
+sit in the queue as `queued` indefinitely and nothing is ever extracted,
+embedded, or indexed.
+
+| URL | What it is |
+|---|---|
+| http://127.0.0.1:8000/docs | Swagger UI - every endpoint, with "Try it out" |
+| http://127.0.0.1:8000/admin/dashboard | Owner Dashboard - log in, browse and manage categories/documents, trigger processing |
+| http://127.0.0.1:8000/analyze | End User page - paste text or upload a file, see the comparison report rendered |
+
+To use "Try it out" on an Owner/Admin endpoint in Swagger UI, call
+`POST /auth/login` there first, copy `access_token` out of the response, then
+click **Authorize** (top right) and paste that token on its own - no `Bearer `
+prefix, Swagger adds it. `/end-user/*` uses the separate `X-End-User-Key`
+field in the same Authorize dialog.
 
 ## Authentication
 
-Every endpoint except `/`, `/docs`, `/openapi.json`, and `/upload-test`
-requires an `X-API-Key` header matching `ADMIN_API_KEY`:
+Owner/Admin endpoints authenticate with **email + password exchanged for a
+JWT**, not a shared key. Log in with the account `scripts/create_owner.py`
+created in step 5 of [Setup](#setup):
 
 ```bash
-curl -H "X-API-Key: dev-admin-key-change-me" http://127.0.0.1:8000/categories
+curl -X POST http://127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com", "password": "your-password"}'
 ```
 
-This is a single shared admin secret, not per-user accounts or roles - enough
-to stop the API being wide open to anyone who can reach the port. See
-`app/security/auth.py`.
+```json
+{"access_token": "eyJhbGciOi...", "token_type": "bearer", "expires_in": 3600}
+```
+
+Send that token as an `Authorization: Bearer` header on every Owner/Admin
+request:
+
+```bash
+TOKEN=eyJhbGciOi...
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/categories
+```
+
+Tokens are signed with `JWT_SECRET_KEY` and expire after
+`ACCESS_TOKEN_EXPIRE_MINUTES` (default 60), both from `.env`. Passwords are
+hashed with Argon2 (`pwdlib`) and never stored in plaintext. Owner rows live
+in the `owners` table on Postgres (`database/migrations/0004_owners.sql`,
+`app/security/owner_repository.py`) - which is why Postgres is needed even
+with `METADATA_BACKEND=sqlite`. See `app/security/auth.py` for the token
+helpers and the `require_admin_key` dependency each protected endpoint
+carries.
+
+Exempt from Owner auth: `GET /`, `/docs`, `/openapi.json`, `POST /auth/login`,
+and the HTML page routes (`/admin/dashboard`, `/analyze`, `/upload-test`) - a
+plain browser navigation can't attach an `Authorization` header, so the pages
+themselves are unauthenticated static HTML. Every API call their JavaScript
+makes attaches the real credential and is checked exactly like a curl or
+Swagger call to the same endpoint.
 
 `/end-user/*` (see [End User API](#end-user-api)) is authenticated separately -
 a different header (`X-End-User-Key`), a different secret (`END_USER_API_KEY`)
-- so this admin key grants it no access, and vice versa.
+- so an Owner token grants it no access, and an End User key grants no access
+to anything Owner/Admin. Only the Owner side has real accounts; the End User
+scope is still a single shared secret.
 
 ## Audit logging
 
@@ -109,6 +177,7 @@ status, detail). See `app/security/audit_log.py`.
 
 | Method | Path | Description |
 |---|---|---|
+| POST | `/auth/login` | Exchange an Owner email + password for a JWT access token *(no auth required)* |
 | POST | `/categories` | Create a category (folder); pass `parent` to nest it under an existing one |
 | GET | `/categories` | List categories/subfolders with document counts |
 | PATCH | `/categories/{category}` | Rename/move a category (path may include subfolders, e.g. `Contracts/2024`) |
@@ -121,7 +190,10 @@ status, detail). See `app/security/audit_log.py`.
 | POST | `/process` | Enqueue extraction → segmentation → chunking → embeddings as a background job; returns `{job_id, status: "queued"}` immediately |
 | GET | `/process/{job_id}` | Poll a background processing job's status (`queued`/`started`/`finished`/`failed`) and result |
 | POST | `/search` | Hybrid retrieval (vector + keyword + metadata filter → rerank) over `Indexed` chunks |
-| GET | `/upload-test` | Plain HTML page for manually testing multi-file batch upload (works around a Swagger UI limitation - see below) |
+| GET | `/admin/stats` | Document/category/status counts and storage usage, for the dashboard |
+| GET | `/admin/dashboard` | Owner Dashboard UI (HTML page; its JavaScript logs in and calls the endpoints above) |
+| GET | `/analyze` | End User UI (HTML page wrapping `POST /end-user/compare`) |
+| GET | `/upload-test` | Legacy plain-HTML batch-upload page - **stale: its JavaScript still sends the retired `X-API-Key` header, so its uploads now fail.** Use `/admin/dashboard` or `/docs` |
 | POST | `/end-user/query` *(End User scope)* | Q&A over the knowledge base - same hybrid retrieval as `/search` |
 | POST | `/end-user/compare` *(End User scope)* | Submit text or a PDF/DOCX/TXT file, get a full comparison report against the knowledge base |
 
@@ -135,7 +207,9 @@ Swagger UI's own array-of-files widget needs the older OpenAPI 3.0
 `format: binary` keyword to render a file picker; FastAPI's default OpenAPI
 3.1 output doesn't include it. `storage_api.py` patches the generated schema
 to add it back for the batch endpoint, so `/docs` renders a real "Choose
-Files" picker there too. `/upload-test` remains as a plain-HTML fallback.
+Files" picker there too. `/upload-test` predates that patch and hasn't been
+updated for JWT auth (see the endpoint table above) - `/docs` and
+`/admin/dashboard` both handle batch upload correctly.
 
 ## Document lifecycle
 
@@ -372,13 +446,19 @@ rather than breaking the report.
 - Real semantic conflict detection (today's is a numeric/date-mismatch
   heuristic on already-matched pairs, not an NLI-style contradiction check -
   see [End User API](#end-user-api))
-- `app/security/access_control.py` - real per-user accounts/RBAC (today's two
-  auth scopes, Owner/Admin and End User, are each a single shared key - see
-  [Authentication](#authentication))
+- `app/security/access_control.py` - RBAC. The Owner side has real accounts
+  now (email + password + JWT, see [Authentication](#authentication)), but
+  every Owner gets the single `owner` role, and the End User scope is still
+  one shared key rather than accounts
+- Rewriting `tests/test_auth.py` for JWT auth (see [Testing](#testing))
+- `GET /upload-test` still sends the retired `X-API-Key` header (see the
+  endpoint table)
 - The `users`, `document_versions`, `permissions`, `analysis_requests`/
   `analysis_reports`, and `audit_logs` tables exist in the schema but aren't
   populated by application code yet (`chunks`/`embeddings` are also unused -
-  `chunk_embeddings`, in `0002_pgvector.sql`, is what's actually populated)
+  `chunk_embeddings`, in `0002_pgvector.sql`, is what's actually populated;
+  Owner logins live in the separate `owners` table from `0004_owners.sql`,
+  not in `users`)
 
 ## Testing
 
@@ -407,11 +487,18 @@ mocking it, so the first run may take a little longer while it downloads and
 caches (~90MB, one-time). `tests/test_claude_narrative.py` mocks the Anthropic
 client entirely - no `ANTHROPIC_API_KEY` needed to run the suite.
 
+**Known failure:** `tests/test_auth.py` still tests the retired shared-key
+scheme - it reads `get_settings().admin_api_key`, a setting the move to JWT
+removed from `config/settings.py`, so those cases error out. The rest of the
+suite is unaffected (`tests/conftest.py` overrides the auth dependency for
+every other file). Rewriting them against `POST /auth/login` is outstanding
+work, not a broken environment on your side.
+
 ## Project layout
 
 ```
 app/
-  api/            FastAPI app(s): storage_api.py (Owner/Admin), end_user_api.py (End User), schemas
+  api/            FastAPI app(s): storage_api.py (Owner/Admin), end_user_api.py (End User), auth_api.py (login), schemas
   ingestion/      File scanning + validation (Phase 1)
   extraction/     PDF/DOCX/TXT text extraction (Phase 2)
   segmentation/   Structure detection, logical segmentation, chunking (Phases 3-4)
@@ -422,12 +509,13 @@ app/
   storage/        Storage backend interface + local disk implementation
   metadata/       Metadata repository interface + Postgres/SQLite implementations
   jobs/           Background processing queue (app/jobs/queue.py) + the job itself (processing.py)
-  security/       Path sanitization, admin + End User auth, audit logging
+  security/       Path sanitization, Owner password/JWT auth + owners table, End User key auth, audit logging
+  static/         Admin Dashboard + End User HTML pages, served straight off disk (no build step)
 config/           Central settings (config/settings.py, .env)
 database/
-  migrations/     Postgres schema (0001_initial_schema.sql, pgvector in 0002/0003)
+  migrations/     Postgres schema (0001_initial_schema.sql, pgvector in 0002/0003, owners in 0004)
   metadata.db     SQLite database when METADATA_BACKEND=sqlite (gitignored)
-scripts/          health_check.py, worker.py (background job worker) + manual phase-testing scripts
+scripts/          create_owner.py (Owner account), health_check.py, worker.py (background job worker) + manual phase-testing scripts
 tests/            pytest suite
 storage/          Generated pipeline output (gitignored)
 logs/             audit.log (gitignored)
