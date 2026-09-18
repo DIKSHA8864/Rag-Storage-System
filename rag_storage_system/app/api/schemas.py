@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -255,3 +257,117 @@ class MessageResponse(BaseModel):
     """Generic confirmation response for delete/rename actions."""
 
     message: str
+
+
+# ----------------------------------------------------------------------
+# Phase 2 - Research Console (app/api/research_api.py)
+# ----------------------------------------------------------------------
+
+
+class AskRequest(BaseModel):
+    """Body for POST /ask."""
+
+    question: str = Field(..., min_length=3, max_length=4000)
+    thread_id: int | None = Field(
+        None,
+        description=(
+            "Append this exchange to an existing thread. Omit to start "
+            "a new one; pass save=false to persist nothing."
+        ),
+    )
+    category: str | None = Field(
+        None, description="Restrict retrieval to one library category."
+    )
+    save: bool = Field(True, description="Persist this exchange to a thread.")
+
+
+class AskSource(BaseModel):
+    """
+    One retrieved passage behind an answer. `marker` is the [Sn] the
+    answer text cites, so the console's source panel can highlight it.
+    """
+
+    marker: str
+    chunk_id: str | None = None
+    document_id: str | None = None
+    filename: str | None = None
+    category: str | None = None
+    chapter: str | None = None
+    section: str | None = None
+    start_page: int | None = None
+    end_page: int | None = None
+    chunk_text: str
+    score: float
+
+
+class AskResponse(BaseModel):
+    """
+    Body for POST /ask.
+
+    `citation_status`:
+      "verified"       every citation maps to a retrieved source
+      "stripped"       one corrective regeneration still failed; the
+                       unverifiable citations were removed and flagged
+      "not_in_library" the library lacks authority - a correct answer,
+                       not an error (Blueprint Phase 2 step 3)
+    """
+
+    question: str
+    answer: str
+    citation_status: str
+    insufficient_authority: bool
+    sources: list[AskSource]
+    top_score: float
+    thread_id: int | None = None
+    model: str | None = None
+    prompt_version: int | None = None
+    latency_ms: int
+    citation_detail: dict = {}
+
+
+class ThreadSummary(BaseModel):
+    id: int
+    title: str
+    question_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class ThreadListResponse(BaseModel):
+    threads: list[ThreadSummary]
+
+
+class ThreadMessage(BaseModel):
+    id: int
+    role: str
+    content: str
+    sources: list[AskSource] = []
+    citation_status: str | None = None
+    citation_detail: dict = {}
+    created_at: datetime
+
+
+class ThreadDetailResponse(BaseModel):
+    id: int
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    messages: list[ThreadMessage]
+
+
+class SystemPromptResponse(BaseModel):
+    id: int
+    name: str
+    version: int
+    content: str
+    created_by: str | None = None
+    created_at: datetime
+    is_active: bool = True
+
+
+class SystemPromptListResponse(BaseModel):
+    versions: list[SystemPromptResponse]
+
+
+class SystemPromptUpdateRequest(BaseModel):
+    content: str = Field(..., min_length=20)
