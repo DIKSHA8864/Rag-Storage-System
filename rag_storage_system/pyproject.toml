@@ -1,0 +1,20 @@
+[tool.pytest.ini_options]
+# Fixes: `ModuleNotFoundError: No module named 'app'` when running a
+# bare `pytest` from rag_storage_system/ (e.g. `pytest tests/ -q`,
+# `pytest tests/acceptance/ -v`).
+#
+# The project has always relied on pytest's classic default import
+# mode (--import-mode=prepend), which auto-inserts this directory onto
+# sys.path so `from app.api import storage_api` (tests/conftest.py)
+# resolves. If the environment running pytest has
+# --import-mode=importlib in effect instead - via a PYTEST_ADDOPTS
+# environment variable, or a pytest/tox config living above this
+# directory - that auto-insertion doesn't happen, and every test file
+# under tests/ fails to import `app` at collection time, not just the
+# ones added for Phase 2.
+#
+# `pythonpath` is pytest's own explicit, import-mode-independent fix:
+# it puts this directory on sys.path for test collection regardless of
+# which import mode, which pytest binary, or which machine is running
+# it. See app/README.md for how to run the suite.
+pythonpath = ["."]
