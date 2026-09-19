@@ -18,6 +18,12 @@ Endpoints:
                               get back a full structured comparison
                               report against the knowledge base (see
                               app/analysis/)
+    POST /end-user/compare/export
+                              same comparison as /compare, returned as
+                              a downloadable .docx/.pdf file instead of
+                              JSON, always ending with the Owner's
+                              current disclaimer (app/disclaimer.py,
+                              app/analysis/report_export.py)
 
 Nothing an End User submits to /compare is ever persisted to protected
 storage, the metadata database, or pgvector - it exists only for the
@@ -26,16 +32,23 @@ duration of one request (see app/analysis/ingestion.py).
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 
 from app.analysis.ingestion import is_supported_submission, process_submission, process_text_submission
 from app.analysis.report_builder import build_analysis_report
+from app.analysis.report_export import (
+    DOCX_MEDIA_TYPE,
+    PDF_MEDIA_TYPE,
+    build_report_docx,
+    build_report_pdf,
+)
 from app.api.schemas import (
     AnalysisReport,
     EndUserQueryRequest,
     EndUserQueryResponse,
     EndUserQueryResultChunk,
 )
+from app.disclaimer import get_current_disclaimer_text
 from app.retrieval.retriever import retrieve
 from app.security.auth import require_end_user_key
 from config.settings import get_settings
@@ -75,6 +88,56 @@ def end_user_query(request: EndUserQueryRequest) -> EndUserQueryResponse:
     )
 
 
+async def _resolve_input_chunks(query: Optional[str], file: Optional[UploadFile]) -> list[dict]:
+    """
+    Shared by /compare and /compare/export: exactly one of `query`
+    (pasted text) or `file` (a PDF/DOCX/TXT upload) - not both, not
+    neither. Nothing submitted here is stored; it's processed once and
+    discarded.
+    """
+
+    if (query is None) == (file is None):
+        raise HTTPException(
+            status_code=400, detail="Provide exactly one of `query` (text) or `file` (upload)."
+        )
+
+    if query is not None:
+        return process_text_submission(query)
+
+    filename = file.filename or "submission"
+
+    if not is_supported_submission(filename):
+        allowed = ", ".join(sorted(get_settings().allowed_extensions_set))
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported file type for '{filename}'. Supported: {allowed}. "
+                "Audio/video input is not yet supported."
+            ),
+        )
+
+    data = await file.read()
+    await file.close()
+    return process_submission(filename, data)
+
+
+def _current_disclaimer_text() -> str:
+    """
+    Deferred import to avoid a circular import: app/api/storage_api.py
+    itself imports this router at the bottom of its module, so
+    end_user_api.py can't import storage_api at module load time -
+    only once storage_api is fully loaded, i.e. lazily, inside a
+    request. Reading storage_api.metadata_repository (rather than
+    calling app.metadata.get_metadata_repository() directly) matters
+    for tests: they monkeypatch that attribute to a throwaway SQLite
+    repository, and this must see the same one.
+    """
+
+    from app.api import storage_api
+
+    return get_current_disclaimer_text(storage_api.metadata_repository)
+
+
 @router.post("/compare", response_model=AnalysisReport)
 async def end_user_compare(
     query: Optional[str] = Form(None, description="Pasted text to compare, instead of a file."),
@@ -87,35 +150,9 @@ async def end_user_compare(
     overall match score, detailed matching (similarities/differences/
     gaps/conflicts), recommendations, and cited sources for every
     claim (see app/analysis/report_builder.py).
-
-    Pass exactly one of `query` (pasted text) or `file` (a PDF/DOCX/TXT
-    upload) - not both, not neither. Nothing submitted here is stored;
-    it's processed once, compared, and discarded.
     """
 
-    if (query is None) == (file is None):
-        raise HTTPException(
-            status_code=400, detail="Provide exactly one of `query` (text) or `file` (upload)."
-        )
-
-    if query is not None:
-        input_chunks = process_text_submission(query)
-    else:
-        filename = file.filename or "submission"
-
-        if not is_supported_submission(filename):
-            allowed = ", ".join(sorted(get_settings().allowed_extensions_set))
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Unsupported file type for '{filename}'. Supported: {allowed}. "
-                    "Audio/video input is not yet supported."
-                ),
-            )
-
-        data = await file.read()
-        await file.close()
-        input_chunks = process_submission(filename, data)
+    input_chunks = await _resolve_input_chunks(query, file)
 
     if not input_chunks:
         raise HTTPException(
@@ -125,3 +162,47 @@ async def end_user_compare(
     report = build_analysis_report(input_chunks, category=category)
 
     return AnalysisReport(**report)
+
+
+@router.post("/compare/export")
+async def end_user_compare_export(
+    format: str = Form(..., description="'docx' or 'pdf'."),
+    query: Optional[str] = Form(None, description="Pasted text to compare, instead of a file."),
+    file: Optional[UploadFile] = File(None, description="A PDF/DOCX/TXT file to compare."),
+    category: Optional[str] = Form(None, description="Restrict comparison to one knowledge-base category."),
+) -> Response:
+    """
+    Same comparison as POST /compare, returned as a downloadable
+    .docx/.pdf file instead of JSON - always ending with the Owner's
+    current disclaimer (GET/PUT /admin/disclaimer,
+    app/analysis/report_export.py), so an Owner's edit shows up in the
+    very next export.
+    """
+
+    if format not in ("docx", "pdf"):
+        raise HTTPException(status_code=400, detail="`format` must be 'docx' or 'pdf'.")
+
+    input_chunks = await _resolve_input_chunks(query, file)
+
+    if not input_chunks:
+        raise HTTPException(
+            status_code=400, detail="No extractable text found in the submission."
+        )
+
+    report = build_analysis_report(input_chunks, category=category)
+    disclaimer_text = _current_disclaimer_text()
+
+    if format == "docx":
+        content = build_report_docx(report, disclaimer_text)
+        media_type = DOCX_MEDIA_TYPE
+        filename = "analysis_report.docx"
+    else:
+        content = build_report_pdf(report, disclaimer_text)
+        media_type = PDF_MEDIA_TYPE
+        filename = "analysis_report.pdf"
+
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

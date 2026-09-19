@@ -91,3 +91,21 @@ class MetadataRepository(ABC):
     def update_status_where(self, old_status: str, new_status: str) -> int:
         """Bulk-transition every document in `old_status` to `new_status`. Returns the count changed."""
         raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Disclaimer
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def get_disclaimer(self) -> Optional[dict]:
+        """
+        Returns the Owner-edited disclaimer as
+        {"text": str, "updated_at": ..., "updated_by": Optional[str]},
+        or None if the Owner has never saved one yet.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_disclaimer(self, text: str, updated_by: Optional[str] = None) -> dict:
+        """Create or replace the single disclaimer row and return it."""
+        raise NotImplementedError

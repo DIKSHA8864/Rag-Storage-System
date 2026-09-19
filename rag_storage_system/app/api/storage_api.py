@@ -75,6 +75,8 @@ from app.api.schemas import (
     CategoryInfo,
     CategoryListResponse,
     CategoryRenameRequest,
+    DisclaimerResponse,
+    DisclaimerUpdateRequest,
     DocumentInfo,
     DocumentListResponse,
     MessageResponse,
@@ -87,6 +89,7 @@ from app.api.schemas import (
     UploadedFileResult,
     UploadResponse,
 )
+from app.disclaimer import DEFAULT_DISCLAIMER_TEXT
 from app.ingestion.file_validator import validate_file_object
 from app.jobs.processing import run_processing_job
 from app.jobs.queue import get_job_queue
@@ -310,6 +313,52 @@ def admin_stats() -> dict:
         "storage_mb": round(total_size / (1024 * 1024), 2),
         "status_counts": status_counts,
     }
+
+
+@app.get(
+    "/admin/disclaimer",
+    response_model=DisclaimerResponse,
+    dependencies=[Depends(require_admin_key)],
+)
+def get_disclaimer() -> DisclaimerResponse:
+    """Return the disclaimer currently shown on every DOCX/PDF analysis report export."""
+
+    disclaimer = metadata_repository.get_disclaimer()
+
+    if disclaimer is None:
+        return DisclaimerResponse(text=DEFAULT_DISCLAIMER_TEXT)
+
+    return DisclaimerResponse(
+        text=disclaimer["text"],
+        updated_at=str(disclaimer["updated_at"]),
+        updated_by=disclaimer["updated_by"],
+    )
+
+
+@app.put(
+    "/admin/disclaimer",
+    response_model=DisclaimerResponse,
+)
+def update_disclaimer(
+    request: DisclaimerUpdateRequest,
+    owner: dict | None = Depends(require_admin_key),
+) -> DisclaimerResponse:
+    """
+    Update the disclaimer shown on every DOCX/PDF analysis report
+    export (app/analysis/report_export.py) - takes effect on the very
+    next export, no restart needed.
+    """
+
+    updated_by = owner.get("email") if owner else None
+    disclaimer = metadata_repository.update_disclaimer(request.text, updated_by=updated_by)
+
+    log_audit_event("update_disclaimer", actor=updated_by or "admin")
+
+    return DisclaimerResponse(
+        text=disclaimer["text"],
+        updated_at=str(disclaimer["updated_at"]),
+        updated_by=disclaimer["updated_by"],
+    )
 
 
 @app.get("/admin/dashboard", response_class=HTMLResponse)

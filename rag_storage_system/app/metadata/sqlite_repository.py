@@ -42,6 +42,13 @@ CREATE TABLE IF NOT EXISTS documents (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS disclaimer (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    text TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_by TEXT
+);
 """
 
 
@@ -304,3 +311,33 @@ class SQLiteMetadataRepository(MetadataRepository):
                 (new_status, now, old_status),
             )
             return cursor.rowcount
+
+    # ------------------------------------------------------------------
+    # Disclaimer
+    # ------------------------------------------------------------------
+
+    def get_disclaimer(self) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT text, updated_at, updated_by FROM disclaimer WHERE id = 1"
+            ).fetchone()
+
+            return dict(row) if row else None
+
+    def update_disclaimer(self, text: str, updated_by: Optional[str] = None) -> dict:
+        now = _now()
+
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO disclaimer (id, text, updated_at, updated_by)
+                VALUES (1, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    text = excluded.text,
+                    updated_at = excluded.updated_at,
+                    updated_by = excluded.updated_by
+                """,
+                (text, now, updated_by),
+            )
+
+        return {"text": text, "updated_at": now, "updated_by": updated_by}

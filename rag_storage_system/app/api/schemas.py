@@ -255,3 +255,23 @@ class MessageResponse(BaseModel):
     """Generic confirmation response for delete/rename actions."""
 
     message: str
+
+
+# ---------------------------------------------------------------------
+# Disclaimer (app/disclaimer.py, app/metadata/base.py) - DB-backed, Owner-
+# editable text shown on every DOCX/PDF analysis report export.
+# ---------------------------------------------------------------------
+
+
+class DisclaimerUpdateRequest(BaseModel):
+    """Body for PUT /admin/disclaimer."""
+
+    text: str = Field(..., min_length=1, max_length=5000)
+
+
+class DisclaimerResponse(BaseModel):
+    """Body for GET/PUT /admin/disclaimer."""
+
+    text: str
+    updated_at: str | None = None
+    updated_by: str | None = None

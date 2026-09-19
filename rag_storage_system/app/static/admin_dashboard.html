@@ -53,7 +53,7 @@
   button.primary:hover { background: var(--accent-dark); }
   button.danger { color: var(--err); }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
-  input, select {
+  input, select, textarea {
     font-size: 0.85rem;
     padding: 0.45rem 0.6rem;
     border-radius: var(--radius);
@@ -61,6 +61,7 @@
     background: var(--panel);
     color: var(--text);
   }
+  textarea { font-family: inherit; width: 100%; resize: vertical; }
   .hidden { display: none !important; }
 
   /* Login */
@@ -219,6 +220,20 @@
     </section>
 
     <section class="panel">
+      <h2>Disclaimer</h2>
+      <p style="color: var(--muted); font-size: 0.8rem; margin-top: -0.5rem;">
+        Shown at the end of every DOCX/PDF analysis report export. Editing and saving takes effect immediately, no restart needed.
+      </p>
+      <form id="disclaimer-form">
+        <textarea id="disclaimer-text" rows="4" placeholder="Disclaimer text..."></textarea>
+        <div class="row" style="margin-top: 0.5rem; justify-content: space-between;">
+          <span id="disclaimer-meta" style="font-size: 0.75rem; color: var(--muted);"></span>
+          <button type="submit" class="primary">Save disclaimer</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel">
       <h2>Create a top-level category</h2>
       <form id="create-category-form" class="row">
         <input type="text" id="new-category-name" placeholder="Category name" required>
@@ -353,10 +368,44 @@
       lastDocuments = docs.documents;
       renderStats(lastCategories, lastDocuments);
       renderTree(lastCategories, lastDocuments);
+      loadDisclaimer();
     } catch (err) {
       toast(err.message, true);
     }
   }
+
+  // ---------------------------------------------------------------
+  // Disclaimer
+  // ---------------------------------------------------------------
+
+  async function loadDisclaimer() {
+    try {
+      const disclaimer = await api("/admin/disclaimer");
+      $("disclaimer-text").value = disclaimer.text;
+      $("disclaimer-meta").textContent = disclaimer.updated_at
+        ? `Last updated ${disclaimer.updated_at}${disclaimer.updated_by ? ` by ${disclaimer.updated_by}` : ""}`
+        : "Using the default disclaimer - never saved by an Owner yet.";
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  $("disclaimer-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = $("disclaimer-text").value.trim();
+    if (!text) return;
+    try {
+      const disclaimer = await api("/admin/disclaimer", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      $("disclaimer-meta").textContent = `Last updated ${disclaimer.updated_at} by ${disclaimer.updated_by}`;
+      toast("Disclaimer saved.");
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
 
   function renderStats(categories, documents) {
     const statusCounts = { Uploaded: 0, Processing: 0, Embedding: 0, Indexed: 0, Failed: 0 };
