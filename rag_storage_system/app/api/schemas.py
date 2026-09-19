@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field
 from datetime import datetime
+
 from pydantic import BaseModel, Field
+
 
 class CategoryCreateRequest(BaseModel):
     """
@@ -125,38 +126,7 @@ class SearchResponse(BaseModel):
     query: str
     results: list[SearchResultChunk]
 
-# ---------------------------------------------------------------------
-# Research Console (app/api/research_api.py) - Owner-only, Phase 2.
-# Reuses the same Owner JWT authentication as storage_api.py
-# (require_admin_key) - no new auth mechanism, no API key.
-# ---------------------------------------------------------------------
 
-
-class AskRequest(BaseModel):
-    """Body for POST /research/ask."""
-
-    query: str = Field(..., min_length=1, max_length=1000)
-    top_k: int = Field(5, ge=1, le=50)
-    category: str | None = Field(
-        None,
-        description="Restrict results to one category (including its subfolders).",
-    )
-
-
-class AskResultChunk(BaseModel):
-    chunk_id: str
-    document_id: str
-    category: str
-    filename: str
-    chunk_text: str
-    vector_score: float
-    keyword_score: float
-    final_score: float
-
-
-class AskResponse(BaseModel):
-    query: str
-    results: list[AskResultChunk]
 # ---------------------------------------------------------------------
 # End User API (app/api/end_user_api.py) - a separate scope from
 # everything above, authenticated with X-End-User-Key instead of
@@ -372,6 +342,7 @@ class ThreadMessage(BaseModel):
     content: str
     sources: list[AskSource] = []
     citation_status: str | None = None
+    citation_detail: dict = {}
     created_at: datetime
 
 

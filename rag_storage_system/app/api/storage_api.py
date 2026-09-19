@@ -174,6 +174,12 @@ from app.api.end_user_api import router as end_user_router  # noqa: E402
 
 app.include_router(end_user_router)
 
+# Research Console (Phase 2) - Owner-only, same JWT auth as every
+# other endpoint above (require_admin_key). See app/api/research_api.py.
+from app.api.research_api import router as research_router  # noqa: E402
+
+app.include_router(research_router)
+
 
 @app.get("/")
 def root() -> dict:
