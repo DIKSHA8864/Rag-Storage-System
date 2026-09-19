@@ -143,7 +143,39 @@ class Settings(BaseSettings):
     # never get access to the full document repository.
     # ------------------------------------------------------------------
     end_user_api_key: str = "dev-enduser-key-change-me"
+        # ------------------------------------------------------------------
+    # Phase 2 - Research answer service (app/research/, POST /ask).
+    #
+    # ask_top_k / ask_score_threshold / ask_min_chunks are the
+    # "retrieve top 5-10 with a relevance threshold" gate from Blueprint
+    # Phase 2 step 1. The threshold is checked in CODE, before Claude is
+    # ever called - see app/research/answer_service.py. That short
+    # circuit IS Blueprint Test 2 (honest gap); a prompt that merely
+    # asks for the same behavior cannot be relied on.
+    #
+    # Threshold calibrated on the same readings as match_score_* above
+    # (all-MiniLM-L6-v2, app/retrieval/reranker.py's fixed scale):
+    # near-duplicate wording ~0.55, same topic in different wording
+    # ~0.36, unrelated ~0.01. 0.35 admits "same topic, different words"
+    # - the answerable case - and excludes noise. Re-tune with
+    # EMBEDDING_MODEL, exactly like the match thresholds.
+    # ------------------------------------------------------------------
+    ask_top_k: int = 8
+    ask_score_threshold: float = 0.35
+    ask_min_chunks: int = 2
 
+    # Work Plan: "default to the mid-tier model (Sonnet) everywhere;
+    # escalate to the top-tier model only where quality measurably
+    # requires it." Research answering is the default tier.
+    answer_model: str = "claude-sonnet-5"
+    answer_max_tokens: int = 2048
+
+    # Shown at the foot of every exported memo. Blueprint Section 2:
+    # "Disclaimers configurable by the owner."
+    memo_disclaimer: str = (
+        "This memorandum was generated from the firm's private research "
+        "library and is for attorney review. It is not legal advice."
+    )
     # ------------------------------------------------------------------
     # End User document comparison (app/analysis/) - matching an End
     # User's submitted text/document against the knowledge base.
