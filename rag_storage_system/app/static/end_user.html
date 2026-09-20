@@ -35,7 +35,39 @@
   }
   header h1 { font-size: 1.1rem; margin: 0; }
   header p { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.85rem; }
-  main { max-width: 860px; margin: 0 auto; padding: 1.5rem; }
+
+  .layout {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.25rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem;
+  }
+  main { max-width: 860px; flex: 1; min-width: 0; }
+
+  /* Thread sidebar */
+  #thread-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 1.5rem;
+    max-height: calc(100vh - 3rem);
+    overflow-y: auto;
+  }
+  #thread-sidebar h2 { display: inline; }
+  .thread-item {
+    padding: 0.5rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    margin-bottom: 0.2rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .thread-item:hover { background: #f0f2f5; }
+  .thread-item.active { background: var(--accent); color: white; }
 
   section.panel {
     background: var(--panel);
@@ -45,6 +77,7 @@
     margin-bottom: 1.25rem;
   }
   section.panel h2 { font-size: 0.95rem; margin: 0 0 0.75rem 0; }
+  .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
   label { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 0.3rem; }
   input, textarea, select {
     width: 100%;
@@ -70,11 +103,30 @@
   }
   button.primary { background: var(--accent); color: white; border-color: var(--accent); width: 100%; font-weight: 600; }
   button.primary:hover { background: var(--accent-dark); }
+  button.small { width: auto; padding: 0.35rem 0.7rem; font-size: 0.78rem; }
   button:disabled { opacity: 0.55; cursor: not-allowed; }
   #analyze-error { color: var(--err); font-size: 0.85rem; margin-top: 0.6rem; min-height: 1.1em; }
   .hidden { display: none !important; }
 
   #spinner { text-align: center; padding: 2rem; color: var(--muted); }
+
+  /* Chat / threads */
+  #chat-transcript { margin-bottom: 0.75rem; }
+  .chat-message {
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius);
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+  .chat-message.user { background: #eef2ff; }
+  .chat-message.assistant { background: #f6f7f9; }
+  .chat-message .role {
+    font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 0.25rem;
+  }
+  .chat-message .chat-sources { margin-top: 0.5rem; }
 
   /* Report */
   .score-row { display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
@@ -142,59 +194,71 @@
 
 <header>
   <h1>Document Analysis</h1>
-  <p>Paste text or upload a document to compare it against the knowledge base.</p>
+  <p>Paste text or upload a document to compare it against the knowledge base, or ask questions in a thread.</p>
 </header>
 
-<main>
-  <section class="panel">
-    <h2>Access key</h2>
-    <div class="field">
-      <label for="end-user-key">End User key (X-End-User-Key)</label>
-      <input type="password" id="end-user-key" placeholder="Paste your End User key">
+<div class="layout">
+  <aside class="panel" id="thread-sidebar">
+    <div class="row" style="justify-content: space-between; margin-bottom: 0.5rem;">
+      <h2>Threads</h2>
+      <button id="new-thread-btn" class="small primary">+ New</button>
     </div>
-  </section>
+    <div id="thread-list"><div class="empty-note">Enter your key to load threads.</div></div>
+  </aside>
 
-  <section class="panel">
-    <h2>Submit for analysis</h2>
-
-    <div class="field">
-      <label for="query-text">Paste text to analyze</label>
-      <textarea id="query-text" placeholder="Paste a policy, contract clause, or any text to compare against the knowledge base..."></textarea>
-    </div>
-
-    <div class="divider">— or —</div>
-
-    <div class="field">
-      <label for="file-input">Upload a document (PDF / DOCX / TXT)</label>
-      <input type="file" id="file-input" accept=".pdf,.docx,.txt">
-    </div>
-
-    <div class="field">
-      <label for="category-filter">Restrict to category (optional)</label>
-      <input type="text" id="category-filter" placeholder="e.g. Contracts">
-    </div>
-
-    <button class="primary" id="analyze-btn">Analyze</button>
-    <div id="analyze-error"></div>
-  </section>
+  <main>
     <section class="panel">
-    <h2>Ask a question</h2>
-    <div class="field">
-      <label for="ask-text">Question</label>
-      <input type="text" id="ask-text" placeholder="Ask a question about the knowledge base...">
-    </div>
-    <button class="primary" id="ask-btn">Ask</button>
-    <div id="ask-error" style="color: var(--err); font-size: 0.85rem; margin-top: 0.6rem; min-height: 1.1em;"></div>
+      <h2>Access key</h2>
+      <div class="field">
+        <label for="end-user-key">End User key (X-End-User-Key)</label>
+        <input type="password" id="end-user-key" placeholder="Paste your End User key">
+      </div>
+    </section>
 
-    <div id="ask-answer-panel" class="hidden" style="margin-top: 1rem;">
-      <div id="ask-sources" style="font-size: 0.8rem; color: var(--muted); margin-bottom: 0.6rem;"></div>
-      <div id="ask-answer" style="font-size: 0.92rem; line-height: 1.55; white-space: pre-wrap;"></div>
-    </div>
-  </section>
-  <div id="spinner" class="hidden">Analyzing... this can take a few seconds.</div>
+    <section class="panel">
+      <h2>Submit for analysis</h2>
 
-  <div id="report-container"></div>
-</main>
+      <div class="field">
+        <label for="query-text">Paste text to analyze</label>
+        <textarea id="query-text" placeholder="Paste a policy, contract clause, or any text to compare against the knowledge base..."></textarea>
+      </div>
+
+      <div class="divider">— or —</div>
+
+      <div class="field">
+        <label for="file-input">Upload a document (PDF / DOCX / TXT)</label>
+        <input type="file" id="file-input" accept=".pdf,.docx,.txt">
+      </div>
+
+      <div class="field">
+        <label for="category-filter">Restrict to category (optional)</label>
+        <input type="text" id="category-filter" placeholder="e.g. Contracts">
+      </div>
+
+      <button class="primary" id="analyze-btn">Analyze</button>
+      <div id="analyze-error"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Ask a question <span id="active-thread-label" style="font-weight: 400; color: var(--muted); font-size: 0.8rem;"></span></h2>
+
+      <div id="chat-transcript">
+        <div class="empty-note">Ask a question below, or start a new thread (left) to keep a running conversation.</div>
+      </div>
+
+      <div class="field" style="margin-bottom: 0.5rem;">
+        <label for="ask-text">Question</label>
+        <input type="text" id="ask-text" placeholder="Ask a question about the knowledge base...">
+      </div>
+      <button class="primary" id="ask-btn">Ask</button>
+      <div id="ask-error" style="color: var(--err); font-size: 0.85rem; margin-top: 0.6rem; min-height: 1.1em;"></div>
+    </section>
+
+    <div id="spinner" class="hidden">Analyzing... this can take a few seconds.</div>
+
+    <div id="report-container"></div>
+  </main>
+</div>
 
 <script>
 (() => {
@@ -219,6 +283,34 @@
     div.textContent = s == null ? "" : String(s);
     return div.innerHTML;
   }
+
+  // ---------------------------------------------------------------
+  // End User key helpers
+  // ---------------------------------------------------------------
+
+  function requireKey() {
+    const key = $("end-user-key").value.trim();
+    if (key) localStorage.setItem("end_user_key", key);
+    return key;
+  }
+
+  async function endUserFetch(path, opts = {}) {
+    const key = requireKey();
+    if (!key) throw new Error("Enter your End User key first.");
+    const headers = { ...(opts.headers || {}), "X-End-User-Key": key };
+    const res = await fetch(path, { ...opts, headers });
+    let body = null;
+    try { body = await res.json(); } catch (e) { /* no body */ }
+    if (!res.ok) throw new Error((body && body.detail) || res.statusText);
+    return body;
+  }
+
+  $("end-user-key").addEventListener("change", loadThreads);
+  if (savedKey) loadThreads();
+
+  // ---------------------------------------------------------------
+  // Analyze (POST /end-user/compare)
+  // ---------------------------------------------------------------
 
   $("analyze-btn").addEventListener("click", async () => {
     const key = $("end-user-key").value.trim();
@@ -270,16 +362,124 @@
     }
   });
 
+  // ---------------------------------------------------------------
+  // Threads (GET/POST /end-user/threads, GET /end-user/threads/{id}/messages)
+  // ---------------------------------------------------------------
+
+  let lastThreads = [];
+  let currentThreadId = null;
+  let currentMessages = []; // client-side transcript: [{role, content, sources}]
+
+  async function loadThreads() {
+    if (!$("end-user-key").value.trim()) return;
+    try {
+      const data = await endUserFetch("/end-user/threads");
+      lastThreads = data.threads;
+      renderThreadList();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  function renderThreadList() {
+    const container = $("thread-list");
+    if (!lastThreads.length) {
+      container.innerHTML = `<div class="empty-note">No threads yet.</div>`;
+      return;
+    }
+    container.innerHTML = lastThreads.map(t => `
+      <div class="thread-item ${t.id === currentThreadId ? "active" : ""}" data-id="${t.id}">
+        ${escapeHtml(t.title)}
+      </div>
+    `).join("");
+    container.querySelectorAll(".thread-item").forEach(el => {
+      el.addEventListener("click", () => selectThread(Number(el.dataset.id)));
+    });
+  }
+
+  async function selectThread(id) {
+    currentThreadId = id;
+    renderThreadList();
+
+    const thread = lastThreads.find(t => t.id === id);
+    $("active-thread-label").textContent = thread ? `- ${thread.title}` : "";
+
+    try {
+      const data = await endUserFetch(`/end-user/threads/${id}/messages`);
+      currentMessages = data.messages.map(m => ({
+        role: m.role, content: m.content, sources: m.sources || [],
+      }));
+      renderChatTranscript();
+    } catch (err) {
+      $("ask-error").textContent = err.message;
+    }
+  }
+
+  $("new-thread-btn").addEventListener("click", async () => {
+    try {
+      const thread = await endUserFetch("/end-user/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "New thread" }),
+      });
+      lastThreads.unshift(thread);
+      currentMessages = [];
+      await selectThread(thread.id);
+    } catch (err) {
+      $("ask-error").textContent = err.message;
+    }
+  });
+
+  function toast(message) {
+    // No dedicated toast UI on this page - surface quietly via the
+    // Ask panel's error line rather than failing silently.
+    $("ask-error").textContent = message;
+  }
+
+  // ---------------------------------------------------------------
+  // Chat transcript rendering (shared by thread history + live streaming)
+  // ---------------------------------------------------------------
+
+  function renderChatTranscript() {
+    const container = $("chat-transcript");
+    if (!currentMessages.length) {
+      container.innerHTML = `<div class="empty-note">${
+        currentThreadId
+          ? "No messages in this thread yet - ask something below."
+          : "Ask a question below, or start a new thread (left) to keep a running conversation."
+      }</div>`;
+      return;
+    }
+    container.innerHTML = currentMessages.map(renderChatMessage).join("");
+  }
+
+  function renderChatMessage(m) {
+    const sourcesHtml = (m.sources && m.sources.length)
+      ? `<div class="chat-sources">${m.sources.map(renderSourceChip).join("")}</div>`
+      : "";
+    return `
+      <div class="chat-message ${m.role}">
+        <div class="role">${m.role === "user" ? "You" : "Assistant"}</div>
+        <div class="content">${escapeHtml(m.content)}</div>
+        ${sourcesHtml}
+      </div>
+    `;
+  }
+
+  // ---------------------------------------------------------------
+  // Ask (POST /end-user/query/stream) - appends to currentThreadId
+  // when one is selected, otherwise a one-off stateless call.
+  // ---------------------------------------------------------------
+
   $("ask-btn").addEventListener("click", async () => {
-    const key = $("end-user-key").value.trim();
     const errorEl = $("ask-error");
     errorEl.textContent = "";
 
+    const key = requireKey();
     if (!key) {
       errorEl.textContent = "Enter your End User key first.";
       return;
     }
-    localStorage.setItem("end_user_key", key);
 
     const question = $("ask-text").value.trim();
     if (!question) {
@@ -287,29 +487,31 @@
       return;
     }
 
-    const answerPanel = $("ask-answer-panel");
-    const sourcesEl = $("ask-sources");
-    const answerEl = $("ask-answer");
-    answerPanel.classList.remove("hidden");
-    sourcesEl.textContent = "";
-    answerEl.textContent = "";
+    $("ask-btn").disabled = true;
+    $("ask-text").value = "";
+
+    currentMessages.push({ role: "user", content: question, sources: [] });
+    const assistantMessage = { role: "assistant", content: "", sources: [] };
+    currentMessages.push(assistantMessage);
+    renderChatTranscript();
 
     let sourcesLocked = false; // citation lock, client side: the first
                                  // "sources" event wins, permanently -
                                  // nothing later is allowed to touch it.
 
-    $("ask-btn").disabled = true;
-
     try {
+      const body = { query: question };
+      if (currentThreadId !== null) body.thread_id = currentThreadId;
+
       const res = await fetch("/end-user/query/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-End-User-Key": key },
-        body: JSON.stringify({ query: question }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || `Request failed (${res.status}).`);
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.detail || `Request failed (${res.status}).`);
       }
 
       const reader = res.body.getReader();
@@ -346,11 +548,11 @@
       if (eventType === "sources") {
         if (sourcesLocked) return; // ignore any later "sources" event
         sourcesLocked = true;
-        sourcesEl.innerHTML = data.sources.length
-          ? "Sources: " + data.sources.map((s) => escapeHtml(s.filename)).join(", ")
-          : "No matching sources found.";
+        assistantMessage.sources = data.sources;
+        renderChatTranscript();
       } else if (eventType === "answer_chunk") {
-        answerEl.textContent += data.text;
+        assistantMessage.content += data.text;
+        renderChatTranscript();
       } else if (eventType === "error") {
         errorEl.textContent = data.detail;
       }
@@ -359,7 +561,6 @@
     }
   });
 
-  
   function renderReport(report) {
     const container = $("report-container");
     container.innerHTML = "";
