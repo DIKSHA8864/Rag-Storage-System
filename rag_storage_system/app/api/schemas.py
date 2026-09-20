@@ -365,3 +365,52 @@ class ThreadMessageInfo(BaseModel):
 class ThreadMessagesResponse(BaseModel):
     thread_id: int
     messages: list[ThreadMessageInfo]
+# ---------------------------------------------------------------------
+# Retrieval Settings (app/retrieval_settings.py, app/metadata/base.py) -
+# DB-backed, Owner-editable Top K / score threshold / minimum chunks
+# used by the hybrid retrieval pipeline (app/retrieval/retriever.py).
+# ---------------------------------------------------------------------
+
+
+class RetrievalSettingsUpdateRequest(BaseModel):
+    """Body for PUT /admin/retrieval-settings."""
+
+    top_k: int = Field(..., ge=1, le=50)
+    score_threshold: float = Field(..., ge=0.0, le=1.0)
+    min_chunks: int = Field(..., ge=0, le=50)
+
+
+class RetrievalSettingsResponse(BaseModel):
+    """Body for GET/PUT /admin/retrieval-settings."""
+
+    top_k: int
+    score_threshold: float
+    min_chunks: int
+    updated_at: str | None = None
+    updated_by: str | None = None
+
+
+# ---------------------------------------------------------------------
+# Prompt Versions (app/prompts.py, app/metadata/base.py) - version
+# history for the system prompts driving Claude-backed generation.
+# ---------------------------------------------------------------------
+
+
+class PromptVersionInfo(BaseModel):
+    name: str
+    version: int
+    text: str
+    is_active: bool
+    created_at: str
+    created_by: str | None = None
+
+
+class PromptVersionListResponse(BaseModel):
+    name: str
+    versions: list[PromptVersionInfo]
+
+
+class PromptVersionCreateRequest(BaseModel):
+    """Body for POST /admin/prompts/{name} - creates and activates a new version."""
+
+    text: str = Field(..., min_length=1, max_length=8000)

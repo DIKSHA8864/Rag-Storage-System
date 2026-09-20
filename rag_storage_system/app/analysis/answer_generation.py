@@ -55,15 +55,21 @@ async def _stream_words(text: str) -> AsyncIterator[str]:
 async def _claude_answer_stream(query: str, chunks: list[dict]) -> AsyncIterator[str]:
     import anthropic
 
+    from app.api import storage_api
+    from app.prompts import get_active_prompt
+
     settings = get_settings()
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     context = "\n\n".join(f"[{_chunk_label(c)}]\n{c['chunk_text']}" for c in chunks)
 
-    system_prompt = (
+    default_system_prompt = (
         "Answer the user's question using ONLY the knowledge-base excerpts below. "
         "Never introduce outside knowledge or invented facts. If the excerpts don't "
         "fully answer the question, say what is and isn't supported. Keep the answer concise."
+    )
+    system_prompt = get_active_prompt(
+        storage_api.metadata_repository, "answer_system_prompt", default_system_prompt
     )
 
     async with client.messages.stream(

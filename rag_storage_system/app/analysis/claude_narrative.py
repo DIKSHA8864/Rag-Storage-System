@@ -111,11 +111,18 @@ class ClaudeNarrativeGenerator(NarrativeGenerator):
         self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
         self._model = settings.analysis_model
 
-    def generate(self, comparison: ComparisonResult) -> ReportNarrative:
+        def generate(self, comparison: ComparisonResult) -> ReportNarrative:
+        from app.api import storage_api
+        from app.prompts import get_active_prompt
+
+        system_prompt = get_active_prompt(
+            storage_api.metadata_repository, "narrative_system_prompt", _SYSTEM_PROMPT
+        )
+
         response = self._client.messages.create(
             model=self._model,
             max_tokens=4096,
-            system=_SYSTEM_PROMPT,
+            system=system_prompt,
             messages=[{"role": "user", "content": _build_user_message(comparison)}],
         )
 

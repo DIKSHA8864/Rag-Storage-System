@@ -244,7 +244,43 @@
       </form>
       <div id="matters-list" style="margin-top: 0.75rem;"></div>
     </section>
+        <section class="panel">
+      <h2>Retrieval Settings</h2>
+      <p style="color: var(--muted); font-size: 0.8rem; margin-top: -0.5rem;">
+        Controls POST /end-user/query and /end-user/query/stream. Saving takes effect immediately.
+      </p>
+      <form id="retrieval-settings-form" class="row">
+        <label>Top K
+          <input type="number" id="retrieval-top-k" min="1" max="50" required>
+        </label>
+        <label>Score threshold
+          <input type="number" id="retrieval-score-threshold" min="0" max="1" step="0.01" required>
+        </label>
+        <label>Minimum chunks
+          <input type="number" id="retrieval-min-chunks" min="0" max="50" required>
+        </label>
+        <button type="submit" class="primary">Save</button>
+      </form>
+      <div id="retrieval-settings-meta" style="font-size: 0.75rem; color: var(--muted); margin-top: 0.4rem;"></div>
+    </section>
 
+    <section class="panel">
+      <h2>Prompt Versions</h2>
+      <p style="color: var(--muted); font-size: 0.8rem; margin-top: -0.5rem;">
+        Version history for the system prompts driving Claude-backed generation. Saving activates a new version; any past version can be re-activated (rollback).
+      </p>
+      <div class="row" style="margin-bottom: 0.5rem;">
+        <select id="prompt-name-select">
+          <option value="narrative_system_prompt">narrative_system_prompt (compare)</option>
+          <option value="answer_system_prompt">answer_system_prompt (ask/stream)</option>
+        </select>
+      </div>
+      <textarea id="prompt-text" rows="5" placeholder="Prompt text..."></textarea>
+      <div class="row" style="margin-top: 0.5rem;">
+        <button id="save-prompt-version-btn" class="primary">Save as new version</button>
+      </div>
+      <div id="prompt-version-history" style="margin-top: 0.75rem;"></div>
+    </section>
     <section class="panel">
       <h2>Create a top-level category</h2>
       <form id="create-category-form" class="row">
@@ -362,6 +398,8 @@
     $("whoami").textContent = state.email;
     loadAll();
   }
+  loadRetrievalSettings();
+  loadPromptVersions();
 
   // ---------------------------------------------------------------
   // Data loading + stats
@@ -369,7 +407,7 @@
 
   let lastCategories = [];
   let lastDocuments = [];
-
+  
   async function loadAll() {
     try {
       const [cats, docs] = await Promise.all([
@@ -386,7 +424,7 @@
       toast(err.message, true);
     }
   }
-
+  
   // ---------------------------------------------------------------
   // Disclaimer
   // ---------------------------------------------------------------
@@ -423,7 +461,98 @@
   // ---------------------------------------------------------------
   // Matters
   // ---------------------------------------------------------------
+    // ---------------------------------------------------------------
+  // Retrieval Settings
+  // ---------------------------------------------------------------
 
+  async function loadRetrievalSettings() {
+    try {
+      const settings = await api("/admin/retrieval-settings");
+      $("retrieval-top-k").value = settings.top_k;
+      $("retrieval-score-threshold").value = settings.score_threshold;
+      $("retrieval-min-chunks").value = settings.min_chunks;
+      $("retrieval-settings-meta").textContent = settings.updated_at
+        ? `Last updated ${settings.updated_at}${settings.updated_by ? ` by ${settings.updated_by}` : ""}`
+        : "Using the default retrieval settings - never saved by an Owner yet.";
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  $("retrieval-settings-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const settings = await api("/admin/retrieval-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          top_k: Number($("retrieval-top-k").value),
+          score_threshold: Number($("retrieval-score-threshold").value),
+          min_chunks: Number($("retrieval-min-chunks").value),
+        }),
+      });
+      $("retrieval-settings-meta").textContent = `Last updated ${settings.updated_at} by ${settings.updated_by}`;
+      toast("Retrieval settings saved.");
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  // ---------------------------------------------------------------
+  // Prompt Versions
+  // ---------------------------------------------------------------
+
+  async function loadPromptVersions() {
+    const name = $("prompt-name-select").value;
+    try {
+      const data = await api(`/admin/prompts/${encodeURIComponent(name)}`);
+      const active = data.versions.find(v => v.is_active);
+      $("prompt-text").value = active ? active.text : "";
+      $("prompt-version-history").innerHTML = data.versions.length
+        ? data.versions.map(v => `
+            <div class="row" style="justify-content: space-between; padding: 0.3rem 0; border-bottom: 1px solid var(--border);">
+              <span>v${v.version}${v.is_active ? " (active)" : ""} - ${escapeHtml(v.created_at)}</span>
+              ${v.is_active ? "" : `<button class="mini-btn activate-version-btn" data-version="${v.version}">Activate</button>`}
+            </div>
+          `).join("")
+        : `<div class="empty-note">No versions saved yet - the built-in default prompt is used.</div>`;
+
+      $("prompt-version-history").querySelectorAll(".activate-version-btn").forEach(btn => {
+        btn.addEventListener("click", () => activatePromptVersion(name, Number(btn.dataset.version)));
+      });
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  $("prompt-name-select").addEventListener("change", loadPromptVersions);
+
+  $("save-prompt-version-btn").addEventListener("click", async () => {
+    const name = $("prompt-name-select").value;
+    const text = $("prompt-text").value.trim();
+    if (!text) return;
+    try {
+      await api(`/admin/prompts/${encodeURIComponent(name)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      toast("New prompt version saved and activated.");
+      loadPromptVersions();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  async function activatePromptVersion(name, version) {
+    try {
+      await api(`/admin/prompts/${encodeURIComponent(name)}/activate/${version}`, { method: "POST" });
+      toast(`Activated v${version}.`);
+      loadPromptVersions();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
   async function loadMatters() {
     try {
       const data = await api("/admin/matters");
