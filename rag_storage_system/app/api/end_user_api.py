@@ -52,7 +52,12 @@ from app.disclaimer import get_current_disclaimer_text
 from app.retrieval.retriever import retrieve
 from app.security.auth import require_end_user_key
 from config.settings import get_settings
+import json
 
+from fastapi.responses import StreamingResponse
+
+from app.analysis.answer_generator import generate_answer_stream
+from app.retrieval_settings import get_current_retrieval_settings
 router = APIRouter(
     prefix="/end-user",
     tags=["end-user"],
@@ -119,7 +124,86 @@ async def _resolve_input_chunks(query: Optional[str], file: Optional[UploadFile]
     data = await file.read()
     await file.close()
     return process_submission(filename, data)
+def _sse_event(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
+
+def _current_retrieval_settings():
+    """Deferred import - see _current_disclaimer_text()'s docstring for why."""
+
+    from app.api import storage_api
+
+    return get_current_retrieval_settings(storage_api.metadata_repository)
+
+
+async def _stream_query_answer(query: str, top_k: Optional[int], category: Optional[str]):
+    settings = _current_retrieval_settings()
+    resolved_top_k = top_k if top_k is not None else settings.top_k
+
+    results = retrieve(
+        query,
+        top_k=resolved_top_k,
+        category=category,
+        score_threshold=settings.score_threshold,
+    )
+
+    if len(results) < settings.min_chunks:
+        yield _sse_event("sources", {"sources": []})
+        yield _sse_event(
+            "answer_chunk",
+            {"text": "Insufficient information found in the available knowledge base."},
+        )
+        yield _sse_event("done", {})
+        return
+
+    # CITATION LOCK: built once, from this exact `results` list, and
+    # sent before a single answer token exists. Nothing after this
+    # point can change it - generate_answer_stream() is only ever
+    # given this same, already-fixed chunk list.
+    sources = [
+        {
+            "filename": r["filename"],
+            "category": r["category"],
+            "section": r.get("section"),
+            "start_page": r.get("start_page"),
+            "end_page": r.get("end_page"),
+            "score": r["final_score"],
+        }
+        for r in results
+    ]
+    yield _sse_event("sources", {"sources": sources})
+
+    try:
+        async for piece in generate_answer_stream(query, results):
+            yield _sse_event("answer_chunk", {"text": piece})
+    except Exception as exc:
+        yield _sse_event("error", {"detail": str(exc)})
+
+    yield _sse_event("done", {})
+
+
+@router.post("/query/stream")
+async def end_user_query_stream(request: EndUserQueryRequest) -> StreamingResponse:
+    """
+    Same retrieval as POST /end-user/query, but streams the generated
+    answer gradually as Server-Sent Events instead of returning
+    everything at once - see app/analysis/answer_generator.py.
+
+    Citations are LOCKED before any answer text streams: the `sources`
+    event is always the first one sent, built from the one retrieval
+    call this request makes - the answer text streamed afterward is
+    generated only from that same fixed chunk set, so what's cited
+    always matches what actually produced the answer.
+
+    Event types: "sources" (once, first), "answer_chunk" (0+, in
+    order), "error" (0-1, only on a generation failure), "done" (once,
+    always last).
+    """
+
+    return StreamingResponse(
+        _stream_query_answer(request.query, request.top_k, request.category),
+        media_type="text/event-stream",
+    )
 
 def _current_disclaimer_text() -> str:
     """

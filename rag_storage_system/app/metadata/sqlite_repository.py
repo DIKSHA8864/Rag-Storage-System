@@ -49,9 +49,102 @@ CREATE TABLE IF NOT EXISTS disclaimer (
     updated_at TEXT NOT NULL,
     updated_by TEXT
 );
+CREATE TABLE IF NOT EXISTS threads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    matter_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS thread_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id INTEGER NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    sources_json TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS prompt_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT,
+    UNIQUE (name, version)
+);
+CREATE TABLE IF NOT EXISTS matters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    api_key_hash TEXT UNIQUE NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
 """
+        def get_matter_by_key_hash(self, api_key_hash: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM matters WHERE api_key_hash = ? AND is_active = 1", (api_key_hash,)
+            ).fetchone()
+            return dict(row) if row else None
 
+    def create_matter(self, name: str, api_key_hash: str) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO matters (name, api_key_hash, is_active, created_at) VALUES (?, ?, 1, ?)",
+                (name, api_key_hash, now),
+            )
+            return {"id": cursor.lastrowid, "name": name, "api_key_hash": api_key_hash, "is_active": True, "created_at": now}
 
+    def list_matters(self) -> list[dict]:
+        with self._connect() as conn:
+            return [dict(row) for row in conn.execute("SELECT * FROM matters ORDER BY name").fetchall()]
+    def get_active_prompt_version(self, name: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM prompt_versions WHERE name = ? AND is_active = 1", (name,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def list_prompt_versions(self, name: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM prompt_versions WHERE name = ? ORDER BY version DESC", (name,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def create_prompt_version(self, name: str, text: str, created_by: Optional[str] = None) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            next_version = (
+                conn.execute(
+                    "SELECT COALESCE(MAX(version), 0) + 1 FROM prompt_versions WHERE name = ?", (name,)
+                ).fetchone()[0]
+            )
+            conn.execute("UPDATE prompt_versions SET is_active = 0 WHERE name = ?", (name,))
+            conn.execute(
+                "INSERT INTO prompt_versions (name, version, text, is_active, created_at, created_by) "
+                "VALUES (?, ?, ?, 1, ?, ?)",
+                (name, next_version, text, now, created_by),
+            )
+            return {"name": name, "version": next_version, "text": text, "is_active": True, "created_at": now, "created_by": created_by}
+
+    def activate_prompt_version(self, name: str, version: int) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM prompt_versions WHERE name = ? AND version = ?", (name, version)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"No such prompt version: {name} v{version}")
+
+            conn.execute("UPDATE prompt_versions SET is_active = 0 WHERE name = ?", (name,))
+            conn.execute(
+                "UPDATE prompt_versions SET is_active = 1 WHERE name = ? AND version = ?", (name, version)
+            )
+            return dict(row)
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -341,3 +434,48 @@ class SQLiteMetadataRepository(MetadataRepository):
             )
 
         return {"text": text, "updated_at": now, "updated_by": updated_by}
+        def create_thread(self, matter_id: int, title: str) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO threads (matter_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (matter_id, title, now, now),
+            )
+            return {"id": cursor.lastrowid, "matter_id": matter_id, "title": title, "created_at": now, "updated_at": now}
+
+    def list_threads(self, matter_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM threads WHERE matter_id = ? ORDER BY updated_at DESC", (matter_id,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_thread(self, thread_id: int, matter_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM threads WHERE id = ? AND matter_id = ?", (thread_id, matter_id)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def add_thread_message(
+        self, thread_id: int, role: str, content: str, sources_json: Optional[str] = None
+    ) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO thread_messages (thread_id, role, content, sources_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (thread_id, role, content, sources_json, now),
+            )
+            conn.execute("UPDATE threads SET updated_at = ? WHERE id = ?", (now, thread_id))
+            return {
+                "id": cursor.lastrowid, "thread_id": thread_id, "role": role,
+                "content": content, "sources_json": sources_json, "created_at": now,
+            }
+
+    def list_thread_messages(self, thread_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM thread_messages WHERE thread_id = ? ORDER BY id", (thread_id,)
+            ).fetchall()
+            return [dict(row) for row in rows]

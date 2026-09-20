@@ -109,3 +109,46 @@ class MetadataRepository(ABC):
     def update_disclaimer(self, text: str, updated_by: Optional[str] = None) -> dict:
         """Create or replace the single disclaimer row and return it."""
         raise NotImplementedError
+        # ------------------------------------------------------------------
+    # Threads (isolated per matter - see app/matters.py)
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_thread(self, matter_id: int, title: str) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_threads(self, matter_id: int) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_thread(self, thread_id: int, matter_id: int) -> Optional[dict]:
+        """None if the thread doesn't exist OR belongs to a different matter - isolation lives here."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def add_thread_message(
+        self, thread_id: int, role: str, content: str, sources_json: Optional[str] = None
+    ) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_thread_messages(self, thread_id: int) -> list[dict]:
+        raise NotImplementedError
+        @abstractmethod
+    def get_active_prompt_version(self, name: str) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_prompt_versions(self, name: str) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_prompt_version(self, name: str, text: str, created_by: Optional[str] = None) -> dict:
+        """Inserts the next version for `name`, deactivates the previous active one, activates this one."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def activate_prompt_version(self, name: str, version: int) -> dict:
+        """Rollback/roll-forward: makes an existing version active again."""
+        raise NotImplementedError

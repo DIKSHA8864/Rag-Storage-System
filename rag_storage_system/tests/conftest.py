@@ -26,7 +26,7 @@ override, in tests/test_auth.py.
 import os
 
 os.environ.setdefault("METADATA_BACKEND", "sqlite")
-
+os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-not-for-production")
 import pytest
 
 from app.api import storage_api

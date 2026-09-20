@@ -177,7 +177,20 @@
     <button class="primary" id="analyze-btn">Analyze</button>
     <div id="analyze-error"></div>
   </section>
+    <section class="panel">
+    <h2>Ask a question</h2>
+    <div class="field">
+      <label for="ask-text">Question</label>
+      <input type="text" id="ask-text" placeholder="Ask a question about the knowledge base...">
+    </div>
+    <button class="primary" id="ask-btn">Ask</button>
+    <div id="ask-error" style="color: var(--err); font-size: 0.85rem; margin-top: 0.6rem; min-height: 1.1em;"></div>
 
+    <div id="ask-answer-panel" class="hidden" style="margin-top: 1rem;">
+      <div id="ask-sources" style="font-size: 0.8rem; color: var(--muted); margin-bottom: 0.6rem;"></div>
+      <div id="ask-answer" style="font-size: 0.92rem; line-height: 1.55; white-space: pre-wrap;"></div>
+    </div>
+  </section>
   <div id="spinner" class="hidden">Analyzing... this can take a few seconds.</div>
 
   <div id="report-container"></div>
@@ -255,8 +268,96 @@
       $("analyze-btn").disabled = false;
       $("spinner").classList.add("hidden");
     }
+      $("ask-btn").addEventListener("click", async () => {
+    const key = $("end-user-key").value.trim();
+    const errorEl = $("ask-error");
+    errorEl.textContent = "";
+
+    if (!key) {
+      errorEl.textContent = "Enter your End User key first.";
+      return;
+    }
+    localStorage.setItem("end_user_key", key);
+
+    const question = $("ask-text").value.trim();
+    if (!question) {
+      errorEl.textContent = "Type a question first.";
+      return;
+    }
+
+    const answerPanel = $("ask-answer-panel");
+    const sourcesEl = $("ask-sources");
+    const answerEl = $("ask-answer");
+    answerPanel.classList.remove("hidden");
+    sourcesEl.textContent = "";
+    answerEl.textContent = "";
+
+    let sourcesLocked = false; // citation lock, client side: the first
+                                 // "sources" event wins, permanently -
+                                 // nothing later is allowed to touch it.
+
+    $("ask-btn").disabled = true;
+
+    try {
+      const res = await fetch("/end-user/query/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-End-User-Key": key },
+        body: JSON.stringify({ query: question }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `Request failed (${res.status}).`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let boundary;
+        while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+          const rawEvent = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          handleSseEvent(rawEvent);
+        }
+      }
+    } catch (err) {
+      errorEl.textContent = err.message;
+    } finally {
+      $("ask-btn").disabled = false;
+    }
+
+    function handleSseEvent(rawEvent) {
+      const lines = rawEvent.split("\n");
+      const eventLine = lines.find((l) => l.startsWith("event: "));
+      const dataLine = lines.find((l) => l.startsWith("data: "));
+      if (!eventLine || !dataLine) return;
+
+      const eventType = eventLine.slice("event: ".length);
+      const data = JSON.parse(dataLine.slice("data: ".length));
+
+      if (eventType === "sources") {
+        if (sourcesLocked) return; // ignore any later "sources" event
+        sourcesLocked = true;
+        sourcesEl.innerHTML = data.sources.length
+          ? "Sources: " + data.sources.map((s) => escapeHtml(s.filename)).join(", ")
+          : "No matching sources found.";
+      } else if (eventType === "answer_chunk") {
+        answerEl.textContent += data.text;
+      } else if (eventType === "error") {
+        errorEl.textContent = data.detail;
+      }
+      // "done" needs no handling - the loop above ends when the
+      // stream closes.
+    }
   });
 
+  
   function renderReport(report) {
     const container = $("report-container");
     container.innerHTML = "";

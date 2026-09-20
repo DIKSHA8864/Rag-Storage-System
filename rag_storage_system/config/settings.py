@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     # anyone who can hit the port. Change this via .env for anything
     # beyond a local demo.
     # ------------------------------------------------------------------
-    jwt_secret_key: str = "Diksha@321#"
+    jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
@@ -174,4 +174,11 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+
+    if not settings.jwt_secret_key:
+        raise RuntimeError(
+            "JWT_SECRET_KEY must be set (.env) - refusing to start with no signing key."
+        )
+
+    return settings
