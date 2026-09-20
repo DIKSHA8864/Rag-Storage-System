@@ -103,3 +103,41 @@ def test_retrieve_returns_at_most_top_k(monkeypatch):
     results = retrieve("query", top_k=3)
 
     assert len(results) == 3
+
+
+def test_retrieve_drops_chunks_below_a_nonzero_score_threshold(monkeypatch):
+    # final_score is a 0.6/0.4 blend of vector/keyword confidence
+    # (app/retrieval/reranker.py) - "v-strong" (raw vector score 0.9,
+    # no keyword corroboration) scores 0.54, clearing a 0.5 threshold;
+    # "v-weak" (raw vector score 0.2) scores 0.12, well under it.
+    monkeypatch.setattr(
+        "app.retrieval.retriever.vector_search",
+        lambda query, top_k, category=None: [_hit("v-strong", 0.9), _hit("v-weak", 0.2)],
+    )
+    monkeypatch.setattr(
+        "app.retrieval.retriever.keyword_search", lambda query, top_k, category=None: []
+    )
+
+    results = retrieve("query", top_k=5, score_threshold=0.5)
+
+    assert {r["chunk_id"] for r in results} == {"v-strong"}
+
+
+def test_retrieve_default_score_threshold_keeps_every_ranked_chunk(monkeypatch):
+    """
+    score_threshold defaults to 0.0 - existing callers that never pass
+    it (app/analysis/matcher.py, POST /search) must see unchanged
+    behavior: every chunk rerank() already decided to keep survives.
+    """
+
+    monkeypatch.setattr(
+        "app.retrieval.retriever.vector_search",
+        lambda query, top_k, category=None: [_hit("v-weak", 0.01)],
+    )
+    monkeypatch.setattr(
+        "app.retrieval.retriever.keyword_search", lambda query, top_k, category=None: []
+    )
+
+    results = retrieve("query", top_k=5)
+
+    assert {r["chunk_id"] for r in results} == {"v-weak"}

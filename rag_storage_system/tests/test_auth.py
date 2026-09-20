@@ -97,6 +97,56 @@ def test_mutating_endpoints_require_bearer_token(client):
 
 
 # ---------------------------------------------------------------------
+# Newer admin endpoints (Matters, Retrieval Settings, Prompt Versions) -
+# added after the routes above; spot-checked here the same way so
+# "protected by require_admin_key" isn't just assumed for them.
+# ---------------------------------------------------------------------
+
+
+def test_matters_endpoints_require_bearer_token(client):
+    assert client.get("/admin/matters").status_code == 401
+    assert client.post("/admin/matters", json={"name": "Acme Corp"}).status_code == 401
+
+    assert client.get("/admin/matters", headers=_owner_bearer_header()).status_code == 200
+    response = client.post(
+        "/admin/matters", json={"name": "Acme Corp"}, headers=_owner_bearer_header()
+    )
+    assert response.status_code == 200
+
+
+def test_retrieval_settings_endpoints_require_bearer_token(client):
+    assert client.get("/admin/retrieval-settings").status_code == 401
+    body = {"top_k": 5, "score_threshold": 0.0, "min_chunks": 1}
+    assert client.put("/admin/retrieval-settings", json=body).status_code == 401
+
+    assert client.get("/admin/retrieval-settings", headers=_owner_bearer_header()).status_code == 200
+    response = client.put(
+        "/admin/retrieval-settings", json=body, headers=_owner_bearer_header()
+    )
+    assert response.status_code == 200
+
+
+def test_prompt_version_endpoints_require_bearer_token(client):
+    name = "narrative_system_prompt"
+
+    assert client.get(f"/admin/prompts/{name}").status_code == 401
+    assert client.post(f"/admin/prompts/{name}", json={"text": "New prompt."}).status_code == 401
+    assert client.post(f"/admin/prompts/{name}/activate/1").status_code == 401
+
+    assert client.get(f"/admin/prompts/{name}", headers=_owner_bearer_header()).status_code == 200
+    created = client.post(
+        f"/admin/prompts/{name}", json={"text": "New prompt."}, headers=_owner_bearer_header()
+    )
+    assert created.status_code == 200
+
+    activated = client.post(
+        f"/admin/prompts/{name}/activate/{created.json()['version']}",
+        headers=_owner_bearer_header(),
+    )
+    assert activated.status_code == 200
+
+
+# ---------------------------------------------------------------------
 # End User API key (app/api/end_user_api.py) - a separate scope from
 # everything above: different header (X-End-User-Key), different
 # secret (END_USER_API_KEY), and - the actual point - neither key

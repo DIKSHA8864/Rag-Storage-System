@@ -197,6 +197,19 @@ def _sample_report() -> dict:
     }
 
 
+def test_sample_report_conforms_to_the_real_analysis_report_schema():
+    """
+    Guards against fixture drift: if report_builder.py's output shape
+    ever changes, this fails loudly here instead of these export tests
+    silently asserting against a fixture that no longer matches what
+    the real endpoint produces.
+    """
+
+    from app.api.schemas import AnalysisReport
+
+    AnalysisReport(**_sample_report())
+
+
 def test_build_report_docx_contains_disclaimer_text():
     content = build_report_docx(_sample_report(), "THE-CURRENT-DISCLAIMER-TEXT")
 
@@ -205,6 +218,10 @@ def test_build_report_docx_contains_disclaimer_text():
 
     assert "THE-CURRENT-DISCLAIMER-TEXT" in full_text
     assert "Overall the submission aligns with policy." in full_text
+    # The report's other sections (recommendations, sources) must
+    # actually render too, not just the disclaimer/summary.
+    assert "Continue annual vendor reviews." in full_text
+    assert "policy.pdf" in full_text
 
 
 def test_build_report_pdf_contains_disclaimer_text():
@@ -217,6 +234,8 @@ def test_build_report_pdf_contains_disclaimer_text():
 
     assert "THE-CURRENT-DISCLAIMER-TEXT" in full_text
     assert "Overall the submission aligns with policy." in full_text
+    assert "Continue annual vendor reviews." in full_text
+    assert "policy.pdf" in full_text
 
 
 def test_docx_export_reflects_owner_updated_disclaimer(client, monkeypatch):
@@ -264,6 +283,58 @@ def test_docx_export_reflects_owner_updated_disclaimer(client, monkeypatch):
     document = Document(io.BytesIO(response.content))
     full_text = "\n".join(p.text for p in document.paragraphs)
     assert "OWNER-UPDATED-DISCLAIMER" in full_text
+
+
+def test_pdf_export_reflects_owner_updated_disclaimer(client, monkeypatch):
+    """
+    Same as test_docx_export_reflects_owner_updated_disclaimer, for the
+    PDF branch of POST /end-user/compare/export - that branch (media
+    type, filename, response headers, build_report_pdf() wiring) was
+    otherwise never exercised through the real API, only via a direct
+    call to build_report_pdf() (see test_pdf_export_reflects_the_current_disclaimer
+    above and its own tests/test_e2e_phase2.py counterpart).
+    """
+
+    pymupdf = pytest.importorskip("pymupdf")
+
+    from app.analysis import matcher
+
+    client.put("/admin/disclaimer", json={"text": "OWNER-UPDATED-PDF-DISCLAIMER"})
+
+    monkeypatch.setattr(
+        matcher,
+        "retrieve",
+        lambda *a, **k: [
+            {
+                "chunk_id": "c-1",
+                "document_id": "policy",
+                "category": "Docs",
+                "filename": "policy.pdf",
+                "chunk_text": "Vendor contracts require annual review.",
+                "chapter": None,
+                "section": "1.1",
+                "start_page": 1,
+                "end_page": 1,
+                "metadata": {},
+                "vector_score": 0.9,
+                "keyword_score": 0.0,
+                "final_score": 0.9,
+            }
+        ],
+    )
+
+    response = client.post(
+        "/end-user/compare/export",
+        data={"format": "pdf", "query": "Vendor contracts must be reviewed annually."},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"] == 'attachment; filename="analysis_report.pdf"'
+
+    doc = pymupdf.open(stream=response.content, filetype="pdf")
+    full_text = "\n".join(page.get_text() for page in doc)
+    assert "OWNER-UPDATED-PDF-DISCLAIMER" in full_text
 
 
 def test_export_rejects_unknown_format(client):

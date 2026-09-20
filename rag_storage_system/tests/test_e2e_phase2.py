@@ -139,6 +139,17 @@ def test_missing_authority_returns_insufficient_information(client, monkeypatch)
 
 
 def test_answer_never_cites_a_source_outside_the_locked_set(client, monkeypatch):
+    """
+    This exercises the default TemplateNarrativeGenerator path, which
+    is grounded by construction (its citations come directly from the
+    same chunks that built `sources`) - it's a regression guard for
+    that code, not proof that a fabricated citation would be caught.
+    The Claude-backed path's *technical* enforcement
+    (_citations_are_grounded in app/analysis/answer_generation.py) is
+    tested directly, with a mocked Claude response that actually
+    fabricates a citation, in tests/test_answer_generation.py.
+    """
+
     monkeypatch.setattr(
         end_user_api,
         "retrieve",
@@ -211,12 +222,66 @@ def _sample_report() -> dict:
         "match_score_breakdown": {
             "coverage_ratio": 0.9, "avg_confidence": 0.75, "coverage_weight": 0.6, "confidence_weight": 0.4,
         },
-        "detailed_matching": {"similarities": [], "differences": [], "gaps": [], "conflicts": []},
-        "recommendations": [],
-        "sources": [],
+        "detailed_matching": {
+            "similarities": [
+                {
+                    "input_chunk_index": 0,
+                    "input_text": "Vendor contracts must be reviewed annually.",
+                    "classification": "match",
+                    "top_score": 0.9,
+                    "is_conflict": False,
+                    "narrative": {"text": "This matches the vendor review policy.", "provenance": "generated"},
+                    "sources": [
+                        {
+                            "filename": "policy.pdf",
+                            "category": "Docs",
+                            "document_id": "policy",
+                            "chunk_id": "c-1",
+                            "chunk_text": "Vendor contracts require annual review.",
+                            "section": "1.1",
+                            "start_page": 1,
+                            "end_page": 1,
+                            "score": 0.9,
+                            "provenance": "retrieved",
+                        }
+                    ],
+                }
+            ],
+            "differences": [],
+            "gaps": [],
+            "conflicts": [],
+        },
+        "recommendations": [{"text": "Continue annual vendor reviews.", "provenance": "recommendation"}],
+        "sources": [
+            {
+                "filename": "policy.pdf",
+                "category": "Docs",
+                "document_id": "policy",
+                "chunk_id": "c-1",
+                "chunk_text": "Vendor contracts require annual review.",
+                "section": "1.1",
+                "start_page": 1,
+                "end_page": 1,
+                "score": 0.9,
+                "provenance": "retrieved",
+            }
+        ],
         "insufficient_evidence": False,
-        "provenance_legend": {},
+        "provenance_legend": {"retrieved": "...", "generated": "...", "recommendation": "..."},
     }
+
+
+def test_sample_report_conforms_to_the_real_analysis_report_schema():
+    """
+    Guards against fixture drift: if report_builder.py's output shape
+    ever changes, this fails loudly here instead of the DOCX/PDF tests
+    below silently asserting against a fixture that no longer matches
+    what the real endpoint produces.
+    """
+
+    from app.api.schemas import AnalysisReport
+
+    AnalysisReport(**_sample_report())
 
 
 def test_docx_export_reflects_the_current_disclaimer(client):
@@ -229,6 +294,8 @@ def test_docx_export_reflects_the_current_disclaimer(client):
     full_text = "\n".join(p.text for p in document.paragraphs)
     assert "E2E-DOCX-DISCLAIMER" in full_text
     assert "Overall the submission aligns with policy." in full_text
+    assert "Continue annual vendor reviews." in full_text
+    assert "policy.pdf" in full_text
 
 
 def test_pdf_export_reflects_the_current_disclaimer(client):
@@ -243,6 +310,8 @@ def test_pdf_export_reflects_the_current_disclaimer(client):
     full_text = "\n".join(page.get_text() for page in doc)
     assert "E2E-PDF-DISCLAIMER" in full_text
     assert "Overall the submission aligns with policy." in full_text
+    assert "Continue annual vendor reviews." in full_text
+    assert "policy.pdf" in full_text
 
 
 # ---------------------------------------------------------------------

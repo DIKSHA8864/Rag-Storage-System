@@ -17,6 +17,25 @@ import pytest
 
 from app.analysis.claude_narrative import ClaudeNarrativeGenerator
 from app.analysis.models import ComparisonItem, ComparisonResult, SourceEvidence
+from app.metadata.sqlite_repository import SQLiteMetadataRepository
+
+
+@pytest.fixture(autouse=True)
+def _isolated_metadata_repository(tmp_path, monkeypatch):
+    """
+    generate() reads storage_api.metadata_repository (app/prompts.py's
+    get_active_prompt(), for the "narrative_system_prompt" version) -
+    without this, these tests fall through to the real module-level
+    singleton and touch the actual project database/metadata.db, the
+    same isolation every other test file in this suite already gets
+    via its own `client`/`repo` fixture.
+    """
+
+    from app.api import storage_api
+
+    monkeypatch.setattr(
+        storage_api, "metadata_repository", SQLiteMetadataRepository(tmp_path / "metadata.db")
+    )
 
 
 @dataclass
