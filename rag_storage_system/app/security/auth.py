@@ -217,3 +217,16 @@ def require_end_user_key(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Missing or invalid X-End-User-Key header.",
     )
+
+
+def current_matter(matter: dict | None = Depends(require_end_user_key)) -> dict:
+    """
+    Thin wrapper around require_end_user_key, shared by
+    app/api/end_user_api.py's threads and app/api/intake_api.py's
+    intake sessions (moved here to avoid a circular import between the
+    two routers). Falls back to the same implicit "Default" matter
+    (id=0) tests get via conftest.py's dependency_overrides (which
+    replaces require_end_user_key with a lambda returning None).
+    """
+
+    return matter if matter is not None else {"id": 0, "name": "Default"}

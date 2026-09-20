@@ -473,3 +473,163 @@ class PostgresMetadataRepository(MetadataRepository):
                 (name, version),
             )
         return dict(row)
+
+    # ------------------------------------------------------------------
+    # Intake Sessions
+    # ------------------------------------------------------------------
+
+    def create_intake_session(self, matter_id: int, title: str, thread_id: Optional[int] = None) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO intake_sessions (matter_id, thread_id, title) VALUES (%s, %s, %s) "
+                "RETURNING id, matter_id, thread_id, title, status, created_at, updated_at",
+                (matter_id, thread_id, title),
+            ).fetchone()
+        return dict(row)
+
+    def list_intake_sessions(self, matter_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM intake_sessions WHERE matter_id = %s ORDER BY updated_at DESC", (matter_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_intake_session(self, session_id: int, matter_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM intake_sessions WHERE id = %s AND matter_id = %s", (session_id, matter_id)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_intake_session_status(self, session_id: int, status: str) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE intake_sessions SET status = %s, updated_at = now() WHERE id = %s", (status, session_id)
+            )
+        return cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Uploaded Inputs
+    # ------------------------------------------------------------------
+
+    def create_uploaded_input(
+        self,
+        intake_session_id: int,
+        original_filename: str,
+        stored_category: str,
+        stored_filename: str,
+        media_type: str,
+        size: int,
+        sha256: Optional[str],
+    ) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO uploaded_inputs (
+                    intake_session_id, original_filename, stored_category, stored_filename, media_type, size, sha256
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, intake_session_id, original_filename, stored_category, stored_filename,
+                          media_type, size, sha256, processing_status, status_detail, created_at, updated_at
+                """,
+                (intake_session_id, original_filename, stored_category, stored_filename, media_type, size, sha256),
+            ).fetchone()
+        return dict(row)
+
+    def get_uploaded_input(self, input_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM uploaded_inputs WHERE id = %s", (input_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_uploaded_inputs(self, intake_session_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM uploaded_inputs WHERE intake_session_id = %s ORDER BY id", (intake_session_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def update_uploaded_input_status(
+        self, input_id: int, processing_status: str, status_detail: Optional[str] = None
+    ) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE uploaded_inputs SET processing_status = %s, status_detail = %s, updated_at = now() WHERE id = %s",
+                (processing_status, status_detail, input_id),
+            )
+        return cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Extracted Information
+    # ------------------------------------------------------------------
+
+    def add_extracted_information(
+        self,
+        uploaded_input_id: int,
+        content_type: str,
+        text: str,
+        provider: str,
+        is_mock: bool,
+        archive_member_filename: Optional[str] = None,
+    ) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO extracted_information (
+                    uploaded_input_id, archive_member_filename, content_type, text, provider, is_mock
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id, uploaded_input_id, archive_member_filename, content_type, text, provider, is_mock, created_at
+                """,
+                (uploaded_input_id, archive_member_filename, content_type, text, provider, is_mock),
+            ).fetchone()
+        return dict(row)
+
+    def list_extracted_information(self, uploaded_input_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM extracted_information WHERE uploaded_input_id = %s ORDER BY id", (uploaded_input_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Timeline
+    # ------------------------------------------------------------------
+
+    def add_timeline_event(self, intake_session_id: int, event_type: str, description: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO timeline_events (intake_session_id, event_type, description) VALUES (%s, %s, %s) "
+                "RETURNING id, intake_session_id, event_type, description, created_at",
+                (intake_session_id, event_type, description),
+            ).fetchone()
+        return dict(row)
+
+    def list_timeline_events(self, intake_session_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM timeline_events WHERE intake_session_id = %s ORDER BY id", (intake_session_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Reports
+    # ------------------------------------------------------------------
+
+    def create_report(self, intake_session_id: int, format: str, stored_category: str, stored_filename: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO reports (intake_session_id, format, stored_category, stored_filename) VALUES (%s, %s, %s, %s) "
+                "RETURNING id, intake_session_id, format, stored_category, stored_filename, created_at",
+                (intake_session_id, format, stored_category, stored_filename),
+            ).fetchone()
+        return dict(row)
+
+    def get_report(self, report_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM reports WHERE id = %s", (report_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_reports(self, intake_session_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM reports WHERE intake_session_id = %s ORDER BY id", (intake_session_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]

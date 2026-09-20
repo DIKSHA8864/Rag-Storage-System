@@ -165,6 +165,54 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     audit_log_path: str = "logs/audit.log"
 
+    # ------------------------------------------------------------------
+    # Phase 3 - Multimodal intake (app/multimodal/). OCR/STT/Vision are
+    # pluggable, provider-agnostic interfaces (app/multimodal/ocr.py,
+    # speech_to_text.py, vision.py) - "mock" (default) needs no external
+    # service or API key. It returns a clearly-labeled placeholder
+    # instead of fabricating plausible text, so a report built from it
+    # can never be mistaken for a real extraction. Swap in a real
+    # provider later by adding an implementation class and pointing
+    # these at it - no caller changes.
+    # ------------------------------------------------------------------
+    ocr_provider: str = "mock"
+    stt_provider: str = "mock"
+    vision_provider: str = "mock"
+
+    # Separate root from ORIGINAL_STORAGE_PATH above - a Client's
+    # intake uploads must stay logically separate from the Owner's
+    # knowledge base (see app/storage/__init__.py's
+    # get_intake_storage_backend()).
+    intake_storage_path: str = "storage/intake"
+    intake_quarantine_storage_path: str = "storage/intake_quarantine"
+
+    # Wider than ALLOWED_EXTENSIONS above (PDF/DOCX/TXT only) - Client
+    # intake also accepts images, audio, video, and a ZIP of any of
+    # those (app/multimodal/zip_processor.py).
+    intake_allowed_extensions: str = (
+        ".pdf,.docx,.txt,.png,.jpg,.jpeg,.tiff,.bmp,"
+        ".mp3,.wav,.m4a,.mp4,.mov,.avi,.zip"
+    )
+    intake_max_file_size_mb: int = 200
+    intake_zip_max_files: int = 50
+    intake_zip_max_total_size_mb: int = 500
+
+    @property
+    def intake_allowed_extensions_set(self) -> set[str]:
+        return {
+            ext.strip().lower()
+            for ext in self.intake_allowed_extensions.split(",")
+            if ext.strip()
+        }
+
+    @property
+    def intake_max_file_size_bytes(self) -> int:
+        return self.intake_max_file_size_mb * 1024 * 1024
+
+    @property
+    def intake_zip_max_total_size_bytes(self) -> int:
+        return self.intake_zip_max_total_size_mb * 1024 * 1024
+
     def resolve(self, relative_path: str) -> Path:
         """Resolve a configured path relative to the project root."""
 

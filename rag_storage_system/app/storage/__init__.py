@@ -53,3 +53,28 @@ def get_storage_backend() -> StorageBackend:
         )
 
     return _backend_instance
+
+
+_intake_backend_instance: StorageBackend | None = None
+
+
+def get_intake_storage_backend() -> StorageBackend:
+    """
+    Separate storage backend for Client intake uploads
+    (app/api/intake_api.py, app/jobs/intake_processing.py) - a
+    different root directory (INTAKE_STORAGE_PATH) from the Owner's
+    knowledge base (ORIGINAL_STORAGE_PATH above), so a Client's
+    uploaded documents/images/audio/video/reports can never be
+    confused with, or served alongside, the protected document
+    repository.
+    """
+
+    global _intake_backend_instance
+
+    if _intake_backend_instance is None:
+        _intake_backend_instance = LocalStorageBackend(
+            originals_dir=_settings.resolve(_settings.intake_storage_path),
+            quarantine_dir=_settings.resolve(_settings.intake_quarantine_storage_path),
+        )
+
+    return _intake_backend_instance

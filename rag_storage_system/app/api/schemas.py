@@ -414,3 +414,97 @@ class PromptVersionCreateRequest(BaseModel):
     """Body for POST /admin/prompts/{name} - creates and activates a new version."""
 
     text: str = Field(..., min_length=1, max_length=8000)
+
+
+# ---------------------------------------------------------------------
+# Phase 3 - Client Intake (app/api/intake_api.py, app/metadata/base.py) -
+# a Matter's resumable guided-intake session: uploaded documents/images/
+# audio/video/ZIP, their extracted content, a timeline, and generated
+# reports (app/report/).
+# ---------------------------------------------------------------------
+
+
+class IntakeSessionCreateRequest(BaseModel):
+    """Body for POST /end-user/intake/sessions."""
+
+    title: str = Field("New intake", max_length=255)
+    thread_id: int | None = Field(
+        None, description="Optionally link this intake session to an existing thread (POST /end-user/threads)."
+    )
+
+
+class IntakeSessionInfo(BaseModel):
+    id: int
+    matter_id: int
+    thread_id: int | None = None
+    title: str
+    status: str
+    created_at: str
+    updated_at: str
+
+
+class IntakeSessionListResponse(BaseModel):
+    sessions: list[IntakeSessionInfo]
+
+
+class UploadedInputInfo(BaseModel):
+    id: int
+    intake_session_id: int
+    original_filename: str
+    media_type: str
+    size: int
+    processing_status: str
+    status_detail: str | None = None
+    created_at: str
+
+
+class UploadedInputQueuedResponse(BaseModel):
+    """Body for POST /end-user/intake/sessions/{id}/uploads."""
+
+    uploaded_input: UploadedInputInfo
+    job_id: str
+    status: str = "queued"
+
+
+class ExtractedInformationInfo(BaseModel):
+    id: int
+    content_type: str
+    text: str
+    provider: str
+    is_mock: bool
+    archive_member_filename: str | None = None
+    created_at: str
+
+
+class UploadedInputDetailResponse(BaseModel):
+    """Body for GET /end-user/intake/uploads/{upload_id}."""
+
+    uploaded_input: UploadedInputInfo
+    extracted_information: list[ExtractedInformationInfo]
+
+
+class TimelineEventInfo(BaseModel):
+    id: int
+    event_type: str
+    description: str
+    created_at: str
+
+
+class IntakeTimelineResponse(BaseModel):
+    intake_session_id: int
+    events: list[TimelineEventInfo]
+
+
+class ReportGenerateRequest(BaseModel):
+    """Body for POST /end-user/intake/sessions/{id}/report."""
+
+    format: str = Field(..., description="'docx', 'pdf', or 'image'.")
+
+
+class ReportInfo(BaseModel):
+    """Body for POST /end-user/intake/sessions/{id}/report."""
+
+    id: int
+    intake_session_id: int
+    format: str
+    created_at: str

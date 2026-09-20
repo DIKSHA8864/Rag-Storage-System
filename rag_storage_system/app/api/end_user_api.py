@@ -55,6 +55,7 @@ from app.api.schemas import (
 )
 from app.disclaimer import get_current_disclaimer_text
 from app.retrieval.retriever import retrieve
+from app.security.auth import current_matter as _current_matter
 from app.security.auth import require_end_user_key
 from config.settings import get_settings
 import json
@@ -147,19 +148,6 @@ def _current_retrieval_settings():
     from app.api import storage_api
 
     return get_current_retrieval_settings(storage_api.metadata_repository)
-
-
-def _current_matter(matter: Optional[dict] = Depends(require_end_user_key)) -> dict:
-    """
-    Thin wrapper around require_end_user_key so thread/matter-aware
-    endpoints keep working when tests bypass auth via
-    conftest.py's dependency_overrides (which replaces
-    require_end_user_key with a lambda returning None): falls back to
-    the same implicit "Default" matter (id=0) require_end_user_key
-    itself falls back to for the legacy shared key.
-    """
-
-    return matter if matter is not None else {"id": 0, "name": "Default"}
 
 
 @router.post("/threads", response_model=ThreadInfo)

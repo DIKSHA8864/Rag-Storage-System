@@ -187,6 +187,12 @@ from app.api.end_user_api import router as end_user_router  # noqa: E402
 
 app.include_router(end_user_router)
 
+# Client Intake API - Phase 3 foundation, same X-End-User-Key scope as
+# end_user_router. See app/api/intake_api.py.
+from app.api.intake_api import router as intake_router  # noqa: E402
+
+app.include_router(intake_router)
+
 
 @app.get("/")
 def root() -> dict:

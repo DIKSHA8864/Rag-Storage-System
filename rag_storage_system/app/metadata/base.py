@@ -199,3 +199,105 @@ class MetadataRepository(ABC):
     def activate_prompt_version(self, name: str, version: int) -> dict:
         """Rollback/roll-forward: makes an existing version active again."""
         raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Intake Sessions (Phase 3 - app/multimodal/, app/report/)
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_intake_session(self, matter_id: int, title: str, thread_id: Optional[int] = None) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_intake_sessions(self, matter_id: int) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_intake_session(self, session_id: int, matter_id: int) -> Optional[dict]:
+        """None if it doesn't exist OR belongs to a different matter - isolation lives here, same as get_thread()."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_intake_session_status(self, session_id: int, status: str) -> bool:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Uploaded Inputs
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_uploaded_input(
+        self,
+        intake_session_id: int,
+        original_filename: str,
+        stored_category: str,
+        stored_filename: str,
+        media_type: str,
+        size: int,
+        sha256: Optional[str],
+    ) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_uploaded_input(self, input_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_uploaded_inputs(self, intake_session_id: int) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_uploaded_input_status(
+        self, input_id: int, processing_status: str, status_detail: Optional[str] = None
+    ) -> bool:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Extracted Information
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def add_extracted_information(
+        self,
+        uploaded_input_id: int,
+        content_type: str,
+        text: str,
+        provider: str,
+        is_mock: bool,
+        archive_member_filename: Optional[str] = None,
+    ) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_extracted_information(self, uploaded_input_id: int) -> list[dict]:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Timeline
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def add_timeline_event(self, intake_session_id: int, event_type: str, description: str) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_timeline_events(self, intake_session_id: int) -> list[dict]:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Reports
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_report(
+        self, intake_session_id: int, format: str, stored_category: str, stored_filename: str
+    ) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_report(self, report_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_reports(self, intake_session_id: int) -> list[dict]:
+        raise NotImplementedError

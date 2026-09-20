@@ -91,6 +91,59 @@ CREATE TABLE IF NOT EXISTS retrieval_settings (
     updated_at TEXT NOT NULL,
     updated_by TEXT
 );
+
+CREATE TABLE IF NOT EXISTS intake_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    matter_id INTEGER NOT NULL,
+    thread_id INTEGER,
+    title TEXT NOT NULL DEFAULT 'New intake',
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS uploaded_inputs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    intake_session_id INTEGER NOT NULL REFERENCES intake_sessions(id) ON DELETE CASCADE,
+    original_filename TEXT NOT NULL,
+    stored_category TEXT NOT NULL,
+    stored_filename TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    sha256 TEXT,
+    processing_status TEXT NOT NULL DEFAULT 'queued',
+    status_detail TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS extracted_information (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uploaded_input_id INTEGER NOT NULL REFERENCES uploaded_inputs(id) ON DELETE CASCADE,
+    archive_member_filename TEXT,
+    content_type TEXT NOT NULL,
+    text TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    is_mock INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS timeline_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    intake_session_id INTEGER NOT NULL REFERENCES intake_sessions(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    description TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    intake_session_id INTEGER NOT NULL REFERENCES intake_sessions(id) ON DELETE CASCADE,
+    format TEXT NOT NULL,
+    stored_category TEXT NOT NULL,
+    stored_filename TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -556,3 +609,186 @@ class SQLiteMetadataRepository(MetadataRepository):
                 "UPDATE prompt_versions SET is_active = 1 WHERE name = ? AND version = ?", (name, version)
             )
             return dict(row)
+
+    # ------------------------------------------------------------------
+    # Intake Sessions
+    # ------------------------------------------------------------------
+
+    def create_intake_session(self, matter_id: int, title: str, thread_id: Optional[int] = None) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO intake_sessions (matter_id, thread_id, title, status, created_at, updated_at) "
+                "VALUES (?, ?, ?, 'active', ?, ?)",
+                (matter_id, thread_id, title, now, now),
+            )
+            return {
+                "id": cursor.lastrowid, "matter_id": matter_id, "thread_id": thread_id,
+                "title": title, "status": "active", "created_at": now, "updated_at": now,
+            }
+
+    def list_intake_sessions(self, matter_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM intake_sessions WHERE matter_id = ? ORDER BY updated_at DESC", (matter_id,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_intake_session(self, session_id: int, matter_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM intake_sessions WHERE id = ? AND matter_id = ?", (session_id, matter_id)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def update_intake_session_status(self, session_id: int, status: str) -> bool:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE intake_sessions SET status = ?, updated_at = ? WHERE id = ?", (status, now, session_id)
+            )
+            return cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Uploaded Inputs
+    # ------------------------------------------------------------------
+
+    def create_uploaded_input(
+        self,
+        intake_session_id: int,
+        original_filename: str,
+        stored_category: str,
+        stored_filename: str,
+        media_type: str,
+        size: int,
+        sha256: Optional[str],
+    ) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO uploaded_inputs (
+                    intake_session_id, original_filename, stored_category, stored_filename,
+                    media_type, size, sha256, processing_status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)
+                """,
+                (intake_session_id, original_filename, stored_category, stored_filename, media_type, size, sha256, now, now),
+            )
+            return {
+                "id": cursor.lastrowid, "intake_session_id": intake_session_id,
+                "original_filename": original_filename, "stored_category": stored_category,
+                "stored_filename": stored_filename, "media_type": media_type, "size": size,
+                "sha256": sha256, "processing_status": "queued", "status_detail": None,
+                "created_at": now, "updated_at": now,
+            }
+
+    def get_uploaded_input(self, input_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM uploaded_inputs WHERE id = ?", (input_id,)).fetchone()
+            return dict(row) if row else None
+
+    def list_uploaded_inputs(self, intake_session_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM uploaded_inputs WHERE intake_session_id = ? ORDER BY id", (intake_session_id,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def update_uploaded_input_status(
+        self, input_id: int, processing_status: str, status_detail: Optional[str] = None
+    ) -> bool:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE uploaded_inputs SET processing_status = ?, status_detail = ?, updated_at = ? WHERE id = ?",
+                (processing_status, status_detail, now, input_id),
+            )
+            return cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Extracted Information
+    # ------------------------------------------------------------------
+
+    def add_extracted_information(
+        self,
+        uploaded_input_id: int,
+        content_type: str,
+        text: str,
+        provider: str,
+        is_mock: bool,
+        archive_member_filename: Optional[str] = None,
+    ) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO extracted_information (
+                    uploaded_input_id, archive_member_filename, content_type, text, provider, is_mock, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (uploaded_input_id, archive_member_filename, content_type, text, provider, int(is_mock), now),
+            )
+            return {
+                "id": cursor.lastrowid, "uploaded_input_id": uploaded_input_id,
+                "archive_member_filename": archive_member_filename, "content_type": content_type,
+                "text": text, "provider": provider, "is_mock": is_mock, "created_at": now,
+            }
+
+    def list_extracted_information(self, uploaded_input_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM extracted_information WHERE uploaded_input_id = ? ORDER BY id", (uploaded_input_id,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Timeline
+    # ------------------------------------------------------------------
+
+    def add_timeline_event(self, intake_session_id: int, event_type: str, description: str) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO timeline_events (intake_session_id, event_type, description, created_at) VALUES (?, ?, ?, ?)",
+                (intake_session_id, event_type, description, now),
+            )
+            return {
+                "id": cursor.lastrowid, "intake_session_id": intake_session_id,
+                "event_type": event_type, "description": description, "created_at": now,
+            }
+
+    def list_timeline_events(self, intake_session_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM timeline_events WHERE intake_session_id = ? ORDER BY id", (intake_session_id,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Reports
+    # ------------------------------------------------------------------
+
+    def create_report(self, intake_session_id: int, format: str, stored_category: str, stored_filename: str) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO reports (intake_session_id, format, stored_category, stored_filename, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (intake_session_id, format, stored_category, stored_filename, now),
+            )
+            return {
+                "id": cursor.lastrowid, "intake_session_id": intake_session_id, "format": format,
+                "stored_category": stored_category, "stored_filename": stored_filename, "created_at": now,
+            }
+
+    def get_report(self, report_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM reports WHERE id = ?", (report_id,)).fetchone()
+            return dict(row) if row else None
+
+    def list_reports(self, intake_session_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM reports WHERE intake_session_id = ? ORDER BY id", (intake_session_id,)
+            ).fetchall()
+            return [dict(row) for row in rows]
