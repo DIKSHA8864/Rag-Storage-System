@@ -234,6 +234,18 @@
     </section>
 
     <section class="panel">
+      <h2>Matters</h2>
+      <p style="color: var(--muted); font-size: 0.8rem; margin-top: -0.5rem;">
+        Each Matter is an isolated End User identity - its own X-End-User-Key, its own conversation threads, invisible to every other Matter. The key is shown once at creation only - store it securely.
+      </p>
+      <form id="create-matter-form" class="row">
+        <input type="text" id="new-matter-name" placeholder="Matter name (e.g. Acme Corp)" required>
+        <button type="submit">Create matter</button>
+      </form>
+      <div id="matters-list" style="margin-top: 0.75rem;"></div>
+    </section>
+
+    <section class="panel">
       <h2>Create a top-level category</h2>
       <form id="create-category-form" class="row">
         <input type="text" id="new-category-name" placeholder="Category name" required>
@@ -369,6 +381,7 @@
       renderStats(lastCategories, lastDocuments);
       renderTree(lastCategories, lastDocuments);
       loadDisclaimer();
+      loadMatters();
     } catch (err) {
       toast(err.message, true);
     }
@@ -402,6 +415,50 @@
       });
       $("disclaimer-meta").textContent = `Last updated ${disclaimer.updated_at} by ${disclaimer.updated_by}`;
       toast("Disclaimer saved.");
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  // ---------------------------------------------------------------
+  // Matters
+  // ---------------------------------------------------------------
+
+  async function loadMatters() {
+    try {
+      const data = await api("/admin/matters");
+      $("matters-list").innerHTML = data.matters.length
+        ? data.matters.map(m => `
+            <div class="row" style="justify-content: space-between; padding: 0.4rem 0.2rem; border-bottom: 1px solid var(--border);">
+              <span>${escapeHtml(m.name)}</span>
+              <span style="font-size: 0.75rem; color: var(--muted);">
+                ${m.is_active ? "active" : "inactive"} &middot; created ${escapeHtml(m.created_at)}
+              </span>
+            </div>
+          `).join("")
+        : `<div class="empty-note">No Matters yet - the shared END_USER_API_KEY still works as the "Default" Matter until you create one.</div>`;
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+
+  $("create-matter-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("new-matter-name").value.trim();
+    if (!name) return;
+    try {
+      const matter = await api("/admin/matters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      $("new-matter-name").value = "";
+      alert(
+        `Matter '${matter.name}' created.\n\n` +
+        `X-End-User-Key (shown once - save it now):\n\n${matter.api_key}`
+      );
+      toast(`Matter '${matter.name}' created.`);
+      loadMatters();
     } catch (err) {
       toast(err.message, true);
     }

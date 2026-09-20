@@ -47,6 +47,11 @@ from app.api.schemas import (
     EndUserQueryRequest,
     EndUserQueryResponse,
     EndUserQueryResultChunk,
+    ThreadCreateRequest,
+    ThreadInfo,
+    ThreadListResponse,
+    ThreadMessageInfo,
+    ThreadMessagesResponse,
 )
 from app.disclaimer import get_current_disclaimer_text
 from app.retrieval.retriever import retrieve
@@ -144,7 +149,106 @@ def _current_retrieval_settings():
     return get_current_retrieval_settings(storage_api.metadata_repository)
 
 
-async def _stream_query_answer(query: str, top_k: Optional[int], category: Optional[str]):
+def _current_matter(matter: Optional[dict] = Depends(require_end_user_key)) -> dict:
+    """
+    Thin wrapper around require_end_user_key so thread/matter-aware
+    endpoints keep working when tests bypass auth via
+    conftest.py's dependency_overrides (which replaces
+    require_end_user_key with a lambda returning None): falls back to
+    the same implicit "Default" matter (id=0) require_end_user_key
+    itself falls back to for the legacy shared key.
+    """
+
+    return matter if matter is not None else {"id": 0, "name": "Default"}
+
+
+@router.post("/threads", response_model=ThreadInfo)
+def create_thread(request: ThreadCreateRequest, matter: dict = Depends(_current_matter)) -> ThreadInfo:
+    """Start a new conversation thread, scoped to the caller's Matter."""
+
+    from app.api import storage_api
+
+    thread = storage_api.metadata_repository.create_thread(matter["id"], request.title)
+
+    return ThreadInfo(
+        id=thread["id"],
+        matter_id=thread["matter_id"],
+        title=thread["title"],
+        created_at=str(thread["created_at"]),
+        updated_at=str(thread["updated_at"]),
+    )
+
+
+@router.get("/threads", response_model=ThreadListResponse)
+def list_threads(matter: dict = Depends(_current_matter)) -> ThreadListResponse:
+    """List every thread belonging to the caller's Matter - never another Matter's."""
+
+    from app.api import storage_api
+
+    threads = storage_api.metadata_repository.list_threads(matter["id"])
+
+    return ThreadListResponse(
+        threads=[
+            ThreadInfo(
+                id=t["id"],
+                matter_id=t["matter_id"],
+                title=t["title"],
+                created_at=str(t["created_at"]),
+                updated_at=str(t["updated_at"]),
+            )
+            for t in threads
+        ]
+    )
+
+
+@router.get("/threads/{thread_id}/messages", response_model=ThreadMessagesResponse)
+def get_thread_messages(thread_id: int, matter: dict = Depends(_current_matter)) -> ThreadMessagesResponse:
+    """
+    Full message history for one thread. 404s (not another Matter's
+    data leaking through) for a thread_id that exists but belongs to
+    a different Matter - see get_thread()'s isolation check.
+    """
+
+    from app.api import storage_api
+
+    thread = storage_api.metadata_repository.get_thread(thread_id, matter["id"])
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found.")
+
+    messages = storage_api.metadata_repository.list_thread_messages(thread_id)
+
+    return ThreadMessagesResponse(
+        thread_id=thread_id,
+        messages=[
+            ThreadMessageInfo(
+                id=m["id"],
+                thread_id=m["thread_id"],
+                role=m["role"],
+                content=m["content"],
+                sources=json.loads(m["sources_json"]) if m["sources_json"] else [],
+                created_at=str(m["created_at"]),
+            )
+            for m in messages
+        ],
+    )
+
+
+async def _stream_query_answer(
+    query: str,
+    top_k: Optional[int],
+    category: Optional[str],
+    matter: dict,
+    thread_id: Optional[int],
+):
+    from app.api import storage_api
+
+    repo = storage_api.metadata_repository
+
+    if thread_id is not None and repo.get_thread(thread_id, matter["id"]) is None:
+        yield _sse_event("error", {"detail": "Thread not found."})
+        yield _sse_event("done", {})
+        return
+
     settings = _current_retrieval_settings()
     resolved_top_k = top_k if top_k is not None else settings.top_k
 
@@ -156,18 +260,23 @@ async def _stream_query_answer(query: str, top_k: Optional[int], category: Optio
     )
 
     if len(results) < settings.min_chunks:
+        no_evidence_text = "Insufficient information found in the available knowledge base."
+
         yield _sse_event("sources", {"sources": []})
-        yield _sse_event(
-            "answer_chunk",
-            {"text": "Insufficient information found in the available knowledge base."},
-        )
+        yield _sse_event("answer_chunk", {"text": no_evidence_text})
+
+        if thread_id is not None:
+            repo.add_thread_message(thread_id, "user", query)
+            repo.add_thread_message(thread_id, "assistant", no_evidence_text, json.dumps([]))
+
         yield _sse_event("done", {})
         return
 
     # CITATION LOCK: built once, from this exact `results` list, and
     # sent before a single answer token exists. Nothing after this
     # point can change it - generate_answer_stream() is only ever
-    # given this same, already-fixed chunk list.
+    # given this same, already-fixed chunk list, and the thread
+    # message persisted below stores this exact list too.
     sources = [
         {
             "filename": r["filename"],
@@ -181,21 +290,35 @@ async def _stream_query_answer(query: str, top_k: Optional[int], category: Optio
     ]
     yield _sse_event("sources", {"sources": sources})
 
+    if thread_id is not None:
+        repo.add_thread_message(thread_id, "user", query)
+
+    full_answer: list[str] = []
+
     try:
         async for piece in generate_answer_stream(query, results):
+            full_answer.append(piece)
             yield _sse_event("answer_chunk", {"text": piece})
     except Exception as exc:
         yield _sse_event("error", {"detail": str(exc)})
+
+    if thread_id is not None:
+        repo.add_thread_message(
+            thread_id, "assistant", "".join(full_answer), json.dumps(sources, ensure_ascii=False)
+        )
 
     yield _sse_event("done", {})
 
 
 @router.post("/query/stream")
-async def end_user_query_stream(request: EndUserQueryRequest) -> StreamingResponse:
+async def end_user_query_stream(
+    request: EndUserQueryRequest,
+    matter: dict = Depends(_current_matter),
+) -> StreamingResponse:
     """
     Same retrieval as POST /end-user/query, but streams the generated
     answer gradually as Server-Sent Events instead of returning
-    everything at once - see app/analysis/answer_generator.py.
+    everything at once - see app/analysis/answer_generation.py.
 
     Citations are LOCKED before any answer text streams: the `sources`
     event is always the first one sent, built from the one retrieval
@@ -203,13 +326,18 @@ async def end_user_query_stream(request: EndUserQueryRequest) -> StreamingRespon
     generated only from that same fixed chunk set, so what's cited
     always matches what actually produced the answer.
 
+    Pass `thread_id` (from POST /end-user/threads) to append this Q&A
+    turn to an existing thread - it must belong to the caller's own
+    Matter, or this 404s via an "error" event rather than leaking or
+    writing into someone else's conversation.
+
     Event types: "sources" (once, first), "answer_chunk" (0+, in
-    order), "error" (0-1, only on a generation failure), "done" (once,
-    always last).
+    order), "error" (0-1, on a generation failure or an unknown/
+    foreign thread_id), "done" (once, always last).
     """
 
     return StreamingResponse(
-        _stream_query_answer(request.query, request.top_k, request.category),
+        _stream_query_answer(request.query, request.top_k, request.category, matter, request.thread_id),
         media_type="text/event-stream",
     )
 

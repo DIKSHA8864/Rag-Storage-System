@@ -148,6 +148,14 @@ class EndUserQueryRequest(BaseModel):
         None,
         description="Restrict results to one category (including its subfolders).",
     )
+    thread_id: int | None = Field(
+        None,
+        description=(
+            "POST /end-user/query/stream only: append this Q&A turn to an "
+            "existing thread (POST /end-user/threads) instead of a one-off, "
+            "stateless call. Must belong to the caller's own Matter."
+        ),
+    )
 
 
 class EndUserQueryResultChunk(BaseModel):
@@ -280,3 +288,80 @@ class DisclaimerResponse(BaseModel):
     text: str
     updated_at: str | None = None
     updated_by: str | None = None
+
+
+# ---------------------------------------------------------------------
+# Matters (app/metadata/base.py, app/security/auth.py) - isolated End
+# User identities, each with its own X-End-User-Key and its own
+# threads, invisible to every other Matter.
+# ---------------------------------------------------------------------
+
+
+class MatterCreateRequest(BaseModel):
+    """Body for POST /admin/matters."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class MatterInfo(BaseModel):
+    """One row of GET /admin/matters - never includes the API key, only its hash exists server-side."""
+
+    id: int
+    name: str
+    is_active: bool
+    created_at: str
+
+
+class MatterListResponse(BaseModel):
+    matters: list[MatterInfo]
+
+
+class MatterCreatedResponse(BaseModel):
+    """
+    Body for POST /admin/matters. `api_key` is shown here in PLAINTEXT
+    exactly once - only its SHA-256 hash is stored (app/security/auth.py's
+    hash_api_key()), so it cannot be retrieved again after this response.
+    """
+
+    id: int
+    name: str
+    api_key: str
+    created_at: str
+
+
+# ---------------------------------------------------------------------
+# Threads (app/metadata/base.py) - conversation history for
+# POST /end-user/query/stream, isolated per Matter.
+# ---------------------------------------------------------------------
+
+
+class ThreadCreateRequest(BaseModel):
+    """Body for POST /end-user/threads."""
+
+    title: str = Field("New thread", max_length=255)
+
+
+class ThreadInfo(BaseModel):
+    id: int
+    matter_id: int
+    title: str
+    created_at: str
+    updated_at: str
+
+
+class ThreadListResponse(BaseModel):
+    threads: list[ThreadInfo]
+
+
+class ThreadMessageInfo(BaseModel):
+    id: int
+    thread_id: int
+    role: str
+    content: str
+    sources: list[dict] = Field(default_factory=list)
+    created_at: str
+
+
+class ThreadMessagesResponse(BaseModel):
+    thread_id: int
+    messages: list[ThreadMessageInfo]

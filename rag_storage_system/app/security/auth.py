@@ -11,6 +11,8 @@ The existing `require_admin_key` dependency name is intentionally kept
 so storage_api.py does not need to change every protected endpoint.
 """
 
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -168,24 +170,50 @@ _end_user_key_header = APIKeyHeader(
 )
 
 
+def hash_api_key(key: str) -> str:
+    """
+    SHA-256, not a slow password hash (Argon2/bcrypt) - these are
+    high-entropy generated keys (see storage_api.py's create_matter,
+    secrets.token_urlsafe), not human-chosen passwords, so there's no
+    brute-force-guessing risk a slow hash would need to defend against.
+    """
+
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
 def require_end_user_key(
     provided_key: str | None = Depends(_end_user_key_header),
-) -> None:
+) -> dict:
     """
-    Existing separate End User authentication.
+    Resolves the caller to a Matter (an isolated End User identity -
+    see app/metadata/base.py's matters methods, POST /admin/matters):
+    {"id": int, "name": str}.
 
-    This remains independent from Owner JWT authentication.
+    Checks real per-matter keys first, then falls back to the single
+    legacy END_USER_API_KEY (config/settings.py) as an implicit
+    "Default" matter (id=0) - every existing caller and test that
+    never created a Matter keeps working unchanged; real multi-matter
+    isolation (POST /end-user/threads, etc.) is opt-in via
+    POST /admin/matters.
     """
 
-    import secrets
-
-    expected_key = get_settings().end_user_api_key
-
-    if (
-        not provided_key
-        or not secrets.compare_digest(provided_key, expected_key)
-    ):
+    if not provided_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid X-End-User-Key header.",
         )
+
+    from app.api import storage_api  # deferred: see end_user_api.py's _current_disclaimer_text() for why
+
+    matter = storage_api.metadata_repository.get_matter_by_key_hash(hash_api_key(provided_key))
+    if matter is not None:
+        return {"id": matter["id"], "name": matter["name"]}
+
+    expected_key = get_settings().end_user_api_key
+    if secrets.compare_digest(provided_key, expected_key):
+        return {"id": 0, "name": "Default"}
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Missing or invalid X-End-User-Key header.",
+    )

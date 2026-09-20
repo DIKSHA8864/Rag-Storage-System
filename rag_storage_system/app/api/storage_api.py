@@ -65,6 +65,7 @@ GET /upload-test remains available too as a plain HTML fallback.
 """
 
 import io
+import secrets
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
@@ -79,6 +80,10 @@ from app.api.schemas import (
     DisclaimerUpdateRequest,
     DocumentInfo,
     DocumentListResponse,
+    MatterCreateRequest,
+    MatterCreatedResponse,
+    MatterInfo,
+    MatterListResponse,
     MessageResponse,
     ProcessQueuedResponse,
     ProcessResult,
@@ -97,7 +102,7 @@ from app.metadata import get_metadata_repository
 from app.metadata.models import DocumentStatus
 from app.retrieval.retriever import retrieve
 from app.security.audit_log import log_audit_event
-from app.security.auth import require_admin_key
+from app.security.auth import hash_api_key, require_admin_key
 from app.security.path_security import sanitize_category_path, sanitize_path_segment
 from app.storage import get_storage_backend
 from app.vector_store import get_vector_store
@@ -358,6 +363,67 @@ def update_disclaimer(
         text=disclaimer["text"],
         updated_at=str(disclaimer["updated_at"]),
         updated_by=disclaimer["updated_by"],
+    )
+
+
+@app.get(
+    "/admin/matters",
+    response_model=MatterListResponse,
+    dependencies=[Depends(require_admin_key)],
+)
+def list_matters() -> MatterListResponse:
+    """
+    List every Matter (an isolated End User identity - its own
+    X-End-User-Key, its own threads at POST /end-user/threads,
+    invisible to every other Matter). Never returns API keys, only
+    their existence - a key can only ever be seen once, at creation.
+    """
+
+    matters = metadata_repository.list_matters()
+
+    return MatterListResponse(
+        matters=[
+            MatterInfo(
+                id=m["id"],
+                name=m["name"],
+                is_active=bool(m["is_active"]),
+                created_at=str(m["created_at"]),
+            )
+            for m in matters
+        ]
+    )
+
+
+@app.post(
+    "/admin/matters",
+    response_model=MatterCreatedResponse,
+)
+def create_matter(
+    request: MatterCreateRequest,
+    owner: dict | None = Depends(require_admin_key),
+) -> MatterCreatedResponse:
+    """
+    Create a new Matter - generates a fresh X-End-User-Key, returned
+    here in PLAINTEXT exactly once. Only its SHA-256 hash
+    (app/security/auth.py's hash_api_key()) is ever stored, so it
+    cannot be retrieved again after this response - give it to
+    whoever should authenticate as this Matter now.
+    """
+
+    api_key = secrets.token_urlsafe(32)
+    matter = metadata_repository.create_matter(request.name, hash_api_key(api_key))
+
+    log_audit_event(
+        "create_matter",
+        detail=f"matter '{request.name}' created",
+        actor=owner.get("email") if owner else "admin",
+    )
+
+    return MatterCreatedResponse(
+        id=matter["id"],
+        name=matter["name"],
+        api_key=api_key,
+        created_at=str(matter["created_at"]),
     )
 
 
