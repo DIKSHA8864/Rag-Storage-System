@@ -1,7 +1,8 @@
 """
-Tests for admin API-key and End User API-key authentication
+Tests for Owner JWT and End User API-key authentication
 (app/security/auth.py) - two separate scopes, two separate secrets,
-two separate headers.
+two separate headers/schemes (Authorization: Bearer <JWT> vs
+X-End-User-Key).
 
 Unlike every other test file, these do NOT use the autouse
 `_bypass_admin_auth` fixture from conftest.py - they clear both
@@ -14,9 +15,14 @@ from fastapi.testclient import TestClient
 
 from app.api import end_user_api, storage_api
 from app.metadata.sqlite_repository import SQLiteMetadataRepository
-from app.security.auth import require_admin_key, require_end_user_key
+from app.security.auth import create_access_token, require_admin_key, require_end_user_key
 from app.storage.local_backend import LocalStorageBackend
 from config.settings import get_settings
+
+
+def _owner_bearer_header() -> dict:
+    token = create_access_token(owner_id=1, email="owner@example.com")
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture
@@ -48,19 +54,18 @@ def client(tmp_path, monkeypatch):
     yield TestClient(storage_api.app)
 
 
-def test_request_without_api_key_is_rejected(client):
+def test_request_without_bearer_token_is_rejected(client):
     response = client.get("/categories")
     assert response.status_code == 401
 
 
-def test_request_with_wrong_api_key_is_rejected(client):
-    response = client.get("/categories", headers={"X-API-Key": "wrong-key"})
+def test_request_with_invalid_bearer_token_is_rejected(client):
+    response = client.get("/categories", headers={"Authorization": "Bearer not-a-real-token"})
     assert response.status_code == 401
 
 
-def test_request_with_correct_api_key_succeeds(client):
-    correct_key = get_settings().admin_api_key
-    response = client.get("/categories", headers={"X-API-Key": correct_key})
+def test_request_with_valid_bearer_token_succeeds(client):
+    response = client.get("/categories", headers=_owner_bearer_header())
     assert response.status_code == 200
 
 
@@ -79,15 +84,14 @@ def test_docs_and_openapi_do_not_require_api_key(client):
     assert client.get("/openapi.json").status_code == 200
 
 
-def test_mutating_endpoints_require_api_key(client):
+def test_mutating_endpoints_require_bearer_token(client):
     """Spot-check a representative write endpoint, not just reads."""
 
     response = client.post("/categories", json={"name": "Contracts"})
     assert response.status_code == 401
 
-    correct_key = get_settings().admin_api_key
     response = client.post(
-        "/categories", json={"name": "Contracts"}, headers={"X-API-Key": correct_key}
+        "/categories", json={"name": "Contracts"}, headers=_owner_bearer_header()
     )
     assert response.status_code == 200
 
@@ -120,17 +124,15 @@ def test_end_user_route_with_correct_end_user_key_succeeds(client):
     assert response.status_code == 200
 
 
-def test_admin_key_on_x_api_key_header_does_not_grant_end_user_access(client):
+def test_owner_bearer_token_does_not_grant_end_user_access(client):
     """
-    The admin key is a real, valid credential - just for the wrong
-    header/scope. Presenting it as X-API-Key (its own header) at an
-    End User route must still fail, since that route only ever checks
-    X-End-User-Key.
+    The Owner's Bearer token is a real, valid credential - just for
+    the wrong scope. Presenting it at an End User route must still
+    fail, since that route only ever checks X-End-User-Key.
     """
 
-    admin_key = get_settings().admin_api_key
     response = client.post(
-        "/end-user/query", json={"query": "hello"}, headers={"X-API-Key": admin_key}
+        "/end-user/query", json={"query": "hello"}, headers=_owner_bearer_header()
     )
     assert response.status_code == 401
 
@@ -143,11 +145,11 @@ def test_end_user_key_does_not_grant_admin_access(client):
     assert response.status_code == 401
 
 
-def test_admin_key_as_end_user_key_header_is_rejected(client):
-    """Even the admin key's own value, sent in the End User's header, must not match."""
+def test_owner_bearer_token_as_end_user_key_header_is_rejected(client):
+    """Even the Owner's own JWT, sent in the End User's header, must not match."""
 
-    admin_key = get_settings().admin_api_key
+    token = _owner_bearer_header()["Authorization"].removeprefix("Bearer ")
     response = client.post(
-        "/end-user/query", json={"query": "hello"}, headers={"X-End-User-Key": admin_key}
+        "/end-user/query", json={"query": "hello"}, headers={"X-End-User-Key": token}
     )
     assert response.status_code == 401
