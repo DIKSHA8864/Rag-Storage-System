@@ -111,7 +111,7 @@ class ClaudeNarrativeGenerator(NarrativeGenerator):
         self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
         self._model = settings.analysis_model
 
-        def generate(self, comparison: ComparisonResult) -> ReportNarrative:
+    def generate(self, comparison: ComparisonResult) -> ReportNarrative:
         from app.api import storage_api
         from app.prompts import get_active_prompt
 

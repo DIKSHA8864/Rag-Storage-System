@@ -88,6 +88,11 @@ from app.api.schemas import (
     ProcessQueuedResponse,
     ProcessResult,
     ProcessStatusResponse,
+    PromptVersionCreateRequest,
+    PromptVersionInfo,
+    PromptVersionListResponse,
+    RetrievalSettingsResponse,
+    RetrievalSettingsUpdateRequest,
     SearchRequest,
     SearchResponse,
     SearchResultChunk,
@@ -101,6 +106,7 @@ from app.jobs.queue import get_job_queue
 from app.metadata import get_metadata_repository
 from app.metadata.models import DocumentStatus
 from app.retrieval.retriever import retrieve
+from app.retrieval_settings import DEFAULT_MIN_CHUNKS, DEFAULT_SCORE_THRESHOLD, DEFAULT_TOP_K
 from app.security.audit_log import log_audit_event
 from app.security.auth import hash_api_key, require_admin_key
 from app.security.path_security import sanitize_category_path, sanitize_path_segment
@@ -424,6 +430,155 @@ def create_matter(
         name=matter["name"],
         api_key=api_key,
         created_at=str(matter["created_at"]),
+    )
+
+
+@app.get(
+    "/admin/retrieval-settings",
+    response_model=RetrievalSettingsResponse,
+    dependencies=[Depends(require_admin_key)],
+)
+def get_retrieval_settings() -> RetrievalSettingsResponse:
+    """Return the Top K / score threshold / minimum chunks currently used by POST /end-user/query and /end-user/query/stream."""
+
+    settings = metadata_repository.get_retrieval_settings()
+
+    if settings is None:
+        return RetrievalSettingsResponse(
+            top_k=DEFAULT_TOP_K,
+            score_threshold=DEFAULT_SCORE_THRESHOLD,
+            min_chunks=DEFAULT_MIN_CHUNKS,
+        )
+
+    return RetrievalSettingsResponse(
+        top_k=settings["top_k"],
+        score_threshold=settings["score_threshold"],
+        min_chunks=settings["min_chunks"],
+        updated_at=str(settings["updated_at"]),
+        updated_by=settings["updated_by"],
+    )
+
+
+@app.put(
+    "/admin/retrieval-settings",
+    response_model=RetrievalSettingsResponse,
+)
+def update_retrieval_settings(
+    request: RetrievalSettingsUpdateRequest,
+    owner: dict | None = Depends(require_admin_key),
+) -> RetrievalSettingsResponse:
+    """
+    Update Top K / score threshold / minimum chunks for the hybrid
+    retrieval pipeline - takes effect on the very next
+    POST /end-user/query or /end-user/query/stream call.
+    """
+
+    updated_by = owner.get("email") if owner else None
+    settings = metadata_repository.update_retrieval_settings(
+        top_k=request.top_k,
+        score_threshold=request.score_threshold,
+        min_chunks=request.min_chunks,
+        updated_by=updated_by,
+    )
+
+    log_audit_event("update_retrieval_settings", actor=updated_by or "admin")
+
+    return RetrievalSettingsResponse(
+        top_k=settings["top_k"],
+        score_threshold=settings["score_threshold"],
+        min_chunks=settings["min_chunks"],
+        updated_at=str(settings["updated_at"]),
+        updated_by=settings["updated_by"],
+    )
+
+
+@app.get(
+    "/admin/prompts/{name}",
+    response_model=PromptVersionListResponse,
+    dependencies=[Depends(require_admin_key)],
+)
+def list_prompt_versions(name: str) -> PromptVersionListResponse:
+    """
+    List every saved version of a system prompt, newest first - `name`
+    is "narrative_system_prompt" (app/analysis/claude_narrative.py) or
+    "answer_system_prompt" (app/analysis/answer_generation.py).
+    """
+
+    versions = metadata_repository.list_prompt_versions(name)
+
+    return PromptVersionListResponse(
+        name=name,
+        versions=[
+            PromptVersionInfo(
+                name=v["name"],
+                version=v["version"],
+                text=v["text"],
+                is_active=bool(v["is_active"]),
+                created_at=str(v["created_at"]),
+                created_by=v["created_by"],
+            )
+            for v in versions
+        ],
+    )
+
+
+@app.post(
+    "/admin/prompts/{name}",
+    response_model=PromptVersionInfo,
+)
+def create_prompt_version(
+    name: str,
+    request: PromptVersionCreateRequest,
+    owner: dict | None = Depends(require_admin_key),
+) -> PromptVersionInfo:
+    """Save and activate a new version of a system prompt - the previous version stays in history, rollback-able."""
+
+    updated_by = owner.get("email") if owner else None
+    version = metadata_repository.create_prompt_version(name, request.text, created_by=updated_by)
+
+    log_audit_event(
+        "create_prompt_version", detail=f"{name} v{version['version']}", actor=updated_by or "admin"
+    )
+
+    return PromptVersionInfo(
+        name=version["name"],
+        version=version["version"],
+        text=version["text"],
+        is_active=bool(version["is_active"]),
+        created_at=str(version["created_at"]),
+        created_by=version["created_by"],
+    )
+
+
+@app.post(
+    "/admin/prompts/{name}/activate/{version}",
+    response_model=PromptVersionInfo,
+)
+def activate_prompt_version(
+    name: str,
+    version: int,
+    owner: dict | None = Depends(require_admin_key),
+) -> PromptVersionInfo:
+    """Roll back (or forward) to a previously saved version - makes it active again."""
+
+    try:
+        activated = metadata_repository.activate_prompt_version(name, version)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    log_audit_event(
+        "activate_prompt_version",
+        detail=f"{name} -> v{version}",
+        actor=owner.get("email") if owner else "admin",
+    )
+
+    return PromptVersionInfo(
+        name=activated["name"],
+        version=activated["version"],
+        text=activated["text"],
+        is_active=True,
+        created_at=str(activated["created_at"]),
+        created_by=activated["created_by"],
     )
 
 
