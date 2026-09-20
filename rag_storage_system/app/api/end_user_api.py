@@ -56,7 +56,7 @@ import json
 
 from fastapi.responses import StreamingResponse
 
-from app.analysis.answer_generator import generate_answer_stream
+from app.analysis.answer_generation import generate_answer_stream
 from app.retrieval_settings import get_current_retrieval_settings
 router = APIRouter(
     prefix="/end-user",
@@ -71,9 +71,17 @@ def end_user_query(request: EndUserQueryRequest) -> EndUserQueryResponse:
     Ask a question against the knowledge base and get back the most
     relevant chunks (same hybrid retrieval pipeline as POST /search -
     app/retrieval/retriever.py), scoped to the End User key.
+
+    Top K is the Owner-configured Retrieval Settings value
+    (GET/PUT /admin/retrieval-settings) unless `top_k` is explicitly
+    passed in this request, which overrides it for this call only.
     """
 
-    results = retrieve(request.query, top_k=request.top_k, category=request.category)
+    resolved_top_k = request.top_k
+    if resolved_top_k is None:
+        resolved_top_k = _current_retrieval_settings().top_k
+
+    results = retrieve(request.query, top_k=resolved_top_k, category=request.category)
 
     return EndUserQueryResponse(
         query=request.query,

@@ -138,7 +138,12 @@ class EndUserQueryRequest(BaseModel):
     """Body for POST /end-user/query."""
 
     query: str = Field(..., min_length=1, max_length=1000)
-    top_k: int = Field(5, ge=1, le=50)
+    top_k: int | None = Field(
+        None,
+        ge=1,
+        le=50,
+        description="Overrides the Owner-configured Top K (GET /admin/retrieval-settings) for this request only.",
+    )
     category: str | None = Field(
         None,
         description="Restrict results to one category (including its subfolders).",

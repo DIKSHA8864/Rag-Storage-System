@@ -314,3 +314,162 @@ class PostgresMetadataRepository(MetadataRepository):
             ).fetchone()
 
         return dict(row)
+
+    # ------------------------------------------------------------------
+    # Retrieval Settings
+    # ------------------------------------------------------------------
+
+    def get_retrieval_settings(self) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT top_k, score_threshold, min_chunks, updated_at, updated_by "
+                "FROM retrieval_settings WHERE id = 1"
+            ).fetchone()
+
+            return dict(row) if row else None
+
+    def update_retrieval_settings(
+        self,
+        top_k: int,
+        score_threshold: float,
+        min_chunks: int,
+        updated_by: Optional[str] = None,
+    ) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO retrieval_settings (id, top_k, score_threshold, min_chunks, updated_by)
+                VALUES (1, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    top_k = excluded.top_k,
+                    score_threshold = excluded.score_threshold,
+                    min_chunks = excluded.min_chunks,
+                    updated_at = now(),
+                    updated_by = excluded.updated_by
+                RETURNING top_k, score_threshold, min_chunks, updated_at, updated_by
+                """,
+                (top_k, score_threshold, min_chunks, updated_by),
+            ).fetchone()
+
+        return dict(row)
+
+    # ------------------------------------------------------------------
+    # Threads
+    # ------------------------------------------------------------------
+
+    def create_thread(self, matter_id: int, title: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO threads (matter_id, title) VALUES (%s, %s) "
+                "RETURNING id, matter_id, title, created_at, updated_at",
+                (matter_id, title),
+            ).fetchone()
+        return dict(row)
+
+    def list_threads(self, matter_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM threads WHERE matter_id = %s ORDER BY updated_at DESC", (matter_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_thread(self, thread_id: int, matter_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM threads WHERE id = %s AND matter_id = %s", (thread_id, matter_id)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def add_thread_message(
+        self, thread_id: int, role: str, content: str, sources_json: Optional[str] = None
+    ) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO thread_messages (thread_id, role, content, sources_json) "
+                "VALUES (%s, %s, %s, %s) "
+                "RETURNING id, thread_id, role, content, sources_json, created_at",
+                (thread_id, role, content, sources_json),
+            ).fetchone()
+            conn.execute("UPDATE threads SET updated_at = now() WHERE id = %s", (thread_id,))
+        return dict(row)
+
+    def list_thread_messages(self, thread_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM thread_messages WHERE thread_id = %s ORDER BY id", (thread_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Matters
+    # ------------------------------------------------------------------
+
+    def get_matter_by_key_hash(self, api_key_hash: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM matters WHERE api_key_hash = %s AND is_active = TRUE", (api_key_hash,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def create_matter(self, name: str, api_key_hash: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO matters (name, api_key_hash) VALUES (%s, %s) "
+                "RETURNING id, name, api_key_hash, is_active, created_at",
+                (name, api_key_hash),
+            ).fetchone()
+        return dict(row)
+
+    def list_matters(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM matters ORDER BY name").fetchall()
+        return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Prompt Versions
+    # ------------------------------------------------------------------
+
+    def get_active_prompt_version(self, name: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM prompt_versions WHERE name = %s AND is_active = TRUE", (name,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_prompt_versions(self, name: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM prompt_versions WHERE name = %s ORDER BY version DESC", (name,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def create_prompt_version(self, name: str, text: str, created_by: Optional[str] = None) -> dict:
+        with self._connect() as conn:
+            next_version = conn.execute(
+                "SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM prompt_versions WHERE name = %s",
+                (name,),
+            ).fetchone()["next_version"]
+
+            conn.execute("UPDATE prompt_versions SET is_active = FALSE WHERE name = %s", (name,))
+            row = conn.execute(
+                "INSERT INTO prompt_versions (name, version, text, is_active, created_by) "
+                "VALUES (%s, %s, %s, TRUE, %s) "
+                "RETURNING name, version, text, is_active, created_at, created_by",
+                (name, next_version, text, created_by),
+            ).fetchone()
+        return dict(row)
+
+    def activate_prompt_version(self, name: str, version: int) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM prompt_versions WHERE name = %s AND version = %s", (name, version)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"No such prompt version: {name} v{version}")
+
+            conn.execute("UPDATE prompt_versions SET is_active = FALSE WHERE name = %s", (name,))
+            conn.execute(
+                "UPDATE prompt_versions SET is_active = TRUE WHERE name = %s AND version = %s",
+                (name, version),
+            )
+        return dict(row)

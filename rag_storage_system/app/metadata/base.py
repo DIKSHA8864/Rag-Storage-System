@@ -109,7 +109,33 @@ class MetadataRepository(ABC):
     def update_disclaimer(self, text: str, updated_by: Optional[str] = None) -> dict:
         """Create or replace the single disclaimer row and return it."""
         raise NotImplementedError
-        # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Retrieval Settings
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def get_retrieval_settings(self) -> Optional[dict]:
+        """
+        Returns the Owner-edited retrieval settings as
+        {"top_k": int, "score_threshold": float, "min_chunks": int,
+        "updated_at": ..., "updated_by": Optional[str]}, or None if
+        the Owner has never saved any yet.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_retrieval_settings(
+        self,
+        top_k: int,
+        score_threshold: float,
+        min_chunks: int,
+        updated_by: Optional[str] = None,
+    ) -> dict:
+        """Create or replace the single retrieval-settings row and return it."""
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
     # Threads (isolated per matter - see app/matters.py)
     # ------------------------------------------------------------------
 
@@ -135,7 +161,28 @@ class MetadataRepository(ABC):
     @abstractmethod
     def list_thread_messages(self, thread_id: int) -> list[dict]:
         raise NotImplementedError
-        @abstractmethod
+
+    # ------------------------------------------------------------------
+    # Matters (isolated End User identities - see app/security/auth.py)
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def get_matter_by_key_hash(self, api_key_hash: str) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_matter(self, name: str, api_key_hash: str) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_matters(self) -> list[dict]:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Prompt Versions
+    # ------------------------------------------------------------------
+
+    @abstractmethod
     def get_active_prompt_version(self, name: str) -> Optional[dict]:
         raise NotImplementedError
 

@@ -268,7 +268,9 @@
       $("analyze-btn").disabled = false;
       $("spinner").classList.add("hidden");
     }
-      $("ask-btn").addEventListener("click", async () => {
+  });
+
+  $("ask-btn").addEventListener("click", async () => {
     const key = $("end-user-key").value.trim();
     const errorEl = $("ask-error");
     errorEl.textContent = "";

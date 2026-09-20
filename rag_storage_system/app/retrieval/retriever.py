@@ -28,10 +28,19 @@ from app.retrieval.search import keyword_search, vector_search
 _CANDIDATE_MULTIPLIER = 4
 
 
-def retrieve(query: str, top_k: int = 5, category: Optional[str] = None) -> list[dict]:
+def retrieve(
+    query: str,
+    top_k: int = 5,
+    category: Optional[str] = None,
+    score_threshold: float = 0.0,
+) -> list[dict]:
     """
     Run the full hybrid retrieval pipeline for `query` and return its
-    top_k most relevant chunks (highest final_score first).
+    top_k most relevant chunks (highest final_score first), dropping
+    any chunk whose final_score is below `score_threshold` (default
+    0.0 keeps every existing caller's behavior unchanged - see
+    app/retrieval_settings.py for where a non-zero threshold comes
+    from).
 
     Each result includes chunk_id, document_id, category, filename,
     chunk_text, metadata, vector_score, keyword_score, and
@@ -45,4 +54,6 @@ def retrieve(query: str, top_k: int = 5, category: Optional[str] = None) -> list
     vector_hits = vector_search(query, top_k=candidate_count, category=category)
     keyword_hits = keyword_search(query, top_k=candidate_count, category=category)
 
-    return rerank(vector_hits, keyword_hits, top_k=top_k)
+    ranked = rerank(vector_hits, keyword_hits, top_k=top_k)
+
+    return [chunk for chunk in ranked if chunk["final_score"] >= score_threshold]
