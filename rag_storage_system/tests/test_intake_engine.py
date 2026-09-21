@@ -126,3 +126,28 @@ def test_complete_state_keeps_repeating_the_closing_message():
 
     assert result.done is True
     assert result.context.current_state == InterviewState.COMPLETE.value
+
+
+def test_mandatory_sweep_covers_all_blueprint_required_topics():
+    """AshiLegal Blueprint Phase 3: the ancillary sweep must ask about
+    timely wages, overtime, meal/rest breaks, wage statements, protected
+    complaints/whistleblowing, leave, and accommodation - regardless of
+    the client's stated issue - so none of these are ever missed."""
+
+    required_topics = {
+        "timely_wages",
+        "overtime",
+        "meal_rest_breaks",
+        "wage_statements",
+        "protected_complaints",
+        "leave",
+        "accommodation",
+    }
+
+    sweep_keys = {question.key for question in MANDATORY_SWEEP_QUESTIONS}
+
+    assert required_topics.issubset(sweep_keys)
+
+    for question in MANDATORY_SWEEP_QUESTIONS:
+        assert question.prompt_en.strip()
+        assert question.prompt_es.strip()

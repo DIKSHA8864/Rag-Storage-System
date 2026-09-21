@@ -26,6 +26,16 @@ from app.metadata.base import MetadataRepository
 from app.report.rag_analysis import build_rag_sections, gather_fact_support
 from app.report.schema import ExtractedInputSummary, ReportCitation, StructuredReport, TimelineEntry
 
+# Labels for app/intake_engine categories (see engine.py's
+# _category_for_state()) so Guided Intake Engine answers - mandatory
+# sweep, protected activity, and the general narrative - are readable
+# once folded into the same fact list as uploaded-document extractions.
+_INTAKE_FACT_CATEGORY_LABELS = {
+    "mandatory_sweep": "Mandatory Sweep",
+    "protected_activity": "Protected Activity",
+    "general": "Client Narrative",
+}
+
 
 def build_structured_report(
     intake_session_id: int, matter_name: str, metadata_repository: MetadataRepository
@@ -54,7 +64,15 @@ def build_structured_report(
     else:
         summary += " No content has been extracted yet."
 
+    intake_facts = metadata_repository.list_intake_facts(intake_session_id)
+
     fact_texts = [item.text for item in extracted_inputs if item.text.strip()]
+    fact_texts += [
+        f"[{_INTAKE_FACT_CATEGORY_LABELS.get(fact['category'], fact['category'])}] "
+        f"{fact['fact_key']}: {fact['fact_value']}"
+        for fact in intake_facts
+        if fact["fact_value"].strip()
+    ]
     fact_supports = gather_fact_support(fact_texts, metadata_repository) if fact_texts else []
     rag_sections = build_rag_sections(fact_supports)
 
