@@ -143,11 +143,7 @@ app = FastAPI(
     ),
     version="0.3.0",
 )
-app.include# End User API - a separate scope (X-End-User-Key, not X-API-Key) on
-# top of the same pipeline. See app/api/end_user_api.py.
-from app.api.end_user_api import router as end_user_router  # noqa: E402
-
-app.include_router(end_user_router)_router(auth_router)
+app.include_router(auth_router)
 
 
 # ----------------------------------------------------------------------
@@ -191,10 +187,17 @@ app.openapi = _openapi_with_binary_array_format
 
 # End User API - a separate scope (X-End-User-Key, not X-API-Key) on
 # top of the same pipeline. See app/api/end_user_api.py.
+from app.api.end_user_api import router as end_user_router  # noqa: E402
+
+app.include_router(end_user_router)
+
+# Client Intake API - Phase 3 foundation, same X-End-User-Key scope as
+# end_user_router. See app/api/intake_api.py.
 from app.api.intake_api import router as intake_router  # noqa: E402
 
 app.include_router(intake_router)
 
+# Guided Intake Engine - same X-End-User-Key scope as intake_router. See app/api/interview_api.py.
 from app.api.interview_api import router as interview_router  # noqa: E402
 
 app.include_router(interview_router)

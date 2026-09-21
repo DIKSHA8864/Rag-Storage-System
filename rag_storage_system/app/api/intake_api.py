@@ -300,7 +300,8 @@ def download_intake_report(report_id: int, matter: dict = Depends(current_matter
 
     if report is None or repo.get_intake_session(report["intake_session_id"], matter["id"]) is None:
         raise HTTPException(status_code=404, detail="Report not found.")
-        review = repo.get_report_review(report["id"])
+
+    review = repo.get_report_review(report["id"])
     if review is None or review["status"] != "approved":
         raise HTTPException(
             status_code=403,
