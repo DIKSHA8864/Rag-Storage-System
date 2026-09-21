@@ -132,7 +132,9 @@ def test_generate_and_download_docx_report(client):
     generated = client.post(f"/end-user/intake/sessions/{session_id}/report", json={"format": "docx"})
     assert generated.status_code == 200
     report_id = generated.json()["id"]
-
+    
+    approved = client.post(f"/admin/reports/{report_id}/approve")
+    assert approved.status_code == 200
     downloaded = client.get(f"/end-user/intake/reports/{report_id}/download")
     assert downloaded.status_code == 200
     assert downloaded.headers["content-type"] == (

@@ -32,6 +32,34 @@ def report_sections(report: StructuredReport) -> list[tuple[str, list[str]]]:
             )
         sections.append(("Submitted Materials", paragraphs))
 
+    if report.supporting_facts:
+        sections.append(("Supporting Facts", report.supporting_facts))
+
+    if report.potential_causes_of_action:
+        sections.append(("Potential Causes of Action", report.potential_causes_of_action))
+
+    if report.strengths:
+        sections.append(("Strengths", report.strengths))
+
+    if report.weaknesses:
+        sections.append(("Weaknesses", report.weaknesses))
+
+    if report.missing_information:
+        sections.append(("Missing Information / Documents", report.missing_information))
+
+    if report.citations:
+        sections.append(
+            (
+                "Citations",
+                [
+                    c.filename
+                    + (f" ({c.category})" if c.category else "")
+                    + (f" - section {c.section}" if c.section else "")
+                    for c in report.citations
+                ],
+            )
+        )
+
     sections.append(("Attorney Review Notice", [report.attorney_review_notice]))
     sections.append(("Disclaimer", [report.disclaimer_text]))
 

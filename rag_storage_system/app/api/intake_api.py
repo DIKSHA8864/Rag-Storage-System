@@ -57,7 +57,7 @@ from app.report.docx_renderer import DocxReportRenderer
 from app.report.image_renderer import ImageReportRenderer
 from app.report.pdf_renderer import PdfReportRenderer
 from app.security.auth import current_matter, require_end_user_key
-
+from app.api.intake_common import get_owned_intake_session as _get_owned_session
 router = APIRouter(
     prefix="/end-user/intake",
     tags=["end-user-intake"],
@@ -102,12 +102,6 @@ def _uploaded_input_info(row: dict) -> UploadedInputInfo:
         created_at=str(row["created_at"]),
     )
 
-
-def _get_owned_session(repo, session_id: int, matter: dict) -> dict:
-    session = repo.get_intake_session(session_id, matter["id"])
-    if session is None:
-        raise HTTPException(status_code=404, detail="Intake session not found.")
-    return session
 
 
 @router.post("/sessions", response_model=IntakeSessionInfo)
@@ -291,6 +285,7 @@ def generate_intake_report(
 
     report = repo.create_report(session_id, request.format, stored["category"], stored["stored_filename"])
     repo.add_timeline_event(session_id, "report_generated", f"{request.format.upper()} report generated.")
+    repo.create_report_review(report["id"])
 
     return ReportInfo(id=report["id"], intake_session_id=session_id, format=report["format"], created_at=str(report["created_at"]))
 
@@ -305,7 +300,12 @@ def download_intake_report(report_id: int, matter: dict = Depends(current_matter
 
     if report is None or repo.get_intake_session(report["intake_session_id"], matter["id"]) is None:
         raise HTTPException(status_code=404, detail="Report not found.")
-
+        review = repo.get_report_review(report["id"])
+    if review is None or review["status"] != "approved":
+        raise HTTPException(
+            status_code=403,
+            detail="This report has not yet been approved by the Owner/attorney for release.",
+        )
     storage_backend = get_intake_storage_backend()
     with storage_backend.open_file(report["stored_category"], report["stored_filename"]) as f:
         content = f.read()

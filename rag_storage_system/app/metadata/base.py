@@ -301,3 +301,72 @@ class MetadataRepository(ABC):
     @abstractmethod
     def list_reports(self, intake_session_id: int) -> list[dict]:
         raise NotImplementedError
+        # ------------------------------------------------------------------
+    # Guided Intake Engine - Interview State (Phase 3 - app/intake_engine/)
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_interview_state(self, intake_session_id: int) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_interview_state(self, intake_session_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_interview_state(
+        self,
+        intake_session_id: int,
+        language: Optional[str],
+        current_state: str,
+        current_step_index: int,
+        terms_accepted_at: Optional[str],
+        terms_version: Optional[str],
+        mandatory_sweep_completed: bool,
+    ) -> dict:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Guided Intake Engine - Messages
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def add_intake_message(self, intake_session_id: int, role: str, content: str) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_intake_messages(self, intake_session_id: int) -> list[dict]:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Guided Intake Engine - Facts
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def add_intake_fact(self, intake_session_id: int, category: str, fact_key: str, fact_value: str) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_intake_facts(self, intake_session_id: int, category: Optional[str] = None) -> list[dict]:
+        raise NotImplementedError
+        # ------------------------------------------------------------------
+    # Report Review Queue (Owner approval gate for Client-facing reports)
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_report_review(self, report_id: int) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_report_review(self, report_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_report_reviews(self, status: Optional[str] = None) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_report_review(
+        self, report_id: int, status: str, reviewed_by: Optional[str] = None, rejection_reason: Optional[str] = None
+    ) -> dict:
+        raise NotImplementedError

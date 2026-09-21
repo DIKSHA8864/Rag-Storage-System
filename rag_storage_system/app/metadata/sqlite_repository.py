@@ -144,6 +144,45 @@ CREATE TABLE IF NOT EXISTS reports (
     stored_filename TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS interview_state (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    intake_session_id INTEGER NOT NULL UNIQUE REFERENCES intake_sessions(id) ON DELETE CASCADE,
+    language TEXT,
+    terms_accepted_at TEXT,
+    terms_version TEXT,
+    current_state TEXT NOT NULL DEFAULT 'language_selection',
+    current_step_index INTEGER NOT NULL DEFAULT 0,
+    mandatory_sweep_completed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS intake_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    intake_session_id INTEGER NOT NULL REFERENCES intake_sessions(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS intake_facts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    intake_session_id INTEGER NOT NULL REFERENCES intake_sessions(id) ON DELETE CASCADE,
+    category TEXT NOT NULL,
+    fact_key TEXT NOT NULL,
+    fact_value TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS report_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_id INTEGER NOT NULL UNIQUE REFERENCES reports(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending_review',
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    rejection_reason TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -791,4 +830,159 @@ class SQLiteMetadataRepository(MetadataRepository):
             rows = conn.execute(
                 "SELECT * FROM reports WHERE intake_session_id = ? ORDER BY id", (intake_session_id,)
             ).fetchall()
+            return [dict(row) for row in rows]
+        # ------------------------------------------------------------------
+    # Guided Intake Engine - Interview State
+    # ------------------------------------------------------------------
+        # ------------------------------------------------------------------
+    # Report Review Queue
+    # ------------------------------------------------------------------
+
+    def create_report_review(self, report_id: int) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO report_reviews (report_id, status, created_at, updated_at) "
+                "VALUES (?, 'pending_review', ?, ?)",
+                (report_id, now, now),
+            )
+            return {
+                "id": cursor.lastrowid, "report_id": report_id, "status": "pending_review",
+                "reviewed_by": None, "reviewed_at": None, "rejection_reason": None,
+                "created_at": now, "updated_at": now,
+            }
+
+    def get_report_review(self, report_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM report_reviews WHERE report_id = ?", (report_id,)).fetchone()
+            return dict(row) if row else None
+
+    def list_report_reviews(self, status: Optional[str] = None) -> list[dict]:
+        with self._connect() as conn:
+            if status:
+                rows = conn.execute(
+                    "SELECT * FROM report_reviews WHERE status = ? ORDER BY id", (status,)
+                ).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM report_reviews ORDER BY id").fetchall()
+            return [dict(row) for row in rows]
+
+    def update_report_review(
+        self, report_id: int, status: str, reviewed_by: Optional[str] = None, rejection_reason: Optional[str] = None
+    ) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE report_reviews
+                SET status = ?, reviewed_by = ?, reviewed_at = ?, rejection_reason = ?, updated_at = ?
+                WHERE report_id = ?
+                """,
+                (status, reviewed_by, now, rejection_reason, now, report_id),
+            )
+            row = conn.execute("SELECT * FROM report_reviews WHERE report_id = ?", (report_id,)).fetchone()
+            return dict(row)
+    def create_interview_state(self, intake_session_id: int) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO interview_state (
+                    intake_session_id, language, terms_accepted_at, terms_version,
+                    current_state, current_step_index, mandatory_sweep_completed, created_at, updated_at
+                ) VALUES (?, NULL, NULL, NULL, 'language_selection', 0, 0, ?, ?)
+                """,
+                (intake_session_id, now, now),
+            )
+            return {
+                "id": cursor.lastrowid, "intake_session_id": intake_session_id, "language": None,
+                "terms_accepted_at": None, "terms_version": None, "current_state": "language_selection",
+                "current_step_index": 0, "mandatory_sweep_completed": False, "created_at": now, "updated_at": now,
+            }
+
+    def get_interview_state(self, intake_session_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM interview_state WHERE intake_session_id = ?", (intake_session_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def update_interview_state(
+        self,
+        intake_session_id: int,
+        language: Optional[str],
+        current_state: str,
+        current_step_index: int,
+        terms_accepted_at: Optional[str],
+        terms_version: Optional[str],
+        mandatory_sweep_completed: bool,
+    ) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE interview_state
+                SET language = ?, current_state = ?, current_step_index = ?,
+                    terms_accepted_at = ?, terms_version = ?, mandatory_sweep_completed = ?, updated_at = ?
+                WHERE intake_session_id = ?
+                """,
+                (language, current_state, current_step_index, terms_accepted_at, terms_version,
+                 int(mandatory_sweep_completed), now, intake_session_id),
+            )
+            row = conn.execute(
+                "SELECT * FROM interview_state WHERE intake_session_id = ?", (intake_session_id,)
+            ).fetchone()
+            return dict(row)
+
+    # ------------------------------------------------------------------
+    # Guided Intake Engine - Messages
+    # ------------------------------------------------------------------
+
+    def add_intake_message(self, intake_session_id: int, role: str, content: str) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO intake_messages (intake_session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+                (intake_session_id, role, content, now),
+            )
+            return {
+                "id": cursor.lastrowid, "intake_session_id": intake_session_id,
+                "role": role, "content": content, "created_at": now,
+            }
+
+    def list_intake_messages(self, intake_session_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM intake_messages WHERE intake_session_id = ? ORDER BY id", (intake_session_id,)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Guided Intake Engine - Facts
+    # ------------------------------------------------------------------
+
+    def add_intake_fact(self, intake_session_id: int, category: str, fact_key: str, fact_value: str) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO intake_facts (intake_session_id, category, fact_key, fact_value, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (intake_session_id, category, fact_key, fact_value, now),
+            )
+            return {
+                "id": cursor.lastrowid, "intake_session_id": intake_session_id, "category": category,
+                "fact_key": fact_key, "fact_value": fact_value, "created_at": now,
+            }
+
+    def list_intake_facts(self, intake_session_id: int, category: Optional[str] = None) -> list[dict]:
+        with self._connect() as conn:
+            if category:
+                rows = conn.execute(
+                    "SELECT * FROM intake_facts WHERE intake_session_id = ? AND category = ? ORDER BY id",
+                    (intake_session_id, category),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM intake_facts WHERE intake_session_id = ? ORDER BY id", (intake_session_id,)
+                ).fetchall()
             return [dict(row) for row in rows]

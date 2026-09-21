@@ -11,13 +11,20 @@ slot in later as a swappable step here, the same way
 app/analysis/base.py's NarrativeGenerator does for Phase 2 - it would
 still only ever describe this same already-gathered data, never format
 the final report.
+
+RAG-backed grounding (potential causes of action, strengths/
+weaknesses, missing information, library-only citations) is delegated
+to app/report/rag_analysis.py - see that module's docstring for how it
+retrieves against the Owner's library and degrades gracefully if
+retrieval is unavailable.
 """
 
 from datetime import datetime, timezone
 
 from app.disclaimer import get_current_disclaimer_text
 from app.metadata.base import MetadataRepository
-from app.report.schema import ExtractedInputSummary, StructuredReport, TimelineEntry
+from app.report.rag_analysis import build_rag_sections, gather_fact_support
+from app.report.schema import ExtractedInputSummary, ReportCitation, StructuredReport, TimelineEntry
 
 
 def build_structured_report(
@@ -47,6 +54,10 @@ def build_structured_report(
     else:
         summary += " No content has been extracted yet."
 
+    fact_texts = [item.text for item in extracted_inputs if item.text.strip()]
+    fact_supports = gather_fact_support(fact_texts, metadata_repository) if fact_texts else []
+    rag_sections = build_rag_sections(fact_supports)
+
     return StructuredReport(
         intake_session_id=intake_session_id,
         matter_name=matter_name,
@@ -59,5 +70,11 @@ def build_structured_report(
             for row in timeline_rows
         ],
         extracted_inputs=extracted_inputs,
+        citations=[ReportCitation(**c) for c in rag_sections["citations"]],
+        potential_causes_of_action=rag_sections["potential_causes_of_action"],
+        supporting_facts=rag_sections["supporting_facts"],
+        strengths=rag_sections["strengths"],
+        weaknesses=rag_sections["weaknesses"],
+        missing_information=rag_sections["missing_information"],
         disclaimer_text=get_current_disclaimer_text(metadata_repository),
     )

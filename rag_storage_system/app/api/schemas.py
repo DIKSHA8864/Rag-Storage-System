@@ -508,3 +508,106 @@ class ReportInfo(BaseModel):
     intake_session_id: int
     format: str
     created_at: str
+
+
+# ---------------------------------------------------------------------
+# Guided Intake Engine (app/intake_engine/, app/api/interview_api.py) -
+# a conversational, state-machine-driven interview layered on top of
+# an intake session: language selection, terms acceptance, a mandatory
+# ancillary sweep, a protected-activity section, and a closing
+# narrative - fully resumable via GET .../interview.
+# ---------------------------------------------------------------------
+
+
+class InterviewMessageInfo(BaseModel):
+    id: int
+    role: str
+    content: str
+    created_at: str
+
+
+class InterviewStateInfo(BaseModel):
+    intake_session_id: int
+    language: str | None = None
+    terms_accepted_at: str | None = None
+    terms_version: str | None = None
+    current_state: str
+    current_step_index: int
+    mandatory_sweep_completed: bool
+
+
+class InterviewStartResponse(BaseModel):
+    """Body for POST /end-user/intake/sessions/{id}/interview/start."""
+
+    state: InterviewStateInfo
+    prompt: str
+
+
+class InterviewMessageRequest(BaseModel):
+    """Body for POST /end-user/intake/sessions/{id}/interview/message."""
+
+    message: str = Field(..., min_length=1, max_length=4000)
+
+
+class InterviewMessageResponse(BaseModel):
+    """Body for POST /end-user/intake/sessions/{id}/interview/message."""
+
+    state: InterviewStateInfo
+    reply: str
+    error: bool
+    done: bool
+
+
+class InterviewResumeResponse(BaseModel):
+    """Body for GET /end-user/intake/sessions/{id}/interview - the resume endpoint."""
+
+    state: InterviewStateInfo
+    messages: list[InterviewMessageInfo]
+
+
+class InterviewFactInfo(BaseModel):
+    id: int
+    category: str
+    fact_key: str
+    fact_value: str
+    created_at: str
+
+
+class InterviewFactsResponse(BaseModel):
+    intake_session_id: int
+    facts: list[InterviewFactInfo]
+
+
+# ---------------------------------------------------------------------
+# Report Review Queue (app/api/storage_api.py, app/api/intake_api.py) -
+# every generated Client-intake report starts 'pending_review' and
+# must be approved by the Owner before an End User can download it.
+# ---------------------------------------------------------------------
+
+
+class PendingReportInfo(BaseModel):
+    report_id: int
+    intake_session_id: int
+    format: str
+    created_at: str
+    status: str
+
+
+class ReportReviewListResponse(BaseModel):
+    reports: list[PendingReportInfo]
+
+
+class ReportRejectRequest(BaseModel):
+    """Body for POST /admin/reports/{report_id}/reject."""
+
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+
+class ReportReviewInfo(BaseModel):
+    """Body for POST /admin/reports/{report_id}/approve and .../reject."""
+
+    report_id: int
+    status: str
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+    rejection_reason: str | None = None

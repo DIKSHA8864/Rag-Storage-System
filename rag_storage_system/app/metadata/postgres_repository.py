@@ -633,3 +633,138 @@ class PostgresMetadataRepository(MetadataRepository):
                 "SELECT * FROM reports WHERE intake_session_id = %s ORDER BY id", (intake_session_id,)
             ).fetchall()
         return [dict(row) for row in rows]
+        # ------------------------------------------------------------------
+    # Guided Intake Engine - Interview State
+    # ------------------------------------------------------------------
+        # ------------------------------------------------------------------
+    # Report Review Queue
+    # ------------------------------------------------------------------
+
+    def create_report_review(self, report_id: int) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO report_reviews (report_id) VALUES (%s) "
+                "RETURNING id, report_id, status, reviewed_by, reviewed_at, rejection_reason, created_at, updated_at",
+                (report_id,),
+            ).fetchone()
+        return dict(row)
+
+    def get_report_review(self, report_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM report_reviews WHERE report_id = %s", (report_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_report_reviews(self, status: Optional[str] = None) -> list[dict]:
+        with self._connect() as conn:
+            if status:
+                rows = conn.execute(
+                    "SELECT * FROM report_reviews WHERE status = %s ORDER BY id", (status,)
+                ).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM report_reviews ORDER BY id").fetchall()
+        return [dict(row) for row in rows]
+
+    def update_report_review(
+        self, report_id: int, status: str, reviewed_by: Optional[str] = None, rejection_reason: Optional[str] = None
+    ) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                UPDATE report_reviews
+                SET status = %s, reviewed_by = %s, reviewed_at = now(), rejection_reason = %s, updated_at = now()
+                WHERE report_id = %s
+                RETURNING id, report_id, status, reviewed_by, reviewed_at, rejection_reason, created_at, updated_at
+                """,
+                (status, reviewed_by, rejection_reason, report_id),
+            ).fetchone()
+        return dict(row)
+    def create_interview_state(self, intake_session_id: int) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO interview_state (intake_session_id)
+                VALUES (%s)
+                RETURNING id, intake_session_id, language, terms_accepted_at, terms_version,
+                          current_state, current_step_index, mandatory_sweep_completed, created_at, updated_at
+                """,
+                (intake_session_id,),
+            ).fetchone()
+        return dict(row)
+
+    def get_interview_state(self, intake_session_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM interview_state WHERE intake_session_id = %s", (intake_session_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_interview_state(
+        self,
+        intake_session_id: int,
+        language: Optional[str],
+        current_state: str,
+        current_step_index: int,
+        terms_accepted_at: Optional[str],
+        terms_version: Optional[str],
+        mandatory_sweep_completed: bool,
+    ) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                UPDATE interview_state
+                SET language = %s, current_state = %s, current_step_index = %s,
+                    terms_accepted_at = %s, terms_version = %s, mandatory_sweep_completed = %s, updated_at = now()
+                WHERE intake_session_id = %s
+                RETURNING id, intake_session_id, language, terms_accepted_at, terms_version,
+                          current_state, current_step_index, mandatory_sweep_completed, created_at, updated_at
+                """,
+                (language, current_state, current_step_index, terms_accepted_at, terms_version,
+                 mandatory_sweep_completed, intake_session_id),
+            ).fetchone()
+        return dict(row)
+
+    # ------------------------------------------------------------------
+    # Guided Intake Engine - Messages
+    # ------------------------------------------------------------------
+
+    def add_intake_message(self, intake_session_id: int, role: str, content: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO intake_messages (intake_session_id, role, content) VALUES (%s, %s, %s) "
+                "RETURNING id, intake_session_id, role, content, created_at",
+                (intake_session_id, role, content),
+            ).fetchone()
+        return dict(row)
+
+    def list_intake_messages(self, intake_session_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM intake_messages WHERE intake_session_id = %s ORDER BY id", (intake_session_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Guided Intake Engine - Facts
+    # ------------------------------------------------------------------
+
+    def add_intake_fact(self, intake_session_id: int, category: str, fact_key: str, fact_value: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO intake_facts (intake_session_id, category, fact_key, fact_value) VALUES (%s, %s, %s, %s) "
+                "RETURNING id, intake_session_id, category, fact_key, fact_value, created_at",
+                (intake_session_id, category, fact_key, fact_value),
+            ).fetchone()
+        return dict(row)
+
+    def list_intake_facts(self, intake_session_id: int, category: Optional[str] = None) -> list[dict]:
+        with self._connect() as conn:
+            if category:
+                rows = conn.execute(
+                    "SELECT * FROM intake_facts WHERE intake_session_id = %s AND category = %s ORDER BY id",
+                    (intake_session_id, category),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM intake_facts WHERE intake_session_id = %s ORDER BY id", (intake_session_id,)
+                ).fetchall()
+        return [dict(row) for row in rows]

@@ -98,6 +98,10 @@ from app.api.schemas import (
     SearchResultChunk,
     UploadedFileResult,
     UploadResponse,
+    PendingReportInfo,
+    ReportReviewListResponse,
+    ReportRejectRequest,
+    ReportReviewInfo,
 )
 from app.disclaimer import DEFAULT_DISCLAIMER_TEXT
 from app.ingestion.file_validator import validate_file_object
@@ -139,7 +143,11 @@ app = FastAPI(
     ),
     version="0.3.0",
 )
-app.include_router(auth_router)
+app.include# End User API - a separate scope (X-End-User-Key, not X-API-Key) on
+# top of the same pipeline. See app/api/end_user_api.py.
+from app.api.end_user_api import router as end_user_router  # noqa: E402
+
+app.include_router(end_user_router)_router(auth_router)
 
 
 # ----------------------------------------------------------------------
@@ -183,15 +191,13 @@ app.openapi = _openapi_with_binary_array_format
 
 # End User API - a separate scope (X-End-User-Key, not X-API-Key) on
 # top of the same pipeline. See app/api/end_user_api.py.
-from app.api.end_user_api import router as end_user_router  # noqa: E402
-
-app.include_router(end_user_router)
-
-# Client Intake API - Phase 3 foundation, same X-End-User-Key scope as
-# end_user_router. See app/api/intake_api.py.
 from app.api.intake_api import router as intake_router  # noqa: E402
 
 app.include_router(intake_router)
+
+from app.api.interview_api import router as interview_router  # noqa: E402
+
+app.include_router(interview_router)
 
 
 @app.get("/")
@@ -587,7 +593,90 @@ def activate_prompt_version(
         created_by=activated["created_by"],
     )
 
+@app.get(
+    "/admin/reports/pending",
+    response_model=ReportReviewListResponse,
+    dependencies=[Depends(require_admin_key)],
+)
+def list_pending_reports() -> ReportReviewListResponse:
+    """List every Client intake report awaiting Owner/attorney review before it can be downloaded."""
 
+    reviews = metadata_repository.list_report_reviews(status="pending_review")
+
+    pending = []
+    for review in reviews:
+        report = metadata_repository.get_report(review["report_id"])
+        if report is None:
+            continue
+        pending.append(
+            PendingReportInfo(
+                report_id=report["id"],
+                intake_session_id=report["intake_session_id"],
+                format=report["format"],
+                created_at=str(report["created_at"]),
+                status=review["status"],
+            )
+        )
+
+    return ReportReviewListResponse(reports=pending)
+
+
+@app.post(
+    "/admin/reports/{report_id}/approve",
+    response_model=ReportReviewInfo,
+)
+def approve_report(
+    report_id: int,
+    owner: dict | None = Depends(require_admin_key),
+) -> ReportReviewInfo:
+    """Approve a Client intake report for release - it becomes downloadable by the End User immediately after."""
+
+    review = metadata_repository.get_report_review(report_id)
+    if review is None:
+        raise HTTPException(status_code=404, detail=f"No review found for report {report_id}.")
+
+    updated = metadata_repository.update_report_review(
+        report_id, status="approved", reviewed_by=owner.get("email") if owner else "admin"
+    )
+
+    log_audit_event("approve_report", detail=f"report {report_id}", actor=owner.get("email") if owner else "admin")
+
+    return ReportReviewInfo(
+        report_id=report_id, status=updated["status"], reviewed_by=updated["reviewed_by"],
+        reviewed_at=str(updated["reviewed_at"]) if updated["reviewed_at"] else None,
+        rejection_reason=updated["rejection_reason"],
+    )
+
+
+@app.post(
+    "/admin/reports/{report_id}/reject",
+    response_model=ReportReviewInfo,
+)
+def reject_report(
+    report_id: int,
+    request: ReportRejectRequest,
+    owner: dict | None = Depends(require_admin_key),
+) -> ReportReviewInfo:
+    """Reject a Client intake report - it stays undownloadable by the End User until a new one is generated and approved."""
+
+    review = metadata_repository.get_report_review(report_id)
+    if review is None:
+        raise HTTPException(status_code=404, detail=f"No review found for report {report_id}.")
+
+    updated = metadata_repository.update_report_review(
+        report_id, status="rejected", reviewed_by=owner.get("email") if owner else "admin",
+        rejection_reason=request.reason,
+    )
+
+    log_audit_event(
+        "reject_report", detail=f"report {report_id}: {request.reason}", actor=owner.get("email") if owner else "admin"
+    )
+
+    return ReportReviewInfo(
+        report_id=report_id, status=updated["status"], reviewed_by=updated["reviewed_by"],
+        reviewed_at=str(updated["reviewed_at"]) if updated["reviewed_at"] else None,
+        rejection_reason=updated["rejection_reason"],
+    )
 @app.get("/admin/dashboard", response_class=HTMLResponse)
 def admin_dashboard_page() -> str:
     """
