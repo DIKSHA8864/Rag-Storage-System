@@ -1,5 +1,5 @@
-
 from config.settings import get_settings
+
 
 def get_connection():
     # Deferred import - see app/metadata/__init__.py's get_metadata_repository()
@@ -11,6 +11,7 @@ def get_connection():
 
     settings = get_settings()
     return connect(settings.postgres_dsn)
+
 
 def create_owner_table() -> None:
     """Create the owners table if it does not already exist."""
