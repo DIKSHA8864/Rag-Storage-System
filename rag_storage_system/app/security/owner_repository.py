@@ -1,9 +1,14 @@
-from psycopg import connect
-
 from config.settings import get_settings
 
 
 def get_connection():
+    # Deferred import - see app/metadata/__init__.py's get_metadata_repository()
+    # for the same reasoning: importing this module (and everything that
+    # imports it, e.g. app/api/auth_api.py -> app/api/storage_api.py ->
+    # tests/conftest.py) must not require psycopg to successfully load
+    # unless a real Postgres connection is actually attempted here.
+    from psycopg import connect
+
     settings = get_settings()
     return connect(settings.postgres_dsn)
 
