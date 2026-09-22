@@ -161,7 +161,15 @@ from app.security.rate_limit import limiter
 
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
+from fastapi.middleware.cors import CORSMiddleware
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in _settings.cors_allowed_origins.split(",") if o.strip()],
+    allow_credentials=False,  # JWT goes in the Authorization header, not a cookie - no credentials needed
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 @app.exception_handler(RateLimitExceeded)
 def _rate_limit_handler(request, exc: RateLimitExceeded):

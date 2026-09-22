@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     allowed_extensions: str = ".pdf,.docx,.txt"
     max_file_size_mb: int = 100
-
+    cors_allowed_origins: str = "http://localhost:3000"
     @property
     def allowed_extensions_set(self) -> set[str]:
         return {
