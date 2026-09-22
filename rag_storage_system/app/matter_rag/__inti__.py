@@ -1,0 +1,1 @@
+"""Matter-specific RAG: a Matter's own uploaded documents, chunked and embedded into their own namespace (matter-<id>) - never mixed with the Owner's library or another Matter's namespace."""

@@ -177,7 +177,27 @@ class MetadataRepository(ABC):
     @abstractmethod
     def list_matters(self) -> list[dict]:
         raise NotImplementedError
+        @abstractmethod
+    def get_matter(self, matter_id: int) -> Optional[dict]:
+        """Look up a Matter by id (Owner-side; no api_key_hash needed) - used by role-based access checks."""
+        raise NotImplementedError
 
+    # ------------------------------------------------------------------
+    # Matter Assignments (role-based access - see app/security/auth.py's
+    # ensure_matter_access())
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_matter_assignment(self, owner_id: int, matter_id: int, role: str) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_matter_assignment(self, owner_id: int, matter_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_assignments_for_matter(self, matter_id: int) -> list[dict]:
+        raise NotImplementedError
     # ------------------------------------------------------------------
     # Prompt Versions
     # ------------------------------------------------------------------
@@ -369,4 +389,46 @@ class MetadataRepository(ABC):
     def update_report_review(
         self, report_id: int, status: str, reviewed_by: Optional[str] = None, rejection_reason: Optional[str] = None
     ) -> dict:
+        raise NotImplementedError
+        # ------------------------------------------------------------------
+    # Cause of Action Library (Owner-curated legal elements/authority -
+    # see app/complaint/builder.py)
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_cause_of_action(
+        self, category: str, name: str, elements: list[str], authority_citation: str
+    ) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_cause_of_action(self, cause_of_action_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_causes_of_action(self, category: Optional[str] = None) -> list[dict]:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Complaints (app/complaint/)
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_complaint(
+        self,
+        intake_session_id: int,
+        matter_id: int,
+        format: str,
+        cause_of_action_ids: list[int],
+        stored_category: str,
+        stored_filename: str,
+    ) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_complaint(self, complaint_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_complaints(self, intake_session_id: int) -> list[dict]:
         raise NotImplementedError

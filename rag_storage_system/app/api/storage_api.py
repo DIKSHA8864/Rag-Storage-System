@@ -102,7 +102,11 @@ from app.api.schemas import (
     ReportReviewListResponse,
     ReportRejectRequest,
     ReportReviewInfo,
+    MatterAssignmentCreateRequest,
+    MatterAssignmentInfo,
+    MatterAssignmentListResponse,
 )
+from app.security.auth import ensure_matter_access
 from app.disclaimer import DEFAULT_DISCLAIMER_TEXT
 from app.ingestion.file_validator import validate_file_object
 from app.jobs.processing import run_processing_job
@@ -116,7 +120,11 @@ from app.security.auth import hash_api_key, require_admin_key
 from app.security.path_security import sanitize_category_path, sanitize_path_segment
 from app.storage import get_storage_backend
 from app.vector_store import get_vector_store
+from app.api.interview_api import router as interview_router  # noqa: E402
+app.include_router(interview_router)
 
+from app.api.complaint_api import router as complaint_router  # noqa: E402
+app.include_router(complaint_router)
 storage_backend = get_storage_backend()
 metadata_repository = get_metadata_repository()
 
@@ -447,6 +455,52 @@ def create_matter(
         created_at=str(matter["created_at"]),
     )
 
+@app.post(
+    "/admin/matters/{matter_id}/assignments",
+    response_model=MatterAssignmentInfo,
+    dependencies=[Depends(require_admin_key)],
+)
+def assign_matter(matter_id: int, request: MatterAssignmentCreateRequest, owner: dict = Depends(require_admin_key)) -> MatterAssignmentInfo:
+    """
+    Assign a firm staff account (attorney/paralegal) to a Matter -
+    only 'owner'-role accounts may do this (an attorney cannot grant
+    themselves or anyone else access to a Matter they don't already
+    have).
+    """
+
+    if owner.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Only an Owner-role account may assign Matters.")
+
+    if request.role not in ("attorney", "paralegal"):
+        raise HTTPException(status_code=400, detail="`role` must be 'attorney' or 'paralegal'.")
+
+    if metadata_repository.get_matter(matter_id) is None:
+        raise HTTPException(status_code=404, detail="Matter not found.")
+
+    assignment = metadata_repository.create_matter_assignment(request.owner_id, matter_id, request.role)
+    return MatterAssignmentInfo(
+        id=assignment["id"], owner_id=assignment["owner_id"], matter_id=assignment["matter_id"],
+        role=assignment["role"], assigned_at=str(assignment["assigned_at"]),
+    )
+
+
+@app.get(
+    "/admin/matters/{matter_id}/assignments",
+    response_model=MatterAssignmentListResponse,
+    dependencies=[Depends(require_admin_key)],
+)
+def list_matter_assignments(matter_id: int, owner: dict = Depends(require_admin_key)) -> MatterAssignmentListResponse:
+    ensure_matter_access(owner, matter_id, metadata_repository)
+    assignments = metadata_repository.list_assignments_for_matter(matter_id)
+    return MatterAssignmentListResponse(
+        assignments=[
+            MatterAssignmentInfo(
+                id=a["id"], owner_id=a["owner_id"], matter_id=a["matter_id"],
+                role=a["role"], assigned_at=str(a["assigned_at"]),
+            )
+            for a in assignments
+        ]
+    )
 
 @app.get(
     "/admin/retrieval-settings",
@@ -601,8 +655,12 @@ def activate_prompt_version(
     response_model=ReportReviewListResponse,
     dependencies=[Depends(require_admin_key)],
 )
-def list_pending_reports() -> ReportReviewListResponse:
-    """List every Client intake report awaiting Owner/attorney review before it can be downloaded."""
+def list_pending_reports(owner: dict = Depends(require_admin_key)) -> ReportReviewListResponse:
+    """
+    List every Client intake report awaiting Owner/attorney review -
+    filtered to Matters `owner` may actually access (role=='owner'
+    sees everything; an attorney/paralegal sees only assigned Matters).
+    """
 
     reviews = metadata_repository.list_report_reviews(status="pending_review")
 
@@ -611,6 +669,9 @@ def list_pending_reports() -> ReportReviewListResponse:
         report = metadata_repository.get_report(review["report_id"])
         if report is None:
             continue
+        if owner.get("role") != "owner":
+            if metadata_repository.get_matter_assignment(int(owner["sub"]), report["matter_id"]) is None:
+                continue
         pending.append(
             PendingReportInfo(
                 report_id=report["id"],
@@ -637,6 +698,10 @@ def approve_report(
     review = metadata_repository.get_report_review(report_id)
     if review is None:
         raise HTTPException(status_code=404, detail=f"No review found for report {report_id}.")
+
+    report = metadata_repository.get_report(report_id)
+    if report is not None and owner is not None:
+        ensure_matter_access(owner, report["matter_id"], metadata_repository)
 
     updated = metadata_repository.update_report_review(
         report_id, status="approved", reviewed_by=owner.get("email") if owner else "admin"

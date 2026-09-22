@@ -176,6 +176,7 @@ async def upload_intake_input(
 
     uploaded_input = storage_api.metadata_repository.create_uploaded_input(
         intake_session_id=session_id,
+        matter_id=matter["id"],
         original_filename=filename,
         stored_category=result["category"],
         stored_filename=result["stored_filename"],

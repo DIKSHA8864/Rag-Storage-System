@@ -57,8 +57,8 @@ def verify_password(password: str, hashed_password: str) -> bool:
 # JWT helpers
 # ----------------------------------------------------------------------
 
-def create_access_token(owner_id: int, email: str) -> str:
-    """Create a signed JWT access token for the Owner."""
+def create_access_token(owner_id: int, email: str, role: str = "owner") -> str:
+    """Create a signed JWT access token for the Owner or firm staff (attorney/paralegal)."""
 
     settings = get_settings()
 
@@ -70,7 +70,7 @@ def create_access_token(owner_id: int, email: str) -> str:
     payload = {
         "sub": str(owner_id),
         "email": email,
-        "role": "owner",
+        "role": role,
         "iat": now,
         "exp": expires_at,
     }
@@ -106,10 +106,10 @@ def decode_access_token(token: str) -> dict:
             detail="Invalid access token.",
         )
 
-    if payload.get("role") != "owner":
+    if payload.get("role") not in ("owner", "attorney", "paralegal"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Owner access required.",
+            detail="Owner, attorney, or paralegal access required.",
         )
 
     if not payload.get("sub"):
@@ -230,3 +230,30 @@ def current_matter(matter: dict | None = Depends(require_end_user_key)) -> dict:
     """
 
     return matter if matter is not None else {"id": 0, "name": "Default"}
+
+# ----------------------------------------------------------------------
+# Matter Workspace: role-based access to a Matter's data
+# ----------------------------------------------------------------------
+
+def ensure_matter_access(owner: dict, matter_id: int, metadata_repository) -> None:
+    """
+    Raise 403/404 unless `owner` (the decoded JWT payload) may act on
+    `matter_id`. role == "owner" is the firm's superuser and always
+    passes; "attorney"/"paralegal" need a matter_assignments row (see
+    database/migrations/0013_matter_workspace.sql) - assigned via
+    POST /admin/matters/{matter_id}/assignments.
+    """
+
+    if owner.get("role") == "owner":
+        return
+
+    matter = metadata_repository.get_matter(matter_id)
+    if matter is None:
+        raise HTTPException(status_code=404, detail="Matter not found.")
+
+    assignment = metadata_repository.get_matter_assignment(int(owner["sub"]), matter_id)
+    if assignment is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not assigned to this Matter.",
+        )

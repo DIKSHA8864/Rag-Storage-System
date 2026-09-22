@@ -63,6 +63,7 @@ def login(request: LoginRequest) -> LoginResponse:
     token = create_access_token(
         owner_id=owner["id"],
         email=owner["email"],
+        role=owner["role"],
     )
 
     from config.settings import get_settings

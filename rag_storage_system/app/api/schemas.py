@@ -328,7 +328,23 @@ class MatterCreatedResponse(BaseModel):
     api_key: str
     created_at: str
 
+class MatterAssignmentCreateRequest(BaseModel):
+    """Body for POST /admin/matters/{matter_id}/assignments."""
 
+    owner_id: int
+    role: str = Field(..., description="'attorney' or 'paralegal'.")
+
+
+class MatterAssignmentInfo(BaseModel):
+    id: int
+    owner_id: int
+    matter_id: int
+    role: str
+    assigned_at: str
+
+
+class MatterAssignmentListResponse(BaseModel):
+    assignments: list[MatterAssignmentInfo]
 # ---------------------------------------------------------------------
 # Threads (app/metadata/base.py) - conversation history for
 # POST /end-user/query/stream, isolated per Matter.
@@ -611,3 +627,40 @@ class ReportReviewInfo(BaseModel):
     reviewed_by: str | None = None
     reviewed_at: str | None = None
     rejection_reason: str | None = None
+
+class CauseOfActionCreateRequest(BaseModel):
+    """Body for POST /admin/causes-of-action - Owner/attorney curation only."""
+
+    category: str = Field(..., min_length=1, max_length=255)
+    name: str = Field(..., min_length=1, max_length=255)
+    elements: list[str] = Field(..., min_length=1)
+    authority_citation: str = Field(..., min_length=1)
+
+
+class CauseOfActionInfo(BaseModel):
+    id: int
+    category: str
+    name: str
+    elements: list[str]
+    authority_citation: str
+    created_at: str
+
+
+class CauseOfActionListResponse(BaseModel):
+    causes_of_action: list[CauseOfActionInfo]
+
+
+class ComplaintGenerateRequest(BaseModel):
+    """Body for POST /admin/intake/sessions/{id}/complaint."""
+
+    cause_of_action_ids: list[int] = Field(..., min_length=1)
+    format: str = Field(default="docx", description="'docx' (or 'pdf' once ComplaintPdfRenderer is added).")
+
+
+class ComplaintInfo(BaseModel):
+    id: int
+    intake_session_id: int
+    matter_id: int
+    format: str
+    cause_of_action_ids: list[int]
+    created_at: str

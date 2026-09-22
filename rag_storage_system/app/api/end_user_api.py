@@ -72,7 +72,7 @@ router = APIRouter(
 
 
 @router.post("/query", response_model=EndUserQueryResponse)
-def end_user_query(request: EndUserQueryRequest) -> EndUserQueryResponse:
+def end_user_query(request: EndUserQueryRequest, matter: dict = Depends(_current_matter)) -> EndUserQueryResponse:
     """
     Ask a question against the knowledge base and get back the most
     relevant chunks (same hybrid retrieval pipeline as POST /search -
@@ -83,11 +83,10 @@ def end_user_query(request: EndUserQueryRequest) -> EndUserQueryResponse:
     passed in this request, which overrides it for this call only.
     """
 
-    resolved_top_k = request.top_k
-    if resolved_top_k is None:
-        resolved_top_k = _current_retrieval_settings().top_k
-
-    results = retrieve(request.query, top_k=resolved_top_k, category=request.category)
+    if request.category is not None:
+        results = retrieve(request.query, top_k=resolved_top_k, category=request.category)
+    else:
+        results = retrieve_for_matter(request.query, matter["id"], top_k=resolved_top_k)
 
     return EndUserQueryResponse(
         query=request.query,

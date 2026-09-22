@@ -1,0 +1,1 @@
+"""Complaint Generator / Lifecycle Drafting - builds a structured complaint draft from a Phase 3 intake fact object plus selected causes of action (app/complaint/builder.py), rendered via a template (never an LLM) into a downloadable pleading draft."""

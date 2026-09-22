@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS intake_sessions (
 CREATE TABLE IF NOT EXISTS uploaded_inputs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     intake_session_id INTEGER NOT NULL REFERENCES intake_sessions(id) ON DELETE CASCADE,
+    matter_id INTEGER,
     original_filename TEXT NOT NULL,
     stored_category TEXT NOT NULL,
     stored_filename TEXT NOT NULL,
@@ -139,10 +140,12 @@ CREATE TABLE IF NOT EXISTS timeline_events (
 CREATE TABLE IF NOT EXISTS reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     intake_session_id INTEGER NOT NULL REFERENCES intake_sessions(id) ON DELETE CASCADE,
+    matter_id INTEGER,
     format TEXT NOT NULL,
     stored_category TEXT NOT NULL,
     stored_filename TEXT NOT NULL,
     created_at TEXT NOT NULL
+
 );
 CREATE TABLE IF NOT EXISTS interview_state (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -182,6 +185,35 @@ CREATE TABLE IF NOT EXISTS report_reviews (
     rejection_reason TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS matter_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id INTEGER NOT NULL,
+    matter_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    assigned_at TEXT NOT NULL,
+    UNIQUE (owner_id, matter_id)
+);
+
+CREATE TABLE IF NOT EXISTS cause_of_action_library (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    name TEXT NOT NULL,
+    elements TEXT NOT NULL,
+    authority_citation TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS complaints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    intake_session_id INTEGER NOT NULL REFERENCES intake_sessions(id) ON DELETE CASCADE,
+    matter_id INTEGER NOT NULL,
+    format TEXT NOT NULL,
+    cause_of_action_ids TEXT NOT NULL,
+    stored_category TEXT NOT NULL,
+    stored_filename TEXT NOT NULL,
+    created_at TEXT NOT NULL
 );
 """
 
@@ -571,7 +603,39 @@ class SQLiteMetadataRepository(MetadataRepository):
                 "SELECT * FROM thread_messages WHERE thread_id = ? ORDER BY id", (thread_id,)
             ).fetchall()
             return [dict(row) for row in rows]
+        def get_matter(self, matter_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM matters WHERE id = ?", (matter_id,)).fetchone()
+        return dict(row) if row else None
 
+    def create_matter_assignment(self, owner_id: int, matter_id: int, role: str) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO matter_assignments (owner_id, matter_id, role, assigned_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT (owner_id, matter_id) DO UPDATE SET role = excluded.role",
+                (owner_id, matter_id, role, now),
+            )
+            row = conn.execute(
+                "SELECT * FROM matter_assignments WHERE owner_id = ? AND matter_id = ?", (owner_id, matter_id)
+            ).fetchone()
+        return dict(row)
+
+    def get_matter_assignment(self, owner_id: int, matter_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM matter_assignments WHERE owner_id = ? AND matter_id = ?", (owner_id, matter_id)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_assignments_for_matter(self, matter_id: int) -> list[dict]:
+        with self._connect() as conn:
+            return [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM matter_assignments WHERE matter_id = ?", (matter_id,)
+                ).fetchall()
+            ]
     # ------------------------------------------------------------------
     # Matters
     # ------------------------------------------------------------------
@@ -695,6 +759,7 @@ class SQLiteMetadataRepository(MetadataRepository):
     def create_uploaded_input(
         self,
         intake_session_id: int,
+        matter_id: int,
         original_filename: str,
         stored_category: str,
         stored_filename: str,
@@ -705,21 +770,12 @@ class SQLiteMetadataRepository(MetadataRepository):
         now = _now()
         with self._connect() as conn:
             cursor = conn.execute(
-                """
-                INSERT INTO uploaded_inputs (
-                    intake_session_id, original_filename, stored_category, stored_filename,
-                    media_type, size, sha256, processing_status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)
-                """,
-                (intake_session_id, original_filename, stored_category, stored_filename, media_type, size, sha256, now, now),
+                "INSERT INTO uploaded_inputs (intake_session_id, matter_id, original_filename, stored_category, "
+                "stored_filename, media_type, size, sha256, processing_status, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
+                (intake_session_id, matter_id, original_filename, stored_category, stored_filename, media_type, size, sha256, now, now),
             )
-            return {
-                "id": cursor.lastrowid, "intake_session_id": intake_session_id,
-                "original_filename": original_filename, "stored_category": stored_category,
-                "stored_filename": stored_filename, "media_type": media_type, "size": size,
-                "sha256": sha256, "processing_status": "queued", "status_detail": None,
-                "created_at": now, "updated_at": now,
-            }
+            return self.get_uploaded_input(cursor.lastrowid)
 
     def get_uploaded_input(self, input_id: int) -> Optional[dict]:
         with self._connect() as conn:
@@ -807,18 +863,17 @@ class SQLiteMetadataRepository(MetadataRepository):
     # Reports
     # ------------------------------------------------------------------
 
-    def create_report(self, intake_session_id: int, format: str, stored_category: str, stored_filename: str) -> dict:
+    def create_report(
+        self, intake_session_id: int, matter_id: int, format: str, stored_category: str, stored_filename: str
+    ) -> dict:
         now = _now()
         with self._connect() as conn:
             cursor = conn.execute(
-                "INSERT INTO reports (intake_session_id, format, stored_category, stored_filename, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (intake_session_id, format, stored_category, stored_filename, now),
+                "INSERT INTO reports (intake_session_id, matter_id, format, stored_category, stored_filename, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (intake_session_id, matter_id, format, stored_category, stored_filename, now),
             )
-            return {
-                "id": cursor.lastrowid, "intake_session_id": intake_session_id, "format": format,
-                "stored_category": stored_category, "stored_filename": stored_filename, "created_at": now,
-            }
+            return self.get_report(cursor.lastrowid)
 
     def get_report(self, report_id: int) -> Optional[dict]:
         with self._connect() as conn:
@@ -986,3 +1041,100 @@ class SQLiteMetadataRepository(MetadataRepository):
                     "SELECT * FROM intake_facts WHERE intake_session_id = ? ORDER BY id", (intake_session_id,)
                 ).fetchall()
             return [dict(row) for row in rows]
+        # ------------------------------------------------------------------
+    # Cause of Action Library
+    # ------------------------------------------------------------------
+
+    def create_cause_of_action(
+        self, category: str, name: str, elements: list[str], authority_citation: str
+    ) -> dict:
+        import json
+
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO cause_of_action_library (category, name, elements, authority_citation, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (category, name, json.dumps(elements), authority_citation, now),
+            )
+            return self.get_cause_of_action(cursor.lastrowid)
+
+    def get_cause_of_action(self, cause_of_action_id: int) -> Optional[dict]:
+        import json
+
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM cause_of_action_library WHERE id = ?", (cause_of_action_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["elements"] = json.loads(result["elements"])
+        return result
+
+    def list_causes_of_action(self, category: Optional[str] = None) -> list[dict]:
+        import json
+
+        with self._connect() as conn:
+            if category:
+                rows = conn.execute(
+                    "SELECT * FROM cause_of_action_library WHERE category = ? ORDER BY id", (category,)
+                ).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM cause_of_action_library ORDER BY id").fetchall()
+
+        results = []
+        for row in rows:
+            item = dict(row)
+            item["elements"] = json.loads(item["elements"])
+            results.append(item)
+        return results
+
+    # ------------------------------------------------------------------
+    # Complaints
+    # ------------------------------------------------------------------
+
+    def create_complaint(
+        self,
+        intake_session_id: int,
+        matter_id: int,
+        format: str,
+        cause_of_action_ids: list[int],
+        stored_category: str,
+        stored_filename: str,
+    ) -> dict:
+        import json
+
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO complaints (intake_session_id, matter_id, format, cause_of_action_ids, "
+                "stored_category, stored_filename, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (intake_session_id, matter_id, format, json.dumps(cause_of_action_ids), stored_category, stored_filename, now),
+            )
+            return self.get_complaint(cursor.lastrowid)
+
+    def get_complaint(self, complaint_id: int) -> Optional[dict]:
+        import json
+
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM complaints WHERE id = ?", (complaint_id,)).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["cause_of_action_ids"] = json.loads(result["cause_of_action_ids"])
+        return result
+
+    def list_complaints(self, intake_session_id: int) -> list[dict]:
+        import json
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM complaints WHERE intake_session_id = ? ORDER BY id", (intake_session_id,)
+            ).fetchall()
+        results = []
+        for row in rows:
+            item = dict(row)
+            item["cause_of_action_ids"] = json.loads(item["cause_of_action_ids"])
+            results.append(item)
+        return results

@@ -157,6 +157,7 @@ class PgVectorRepository(VectorStore):
                     SELECT chunk_id, document_id, category, filename, chunk_text, chapter, section, start_page, end_page, metadata,
                            1 - (embedding <=> %s) AS score
                     FROM chunk_embeddings
+                    WHERE category NOT LIKE 'matter-%%'
                     ORDER BY embedding <=> %s
                     LIMIT %s
                     """,
@@ -212,13 +213,14 @@ class PgVectorRepository(VectorStore):
                     """,
                     (or_query, category, f"{category}/%", or_query, top_k),
                 ).fetchall()
-            else:
+           else:
                 rows = conn.execute(
                     """
                     SELECT chunk_id, document_id, category, filename, chunk_text, chapter, section, start_page, end_page, metadata,
                            ts_rank(to_tsvector('english', chunk_text), websearch_to_tsquery('english', %s)) AS score
                     FROM chunk_embeddings
-                    WHERE to_tsvector('english', chunk_text) @@ websearch_to_tsquery('english', %s)
+                    WHERE category NOT LIKE 'matter-%%'
+                      AND to_tsvector('english', chunk_text) @@ websearch_to_tsquery('english', %s)
                     ORDER BY score DESC
                     LIMIT %s
                     """,

@@ -40,7 +40,7 @@ def run_intake_processing_job(
     with storage_backend.open_file(uploaded_input["stored_category"], uploaded_input["stored_filename"]) as f:
         data = f.read()
 
-    result = process_uploaded_input(uploaded_input["original_filename"], data)
+   result = process_uploaded_input(uploaded_input["original_filename"], data)
 
     for item in result.extracted:
         metadata_repository.add_extracted_information(
@@ -56,6 +56,21 @@ def run_intake_processing_job(
         uploaded_input_id, result.status.value, status_detail=result.status_detail
     )
 
+    if uploaded_input.get("matter_id") is not None and result.status.value in ("completed", "partial"):
+        from app.matter_rag.ingestion import ingest_matter_document
+
+        try:
+            ingest_matter_document(uploaded_input["matter_id"], uploaded_input_id, uploaded_input["original_filename"], data)
+        except Exception:
+            # Matter-namespace RAG ingestion is best-effort - a client's
+            # document still gets extracted/reported even if this
+            # (network-dependent embedding) step is unavailable, same
+            # resilience philosophy as app/report/rag_analysis.py's
+            # retrieval-failure handling.
+            metadata_repository.add_timeline_event(
+                uploaded_input["intake_session_id"], "matter_rag_ingestion_failed",
+                f"Could not index '{uploaded_input['original_filename']}' into the Matter's own RAG namespace.",
+            )
     metadata_repository.add_timeline_event(
         uploaded_input["intake_session_id"],
         "input_processed",

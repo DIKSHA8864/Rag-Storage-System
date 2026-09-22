@@ -57,3 +57,27 @@ def retrieve(
     ranked = rerank(vector_hits, keyword_hits, top_k=top_k)
 
     return [chunk for chunk in ranked if chunk["final_score"] >= score_threshold]
+# add at the end of the file:
+
+def retrieve_for_matter(
+    query: str,
+    matter_id: int,
+    top_k: int = 5,
+    score_threshold: float = 0.0,
+) -> list[dict]:
+    """
+    A Matter's own question retrieval: the Owner's library (category=None,
+    which already excludes every Matter's namespace - see
+    app/vector_store/vector_repository.py) UNION this one Matter's own
+    ingested documents (category=f"matter-{matter_id}") - never any
+    other Matter's namespace. Results from both are merged and re-sorted
+    by final_score, then capped to top_k overall.
+    """
+
+    from app.matter_rag.ingestion import matter_namespace
+
+    library_hits = retrieve(query, top_k=top_k, score_threshold=score_threshold)
+    matter_hits = retrieve(query, top_k=top_k, category=matter_namespace(matter_id), score_threshold=score_threshold)
+
+    merged = sorted(library_hits + matter_hits, key=lambda chunk: chunk["final_score"], reverse=True)
+    return merged[:top_k]

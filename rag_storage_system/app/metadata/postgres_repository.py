@@ -424,7 +424,36 @@ class PostgresMetadataRepository(MetadataRepository):
         with self._connect() as conn:
             rows = conn.execute("SELECT * FROM matters ORDER BY name").fetchall()
         return [dict(row) for row in rows]
+        def get_matter(self, matter_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM matters WHERE id = %s", (matter_id,)).fetchone()
+        return dict(row) if row else None
 
+    def create_matter_assignment(self, owner_id: int, matter_id: int, role: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO matter_assignments (owner_id, matter_id, role) VALUES (%s, %s, %s)
+                ON CONFLICT (owner_id, matter_id) DO UPDATE SET role = excluded.role
+                RETURNING id, owner_id, matter_id, role, assigned_at
+                """,
+                (owner_id, matter_id, role),
+            ).fetchone()
+        return dict(row)
+
+    def get_matter_assignment(self, owner_id: int, matter_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM matter_assignments WHERE owner_id = %s AND matter_id = %s", (owner_id, matter_id)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_assignments_for_matter(self, matter_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM matter_assignments WHERE matter_id = %s", (matter_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
     # ------------------------------------------------------------------
     # Prompt Versions
     # ------------------------------------------------------------------
@@ -515,6 +544,7 @@ class PostgresMetadataRepository(MetadataRepository):
     def create_uploaded_input(
         self,
         intake_session_id: int,
+        matter_id: int,
         original_filename: str,
         stored_category: str,
         stored_filename: str,
@@ -526,12 +556,12 @@ class PostgresMetadataRepository(MetadataRepository):
             row = conn.execute(
                 """
                 INSERT INTO uploaded_inputs (
-                    intake_session_id, original_filename, stored_category, stored_filename, media_type, size, sha256
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, intake_session_id, original_filename, stored_category, stored_filename,
+                    intake_session_id, matter_id, original_filename, stored_category, stored_filename, media_type, size, sha256
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, intake_session_id, matter_id, original_filename, stored_category, stored_filename,
                           media_type, size, sha256, processing_status, status_detail, created_at, updated_at
                 """,
-                (intake_session_id, original_filename, stored_category, stored_filename, media_type, size, sha256),
+                (intake_session_id, matter_id, original_filename, stored_category, stored_filename, media_type, size, sha256),
             ).fetchone()
         return dict(row)
 
@@ -613,12 +643,15 @@ class PostgresMetadataRepository(MetadataRepository):
     # Reports
     # ------------------------------------------------------------------
 
-    def create_report(self, intake_session_id: int, format: str, stored_category: str, stored_filename: str) -> dict:
+    def create_report(
+        self, intake_session_id: int, matter_id: int, format: str, stored_category: str, stored_filename: str
+    ) -> dict:
         with self._connect() as conn:
             row = conn.execute(
-                "INSERT INTO reports (intake_session_id, format, stored_category, stored_filename) VALUES (%s, %s, %s, %s) "
-                "RETURNING id, intake_session_id, format, stored_category, stored_filename, created_at",
-                (intake_session_id, format, stored_category, stored_filename),
+                "INSERT INTO reports (intake_session_id, matter_id, format, stored_category, stored_filename) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "RETURNING id, intake_session_id, matter_id, format, stored_category, stored_filename, created_at",
+                (intake_session_id, matter_id, format, stored_category, stored_filename),
             ).fetchone()
         return dict(row)
 
@@ -678,6 +711,81 @@ class PostgresMetadataRepository(MetadataRepository):
                 (status, reviewed_by, rejection_reason, report_id),
             ).fetchone()
         return dict(row)
+
+        # ------------------------------------------------------------------
+    # Cause of Action Library
+    # ------------------------------------------------------------------
+
+    def create_cause_of_action(
+        self, category: str, name: str, elements: list[str], authority_citation: str
+    ) -> dict:
+        from psycopg.types.json import Jsonb
+
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO cause_of_action_library (category, name, elements, authority_citation) "
+                "VALUES (%s, %s, %s, %s) "
+                "RETURNING id, category, name, elements, authority_citation, created_at",
+                (category, name, Jsonb(elements), authority_citation),
+            ).fetchone()
+        return dict(row)
+
+    def get_cause_of_action(self, cause_of_action_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM cause_of_action_library WHERE id = %s", (cause_of_action_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_causes_of_action(self, category: Optional[str] = None) -> list[dict]:
+        with self._connect() as conn:
+            if category:
+                rows = conn.execute(
+                    "SELECT * FROM cause_of_action_library WHERE category = %s ORDER BY id", (category,)
+                ).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM cause_of_action_library ORDER BY id").fetchall()
+        return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Complaints
+    # ------------------------------------------------------------------
+
+    def create_complaint(
+        self,
+        intake_session_id: int,
+        matter_id: int,
+        format: str,
+        cause_of_action_ids: list[int],
+        stored_category: str,
+        stored_filename: str,
+    ) -> dict:
+        from psycopg.types.json import Jsonb
+
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO complaints (
+                    intake_session_id, matter_id, format, cause_of_action_ids, stored_category, stored_filename
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id, intake_session_id, matter_id, format, cause_of_action_ids,
+                          stored_category, stored_filename, created_at
+                """,
+                (intake_session_id, matter_id, format, Jsonb(cause_of_action_ids), stored_category, stored_filename),
+            ).fetchone()
+        return dict(row)
+
+    def get_complaint(self, complaint_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM complaints WHERE id = %s", (complaint_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_complaints(self, intake_session_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM complaints WHERE intake_session_id = %s ORDER BY id", (intake_session_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
     def create_interview_state(self, intake_session_id: int) -> dict:
         with self._connect() as conn:
             row = conn.execute(

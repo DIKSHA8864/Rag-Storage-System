@@ -33,7 +33,9 @@ from dataclasses import dataclass, field
 
 from app.analysis.matcher import classify_score
 from app.metadata.base import MetadataRepository
-from app.retrieval.retriever import retrieve
+from typing import Optional
+
+from app.retrieval.retriever import retrieve, retrieve_for_matter
 from app.retrieval_settings import get_current_retrieval_settings
 
 logger = logging.getLogger(__name__)
@@ -59,12 +61,19 @@ def _citation_dict(chunk: dict) -> dict:
     }
 
 
-def gather_fact_support(facts: list[str], metadata_repository: MetadataRepository) -> list[FactSupport]:
+def gather_fact_support(
+    facts: list[str], metadata_repository: MetadataRepository, matter_id: Optional[int] = None
+) -> list[FactSupport]:
     """
     Run retrieval for each fact INDEPENDENTLY (never one blended query
     for the whole intake - that would blur which specific fact a
     citation actually supports) and classify it by its single
     best-scoring hit.
+
+    When `matter_id` is given, retrieval also includes that Matter's
+    own ingested documents (app/matter_rag/) alongside the Owner's
+    library - never any other Matter's namespace (see
+    app/retrieval/retriever.py's retrieve_for_matter()).
     """
 
     settings = get_current_retrieval_settings(metadata_repository)
@@ -72,7 +81,10 @@ def gather_fact_support(facts: list[str], metadata_repository: MetadataRepositor
 
     for fact_text in facts:
         try:
-            chunks = retrieve(fact_text, top_k=settings.top_k)
+            if matter_id is not None:
+                chunks = retrieve_for_matter(fact_text, matter_id, top_k=settings.top_k)
+            else:
+                chunks = retrieve(fact_text, top_k=settings.top_k)
         except Exception:
             logger.warning(
                 "Knowledge-base retrieval unavailable while grounding fact %r - "
