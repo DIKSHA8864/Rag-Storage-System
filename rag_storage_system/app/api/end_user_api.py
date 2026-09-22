@@ -63,7 +63,7 @@ import json
 
 from fastapi.responses import StreamingResponse
 
-from app.analysis.answer_generation import generate_answer_stream
+from app.analysis.answer_generation import stream_grounded_answer
 from app.retrieval_settings import get_current_retrieval_settings
 router = APIRouter(
     prefix="/end-user",
@@ -252,55 +252,28 @@ async def _stream_query_answer(
         score_threshold=settings.score_threshold,
     )
 
-    if len(results) < settings.min_chunks:
-        no_evidence_text = "Insufficient information found in the available knowledge base."
-
-        yield _sse_event("sources", {"sources": []})
-        yield _sse_event("answer_chunk", {"text": no_evidence_text})
-
-        if thread_id is not None:
-            repo.add_thread_message(thread_id, "user", query)
-            repo.add_thread_message(thread_id, "assistant", no_evidence_text, json.dumps([]))
-
-        yield _sse_event("done", {})
-        return
-
-    # CITATION LOCK: built once, from this exact `results` list, and
-    # sent before a single answer token exists. Nothing after this
-    # point can change it - generate_answer_stream() is only ever
-    # given this same, already-fixed chunk list, and the thread
-    # message persisted below stores this exact list too.
-    sources = [
-        {
-            "filename": r["filename"],
-            "category": r["category"],
-            "section": r.get("section"),
-            "start_page": r.get("start_page"),
-            "end_page": r.get("end_page"),
-            "score": r["final_score"],
-        }
-        for r in results
-    ]
-    yield _sse_event("sources", {"sources": sources})
-
     if thread_id is not None:
         repo.add_thread_message(thread_id, "user", query)
 
-    full_answer: list[str] = []
+    # Honest-gap check, citation-locked sources, and the actual
+    # Claude-or-template answer are all the one shared implementation
+    # (app/analysis/answer_generation.py's stream_grounded_answer()) -
+    # also used by the Owner-scope POST /research/ask - so the two
+    # scopes can never behave differently here.
+    sources_payload: list[dict] = []
+    answer_pieces: list[str] = []
 
-    try:
-        async for piece in generate_answer_stream(query, results):
-            full_answer.append(piece)
-            yield _sse_event("answer_chunk", {"text": piece})
-    except Exception as exc:
-        yield _sse_event("error", {"detail": str(exc)})
+    async for event, payload in stream_grounded_answer(query, results, settings.min_chunks):
+        if event == "sources":
+            sources_payload = payload["sources"]
+        elif event == "answer_chunk":
+            answer_pieces.append(payload["text"])
+        yield _sse_event(event, payload)
 
     if thread_id is not None:
         repo.add_thread_message(
-            thread_id, "assistant", "".join(full_answer), json.dumps(sources, ensure_ascii=False)
+            thread_id, "assistant", "".join(answer_pieces), json.dumps(sources_payload, ensure_ascii=False)
         )
-
-    yield _sse_event("done", {})
 
 
 @router.post("/query/stream")

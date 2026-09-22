@@ -65,6 +65,7 @@ GET /upload-test remains available too as a plain HTML fallback.
 """
 
 import io
+import logging
 import secrets
 from pathlib import Path
 
@@ -96,6 +97,9 @@ from app.api.schemas import (
     SearchRequest,
     SearchResponse,
     SearchResultChunk,
+    OwnerResearchRequest,
+    OwnerResearchResponse,
+    OwnerResearchSource,
     UploadedFileResult,
     UploadResponse,
     PendingReportInfo,
@@ -114,13 +118,17 @@ from app.jobs.queue import get_job_queue
 from app.metadata import get_metadata_repository
 from app.metadata.models import DocumentStatus
 from app.retrieval.retriever import retrieve
-from app.retrieval_settings import DEFAULT_MIN_CHUNKS, DEFAULT_SCORE_THRESHOLD, DEFAULT_TOP_K
+from app.retrieval_settings import DEFAULT_MIN_CHUNKS, DEFAULT_SCORE_THRESHOLD, DEFAULT_TOP_K, get_current_retrieval_settings
+from app.analysis.answer_generation import stream_grounded_answer
 from app.security.audit_log import log_audit_event
 from app.security.auth import hash_api_key, require_admin_key
 from app.security.path_security import sanitize_category_path, sanitize_path_segment
 from app.storage import get_storage_backend
 from app.vector_store import get_vector_store
 from config.settings import get_settings
+
+logger = logging.getLogger(__name__)
+
 storage_backend = get_storage_backend()
 metadata_repository = get_metadata_repository()
 
@@ -1241,4 +1249,65 @@ def search_chunks(request: SearchRequest) -> SearchResponse:
     return SearchResponse(
         query=request.query,
         results=[SearchResultChunk(**result) for result in results],
+    )
+
+
+@app.post(
+    "/research/ask",
+    response_model=OwnerResearchResponse,
+    dependencies=[Depends(require_admin_key)],
+)
+async def owner_research_ask(request: OwnerResearchRequest, owner: dict = Depends(require_admin_key)) -> OwnerResearchResponse:
+    """
+    Real legal research for an authenticated Owner/Attorney/Paralegal:
+    the same retrieval -> citation-locked, Claude-or-template answer
+    generation End Users already get from POST /end-user/query/stream
+    (app/analysis/answer_generation.py's stream_grounded_answer()) -
+    not a second implementation, the identical one, reused here and
+    returned as a single JSON response instead of Server-Sent Events.
+
+    Always searches the Owner's library only (retrieve() with no
+    Matter scoping - same as POST /search), so this can never surface
+    another Matter's uploaded documents; `require_admin_key` above
+    already enforces the caller holds a valid owner/attorney/paralegal
+    JWT before this body ever runs.
+
+    Honest-gap: if fewer than the Owner-configured minimum chunks are
+    found, `answer` is the same "Insufficient information..." message
+    the End User path returns, with an empty `sources` list - never a
+    guess. Citation lock: every source in `sources` is exactly what
+    retrieval returned for this request; the answer text itself is
+    checked against that same set before being returned, with a
+    template fallback on any ungrounded/fabricated citation (see
+    app/analysis/answer_generation.py's _citations_are_grounded()).
+
+    POST /search (raw chunks, no LLM call) is unchanged and still
+    available for debugging/inspecting retrieval directly.
+    """
+
+    settings = get_current_retrieval_settings(metadata_repository)
+    resolved_top_k = request.top_k if request.top_k is not None else settings.top_k
+
+    results = retrieve(
+        request.query,
+        top_k=resolved_top_k,
+        category=request.category,
+        score_threshold=settings.score_threshold,
+    )
+
+    sources_payload: list[dict] = []
+    answer_pieces: list[str] = []
+
+    async for event, payload in stream_grounded_answer(request.query, results, settings.min_chunks):
+        if event == "sources":
+            sources_payload = payload["sources"]
+        elif event == "answer_chunk":
+            answer_pieces.append(payload["text"])
+        elif event == "error":
+            logger.warning("Owner research answer generation error for query %r: %s", request.query, payload["detail"])
+
+    return OwnerResearchResponse(
+        query=request.query,
+        answer="".join(answer_pieces),
+        sources=[OwnerResearchSource(**s) for s in sources_payload],
     )
