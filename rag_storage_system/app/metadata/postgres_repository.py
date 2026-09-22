@@ -882,3 +882,14 @@ class PostgresMetadataRepository(MetadataRepository):
                     "SELECT * FROM intake_facts WHERE intake_session_id = %s ORDER BY id", (intake_session_id,)
                 ).fetchall()
         return [dict(row) for row in rows]
+        def add_llm_usage_log(
+        self, matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms
+    ) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO llm_usage_log (matter_id, intake_session_id, purpose, model, "
+                "input_tokens, output_tokens, latency_ms) VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                "RETURNING *",
+                (matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms),
+            ).fetchone()
+        return dict(row)

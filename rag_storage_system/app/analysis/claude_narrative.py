@@ -119,12 +119,16 @@ class ClaudeNarrativeGenerator(NarrativeGenerator):
             storage_api.metadata_repository, "narrative_system_prompt", _SYSTEM_PROMPT
         )
 
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=4096,
-            system=system_prompt,
-            messages=[{"role": "user", "content": _build_user_message(comparison)}],
-        )
+        from app.observability.usage_log import track_llm_call
+
+        with track_llm_call("narrative_generation", self._model) as record_usage:
+            response = self._client.messages.create(
+                model=self._model,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{"role": "user", "content": _build_user_message(comparison)}],
+            )
+            record_usage(response.usage.input_tokens, response.usage.output_tokens)
 
         text = "".join(block.text for block in response.content if block.type == "text")
 

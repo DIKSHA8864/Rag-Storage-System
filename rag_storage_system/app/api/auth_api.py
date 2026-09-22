@@ -10,6 +10,9 @@ from app.security.owner_repository import (
 )
 
 
+from fastapi import Request
+from app.security.rate_limit import limiter
+
 router = APIRouter(
     prefix="/auth",
     tags=["Authentication"],
@@ -34,7 +37,8 @@ class OwnerResponse(BaseModel):
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(request: LoginRequest) -> LoginResponse:
+@limiter.limit("5/minute")
+def login(http_request: Request, request: LoginRequest) -> LoginResponse:
     """Authenticate the Owner and return a JWT access token."""
 
     owner = get_owner_by_email(request.email)

@@ -138,6 +138,13 @@ class EndUserQueryRequest(BaseModel):
     """Body for POST /end-user/query."""
 
     query: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("query")
+    @classmethod
+    def _sanitize_query(cls, value: str) -> str:
+        from app.security.text_sanitization import sanitize_text
+
+        return sanitize_text(value)
     top_k: int | None = Field(
         None,
         ge=1,
@@ -563,6 +570,13 @@ class InterviewMessageRequest(BaseModel):
     """Body for POST /end-user/intake/sessions/{id}/interview/message."""
 
     message: str = Field(..., min_length=1, max_length=4000)
+
+    @field_validator("message")
+    @classmethod
+    def _sanitize_message(cls, value: str) -> str:
+        from app.security.text_sanitization import sanitize_text
+
+        return sanitize_text(value)
 
 
 class InterviewMessageResponse(BaseModel):

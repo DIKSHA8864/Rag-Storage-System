@@ -164,7 +164,7 @@ class Settings(BaseSettings):
     # app/security/audit_log.py.
     # ------------------------------------------------------------------
     audit_log_path: str = "logs/audit.log"
-
+    sentry_dsn: str = ""
     # ------------------------------------------------------------------
     # Phase 3 - Multimodal intake (app/multimodal/). OCR/STT/Vision are
     # pluggable, provider-agnostic interfaces (app/multimodal/ocr.py,

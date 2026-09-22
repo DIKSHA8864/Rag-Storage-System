@@ -57,6 +57,7 @@ from app.disclaimer import get_current_disclaimer_text
 from app.retrieval.retriever import retrieve, retrieve_for_matter
 from app.security.auth import current_matter as _current_matter
 from app.security.auth import require_end_user_key
+from app.security.rate_limit import limiter
 from config.settings import get_settings
 import json
 
@@ -72,7 +73,8 @@ router = APIRouter(
 
 
 @router.post("/query", response_model=EndUserQueryResponse)
-def end_user_query(request: EndUserQueryRequest, matter: dict = Depends(_current_matter)) -> EndUserQueryResponse:
+@limiter.limit("30/minute")
+def end_user_query(http_request: Request, request: EndUserQueryRequest, matter: dict = Depends(_current_matter)) -> EndUserQueryResponse:
     """
     Ask a question against the knowledge base and get back the most
     relevant chunks (same hybrid retrieval pipeline as POST /search -

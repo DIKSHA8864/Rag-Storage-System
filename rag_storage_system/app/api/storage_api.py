@@ -133,6 +133,12 @@ metadata_repository = get_metadata_repository()
 # _fake_vector_store fixture) instead of needing a real database.
 
 
+_settings = get_settings()
+if _settings.sentry_dsn:
+    import sentry_sdk
+
+    sentry_sdk.init(dsn=_settings.sentry_dsn, environment=_settings.environment, traces_sample_rate=0.1)
+
 app = FastAPI(
     title="Secure RAG Storage - Admin API",
     description=(

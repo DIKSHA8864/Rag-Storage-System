@@ -215,6 +215,17 @@ CREATE TABLE IF NOT EXISTS complaints (
     stored_filename TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS llm_usage_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    matter_id INTEGER,
+    intake_session_id INTEGER,
+    purpose TEXT NOT NULL,
+    model TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    latency_ms INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -1148,3 +1159,17 @@ class SQLiteMetadataRepository(MetadataRepository):
             item["cause_of_action_ids"] = json.loads(item["cause_of_action_ids"])
             results.append(item)
         return results
+        def add_llm_usage_log(
+        self, matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms
+    ) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO llm_usage_log (matter_id, intake_session_id, purpose, model, "
+                "input_tokens, output_tokens, latency_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms, now),
+            )
+            new_id = cursor.lastrowid
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM llm_usage_log WHERE id = ?", (new_id,)).fetchone()
+        return dict(row)

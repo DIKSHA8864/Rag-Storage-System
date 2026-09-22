@@ -25,7 +25,26 @@ token-streaming it live: once a token has gone out over the SSE
 connection it can't be un-sent, so verifying citations is only
 possible before the first byte reaches the client.
 """
+# find (top of file, end of the existing docstring, before the imports):
+possible.
+"""
 
+import asyncio
+
+# replace with:
+possible.
+
+PROMPT-INJECTION RESISTANCE: retrieved chunk text and the caller's
+`query` are only ever placed inside clearly delimited data blocks
+(KNOWLEDGE BASE EXCERPTS: / QUESTION:), never concatenated into the
+system instructions - text embedded in a client's uploaded document or
+pasted query can only ever be interpreted as content to answer from,
+never as an instruction to the model. Citation lock (see above) is the
+backstop even if that boundary were somehow crossed: an ungrounded
+citation is caught and discarded regardless of how it was produced.
+"""
+
+import asyncio
 import asyncio
 import logging
 import re

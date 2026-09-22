@@ -1,0 +1,14 @@
+[
+  {
+    "name": "overtime_question_returns_wage_hour_citation",
+    "query": "Can my employer refuse to pay overtime for hours over 40 in a week?",
+    "expected_min_results": 1,
+    "expected_category_contains": "Wage"
+  },
+  {
+    "name": "unrelated_question_returns_no_results",
+    "query": "What is the capital of France?",
+    "expected_min_results": 0,
+    "expected_category_contains": null
+  }
+]

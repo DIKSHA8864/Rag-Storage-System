@@ -128,3 +128,6 @@ yarl==1.24.5
 passlib[bcrypt]
 python-jose[cryptography]
 python-multipart
+slowapi==0.1.9
+pytest-asyncio==0.24.0
+sentry-sdk[fastapi]==2.20.0

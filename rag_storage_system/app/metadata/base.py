@@ -443,3 +443,9 @@ class MetadataRepository(ABC):
     @abstractmethod
     def list_complaints(self, intake_session_id: int) -> list[dict]:
         raise NotImplementedError
+        @abstractmethod
+    def add_llm_usage_log(
+        self, matter_id: Optional[int], intake_session_id: Optional[int], purpose: str,
+        model: str, input_tokens: int, output_tokens: int, latency_ms: int,
+    ) -> dict:
+        raise NotImplementedError
