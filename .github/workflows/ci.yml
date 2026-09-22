@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: rag_storage_test
+          POSTGRES_USER: raguser
+          POSTGRES_PASSWORD: ragpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U raguser -d rag_storage_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      METADATA_BACKEND: sqlite
+      JWT_SECRET_KEY: ci-test-secret-not-for-production
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: rag_storage_test
+      POSTGRES_USER: raguser
+      POSTGRES_PASSWORD: ragpassword
+      REDIS_URL: redis://localhost:6379/0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        working-directory: rag_storage_system
+        run: pip install -r requirements.txt
+
+      - name: Run full test suite
+        working-directory: rag_storage_system
+        run: python -m pytest -q --junitxml=pytest-results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: rag_storage_system/pytest-results.xml

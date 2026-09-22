@@ -63,7 +63,8 @@ def _comparison() -> ComparisonResult:
 
 def _fake_client(response_text: str):
     block = SimpleNamespace(type="text", text=response_text)
-    response = SimpleNamespace(content=[block])
+    usage = SimpleNamespace(input_tokens=10, output_tokens=20)
+    response = SimpleNamespace(content=[block], usage=usage)
 
     class _FakeMessages:
         def create(self, **kwargs):

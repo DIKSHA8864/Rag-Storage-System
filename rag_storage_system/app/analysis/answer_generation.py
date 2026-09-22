@@ -24,15 +24,6 @@ _claude_full_answer() buffers Claude's full response rather than
 token-streaming it live: once a token has gone out over the SSE
 connection it can't be un-sent, so verifying citations is only
 possible before the first byte reaches the client.
-"""
-# find (top of file, end of the existing docstring, before the imports):
-possible.
-"""
-
-import asyncio
-
-# replace with:
-possible.
 
 PROMPT-INJECTION RESISTANCE: retrieved chunk text and the caller's
 `query` are only ever placed inside clearly delimited data blocks
@@ -44,7 +35,6 @@ backstop even if that boundary were somehow crossed: an ungrounded
 citation is caught and discarded regardless of how it was produced.
 """
 
-import asyncio
 import asyncio
 import logging
 import re

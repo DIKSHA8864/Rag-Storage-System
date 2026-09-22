@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api import storage_api
+from app.api import auth_api, storage_api
 from app.security.auth import create_access_token, require_admin_key, require_end_user_key
 from app.security.rate_limit import limiter
 
@@ -16,9 +16,16 @@ def _reset_limiter():
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     storage_api.app.dependency_overrides.pop(require_admin_key, None)
     storage_api.app.dependency_overrides.pop(require_end_user_key, None)
+
+    # /auth/login normally hits a real Postgres owners table
+    # (app/security/owner_repository.py) - this test only cares about
+    # the rate limiter itself, so the owner lookup is stubbed out
+    # rather than requiring a real database in every environment.
+    monkeypatch.setattr(auth_api, "get_owner_by_email", lambda email: None)
+
     yield TestClient(storage_api.app)
     storage_api.app.dependency_overrides.pop(require_admin_key, None)
     storage_api.app.dependency_overrides.pop(require_end_user_key, None)

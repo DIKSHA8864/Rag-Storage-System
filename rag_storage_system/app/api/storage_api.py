@@ -120,6 +120,7 @@ from app.security.auth import hash_api_key, require_admin_key
 from app.security.path_security import sanitize_category_path, sanitize_path_segment
 from app.storage import get_storage_backend
 from app.vector_store import get_vector_store
+from config.settings import get_settings
 storage_backend = get_storage_backend()
 metadata_repository = get_metadata_repository()
 
@@ -153,6 +154,20 @@ app = FastAPI(
     version="0.3.0",
 )
 app.include_router(auth_router)
+
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from app.security.rate_limit import limiter
+
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
+
+@app.exception_handler(RateLimitExceeded)
+def _rate_limit_handler(request, exc: RateLimitExceeded):
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded. Try again shortly."})
 
 
 # ----------------------------------------------------------------------

@@ -1159,7 +1159,8 @@ class SQLiteMetadataRepository(MetadataRepository):
             item["cause_of_action_ids"] = json.loads(item["cause_of_action_ids"])
             results.append(item)
         return results
-        def add_llm_usage_log(
+
+    def add_llm_usage_log(
         self, matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms
     ) -> dict:
         now = _now()

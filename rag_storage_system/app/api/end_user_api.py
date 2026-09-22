@@ -32,7 +32,7 @@ duration of one request (see app/analysis/ingestion.py).
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 
 from app.analysis.ingestion import is_supported_submission, process_submission, process_text_submission
 from app.analysis.report_builder import build_analysis_report
@@ -74,7 +74,7 @@ router = APIRouter(
 
 @router.post("/query", response_model=EndUserQueryResponse)
 @limiter.limit("30/minute")
-def end_user_query(http_request: Request, request: EndUserQueryRequest, matter: dict = Depends(_current_matter)) -> EndUserQueryResponse:
+def end_user_query(request: Request, body: EndUserQueryRequest, matter: dict = Depends(_current_matter)) -> EndUserQueryResponse:
     """
     Ask a question against the knowledge base and get back the most
     relevant chunks (same hybrid retrieval pipeline as POST /search -
@@ -85,17 +85,17 @@ def end_user_query(http_request: Request, request: EndUserQueryRequest, matter: 
     passed in this request, which overrides it for this call only.
     """
 
-    resolved_top_k = request.top_k
+    resolved_top_k = body.top_k
     if resolved_top_k is None:
         resolved_top_k = _current_retrieval_settings().top_k
 
-    if request.category is not None:
-        results = retrieve(request.query, top_k=resolved_top_k, category=request.category)
+    if body.category is not None:
+        results = retrieve(body.query, top_k=resolved_top_k, category=body.category)
     else:
-        results = retrieve_for_matter(request.query, matter["id"], top_k=resolved_top_k)
+        results = retrieve_for_matter(body.query, matter["id"], top_k=resolved_top_k)
 
     return EndUserQueryResponse(
-        query=request.query,
+        query=body.query,
         results=[
             EndUserQueryResultChunk(
                 chunk_text=result["chunk_text"],

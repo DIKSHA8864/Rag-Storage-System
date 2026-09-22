@@ -38,10 +38,10 @@ class OwnerResponse(BaseModel):
 
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit("5/minute")
-def login(http_request: Request, request: LoginRequest) -> LoginResponse:
+def login(request: Request, body: LoginRequest) -> LoginResponse:
     """Authenticate the Owner and return a JWT access token."""
 
-    owner = get_owner_by_email(request.email)
+    owner = get_owner_by_email(body.email)
 
     if owner is None:
         raise HTTPException(
@@ -56,7 +56,7 @@ def login(http_request: Request, request: LoginRequest) -> LoginResponse:
         )
 
     if not verify_password(
-        request.password,
+        body.password,
         owner["password_hash"],
     ):
         raise HTTPException(
