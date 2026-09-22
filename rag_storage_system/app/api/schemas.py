@@ -125,6 +125,47 @@ class SearchResponse(BaseModel):
     results: list[SearchResultChunk]
 
 
+class OwnerResearchRequest(BaseModel):
+    """
+    Body for POST /research/ask - the Owner/Attorney/Paralegal-scope
+    equivalent of POST /end-user/query/stream's real, citation-checked
+    Claude answer (app/analysis/answer_generation.py), returned as a
+    single response instead of Server-Sent Events. Never Matter-scoped
+    - always the Owner's library only, same isolation guarantee as
+    POST /search.
+    """
+
+    query: str = Field(..., min_length=1, max_length=1000)
+    top_k: int | None = Field(
+        None, ge=1, le=50, description="Overrides the Owner-configured Top K for this request only."
+    )
+    category: str | None = Field(
+        None, description="Restrict retrieval to one library category (including its subfolders)."
+    )
+
+    @field_validator("query")
+    @classmethod
+    def _sanitize_query(cls, value: str) -> str:
+        from app.security.text_sanitization import sanitize_text
+
+        return sanitize_text(value)
+
+
+class OwnerResearchSource(BaseModel):
+    filename: str
+    category: str
+    section: str | None = None
+    start_page: int | None = None
+    end_page: int | None = None
+    score: float
+
+
+class OwnerResearchResponse(BaseModel):
+    query: str
+    answer: str
+    sources: list[OwnerResearchSource]
+
+
 # ---------------------------------------------------------------------
 # End User API (app/api/end_user_api.py) - a separate scope from
 # everything above, authenticated with X-End-User-Key instead of

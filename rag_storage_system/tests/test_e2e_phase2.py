@@ -30,6 +30,7 @@ import pytest
 from docx import Document
 from fastapi.testclient import TestClient
 
+from app.analysis import answer_generation
 from app.analysis.report_export import build_report_docx, build_report_pdf
 from app.api import end_user_api, storage_api
 from app.disclaimer import get_current_disclaimer_text
@@ -199,7 +200,10 @@ def test_citation_lock_survives_a_generation_failure(client, monkeypatch):
         raise RuntimeError("simulated generation failure")
         yield  # pragma: no cover - makes this an async generator
 
-    monkeypatch.setattr(end_user_api, "generate_answer_stream", _broken_stream)
+    # The actual call now lives in app/analysis/answer_generation.py's
+    # stream_grounded_answer() (shared with the Owner-scope research
+    # endpoint) - patch it there, where the call really happens.
+    monkeypatch.setattr(answer_generation, "generate_answer_stream", _broken_stream)
 
     events = _parse_sse(_stream(client, query="What is the vendor review policy?"))
     types = [e for e, _ in events]

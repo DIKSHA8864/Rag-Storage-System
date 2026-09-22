@@ -184,3 +184,60 @@ async def generate_answer_stream(query: str, chunks: list[dict]) -> AsyncIterato
 
     async for piece in _stream_words(_template_answer(chunks)):
         yield piece
+
+
+async def stream_grounded_answer(
+    query: str, results: list[dict], min_chunks: int
+) -> AsyncIterator[tuple[str, dict]]:
+    """
+    The one shared implementation of "honest-gap check -> lock sources
+    -> generate a grounded answer" - used by both
+    app/api/end_user_api.py's POST /end-user/query/stream (End User
+    scope) and app/api/storage_api.py's POST /research/ask (Owner/
+    Attorney/Paralegal scope), so the two scopes can never drift into
+    two different answer-generation behaviors.
+
+    Takes an ALREADY-RETRIEVED, already-fixed `results` list (the
+    caller runs its own scoped retrieval - library-only for Owner
+    research, Matter+library for End User - so Matter isolation is
+    enforced by which retrieval call produced `results`, not by this
+    function). Yields (event_type, payload) tuples:
+    "sources" (once, first), "answer_chunk" (0+, in order), "error"
+    (0-1, on a generation failure), "done" (once, always last) - the
+    exact same event vocabulary app/api/end_user_api.py already
+    formats as Server-Sent Events; a non-streaming caller can instead
+    just collect them into one response (see storage_api.py's
+    owner_research_ask()).
+    """
+
+    if len(results) < min_chunks:
+        no_evidence_text = "Insufficient information found in the available knowledge base."
+
+        yield "sources", {"sources": []}
+        yield "answer_chunk", {"text": no_evidence_text}
+        yield "done", {}
+        return
+
+    # CITATION LOCK: built once, from this exact `results` list, and
+    # yielded before a single answer token exists. generate_answer_stream()
+    # below is only ever given this same, already-fixed chunk list.
+    sources = [
+        {
+            "filename": r["filename"],
+            "category": r["category"],
+            "section": r.get("section"),
+            "start_page": r.get("start_page"),
+            "end_page": r.get("end_page"),
+            "score": r["final_score"],
+        }
+        for r in results
+    ]
+    yield "sources", {"sources": sources}
+
+    try:
+        async for piece in generate_answer_stream(query, results):
+            yield "answer_chunk", {"text": piece}
+    except Exception as exc:
+        yield "error", {"detail": str(exc)}
+
+    yield "done", {}
