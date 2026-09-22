@@ -54,7 +54,7 @@ from app.api.schemas import (
     ThreadMessagesResponse,
 )
 from app.disclaimer import get_current_disclaimer_text
-from app.retrieval.retriever import retrieve
+from app.retrieval.retriever import retrieve, retrieve_for_matter
 from app.security.auth import current_matter as _current_matter
 from app.security.auth import require_end_user_key
 from config.settings import get_settings
@@ -82,6 +82,10 @@ def end_user_query(request: EndUserQueryRequest, matter: dict = Depends(_current
     (GET/PUT /admin/retrieval-settings) unless `top_k` is explicitly
     passed in this request, which overrides it for this call only.
     """
+
+    resolved_top_k = request.top_k
+    if resolved_top_k is None:
+        resolved_top_k = _current_retrieval_settings().top_k
 
     if request.category is not None:
         results = retrieve(request.query, top_k=resolved_top_k, category=request.category)

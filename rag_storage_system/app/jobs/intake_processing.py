@@ -40,7 +40,7 @@ def run_intake_processing_job(
     with storage_backend.open_file(uploaded_input["stored_category"], uploaded_input["stored_filename"]) as f:
         data = f.read()
 
-   result = process_uploaded_input(uploaded_input["original_filename"], data)
+    result = process_uploaded_input(uploaded_input["original_filename"], data)
 
     for item in result.extracted:
         metadata_repository.add_extracted_information(

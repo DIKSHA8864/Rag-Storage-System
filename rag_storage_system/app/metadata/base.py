@@ -177,7 +177,8 @@ class MetadataRepository(ABC):
     @abstractmethod
     def list_matters(self) -> list[dict]:
         raise NotImplementedError
-        @abstractmethod
+
+    @abstractmethod
     def get_matter(self, matter_id: int) -> Optional[dict]:
         """Look up a Matter by id (Owner-side; no api_key_hash needed) - used by role-based access checks."""
         raise NotImplementedError
@@ -235,6 +236,16 @@ class MetadataRepository(ABC):
     @abstractmethod
     def get_intake_session(self, session_id: int, matter_id: int) -> Optional[dict]:
         """None if it doesn't exist OR belongs to a different matter - isolation lives here, same as get_thread()."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_intake_session_by_id(self, session_id: int) -> Optional[dict]:
+        """
+        Unfiltered lookup (no matter_id isolation check) - only for
+        internal callers that already have the session's own id from a
+        trusted source (app/report/builder.py, app/api/complaint_api.py),
+        never from a user-supplied cross-tenant id.
+        """
         raise NotImplementedError
 
     @abstractmethod

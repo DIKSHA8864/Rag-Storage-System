@@ -213,7 +213,7 @@ class PgVectorRepository(VectorStore):
                     """,
                     (or_query, category, f"{category}/%", or_query, top_k),
                 ).fetchall()
-           else:
+            else:
                 rows = conn.execute(
                     """
                     SELECT chunk_id, document_id, category, filename, chunk_text, chapter, section, start_page, end_page, metadata,

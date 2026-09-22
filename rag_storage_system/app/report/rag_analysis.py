@@ -70,10 +70,14 @@ def gather_fact_support(
     citation actually supports) and classify it by its single
     best-scoring hit.
 
-    When `matter_id` is given, retrieval also includes that Matter's
-    own ingested documents (app/matter_rag/) alongside the Owner's
-    library - never any other Matter's namespace (see
-    app/retrieval/retriever.py's retrieve_for_matter()).
+    When `matter_id` is a real (truthy) Matter id, retrieval also
+    includes that Matter's own ingested documents (app/matter_rag/)
+    alongside the Owner's library - never any other Matter's namespace
+    (see app/retrieval/retriever.py's retrieve_for_matter()). matter_id
+    == 0 is the implicit "Default" matter (app/security/auth.py's
+    current_matter() fallback for callers with no real per-Matter key)
+    and is treated the same as None - it has no real Matter row, so
+    there is no Matter-specific namespace to include.
     """
 
     settings = get_current_retrieval_settings(metadata_repository)
@@ -81,7 +85,7 @@ def gather_fact_support(
 
     for fact_text in facts:
         try:
-            if matter_id is not None:
+            if matter_id:
                 chunks = retrieve_for_matter(fact_text, matter_id, top_k=settings.top_k)
             else:
                 chunks = retrieve(fact_text, top_k=settings.top_k)

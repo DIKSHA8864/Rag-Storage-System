@@ -284,7 +284,7 @@ def generate_intake_report(
     filename = f"report_{session_id}.{renderer.file_extension}"
     stored = storage_backend.save(category, filename, io.BytesIO(content))
 
-    report = repo.create_report(session_id, request.format, stored["category"], stored["stored_filename"])
+    report = repo.create_report(session_id, matter["id"], request.format, stored["category"], stored["stored_filename"])
     repo.add_timeline_event(session_id, "report_generated", f"{request.format.upper()} report generated.")
     repo.create_report_review(report["id"])
 

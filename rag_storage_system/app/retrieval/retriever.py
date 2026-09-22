@@ -57,7 +57,7 @@ def retrieve(
     ranked = rerank(vector_hits, keyword_hits, top_k=top_k)
 
     return [chunk for chunk in ranked if chunk["final_score"] >= score_threshold]
-# add at the end of the file:
+
 
 def retrieve_for_matter(
     query: str,

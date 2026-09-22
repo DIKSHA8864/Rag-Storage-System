@@ -45,8 +45,9 @@ def test_uploaded_input_and_report_carry_matter_id_directly(repo):
 
 
 def test_attorney_role_can_authenticate_but_cannot_act_on_unassigned_matter(client, repo):
-    session = repo.create_intake_session(matter_id=1, title="Intake")
-    report = repo.create_report(session["id"], 1, "docx", "c/reports", "r.docx")
+    matter = repo.create_matter("Acme Corp", "hash-1")
+    session = repo.create_intake_session(matter_id=matter["id"], title="Intake")
+    report = repo.create_report(session["id"], matter["id"], "docx", "c/reports", "r.docx")
     repo.create_report_review(report["id"])
 
     response = client.post(f"/admin/reports/{report['id']}/approve", headers=_owner_header(owner_id=5, role="attorney"))
@@ -54,10 +55,11 @@ def test_attorney_role_can_authenticate_but_cannot_act_on_unassigned_matter(clie
 
 
 def test_attorney_assigned_to_the_matter_can_approve_its_report(client, repo):
-    session = repo.create_intake_session(matter_id=1, title="Intake")
-    report = repo.create_report(session["id"], 1, "docx", "c/reports", "r.docx")
+    matter = repo.create_matter("Acme Corp", "hash-2")
+    session = repo.create_intake_session(matter_id=matter["id"], title="Intake")
+    report = repo.create_report(session["id"], matter["id"], "docx", "c/reports", "r.docx")
     repo.create_report_review(report["id"])
-    repo.create_matter_assignment(owner_id=5, matter_id=1, role="attorney")
+    repo.create_matter_assignment(owner_id=5, matter_id=matter["id"], role="attorney")
 
     response = client.post(f"/admin/reports/{report['id']}/approve", headers=_owner_header(owner_id=5, role="attorney"))
     assert response.status_code == 200

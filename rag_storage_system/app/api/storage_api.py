@@ -120,11 +120,6 @@ from app.security.auth import hash_api_key, require_admin_key
 from app.security.path_security import sanitize_category_path, sanitize_path_segment
 from app.storage import get_storage_backend
 from app.vector_store import get_vector_store
-from app.api.interview_api import router as interview_router  # noqa: E402
-app.include_router(interview_router)
-
-from app.api.complaint_api import router as complaint_router  # noqa: E402
-app.include_router(complaint_router)
 storage_backend = get_storage_backend()
 metadata_repository = get_metadata_repository()
 
@@ -209,6 +204,11 @@ app.include_router(intake_router)
 from app.api.interview_api import router as interview_router  # noqa: E402
 
 app.include_router(interview_router)
+
+# Complaint Generator - Owner-JWT scoped (not X-End-User-Key). See app/api/complaint_api.py.
+from app.api.complaint_api import router as complaint_router  # noqa: E402
+
+app.include_router(complaint_router)
 
 
 @app.get("/")

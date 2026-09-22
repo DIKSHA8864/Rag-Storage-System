@@ -50,6 +50,7 @@ def client(tmp_path, monkeypatch):
     # (real Postgres/pgvector, real embedding model) - out of scope for
     # an auth test, so it's stubbed to something harmless.
     monkeypatch.setattr(end_user_api, "retrieve", lambda *args, **kwargs: [])
+    monkeypatch.setattr(end_user_api, "retrieve_for_matter", lambda *args, **kwargs: [])
 
     yield TestClient(storage_api.app)
 

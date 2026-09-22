@@ -42,7 +42,7 @@ def fake_store(monkeypatch):
 
 def test_blueprint_test_7_matter_rag_never_retrieves_another_matters_documents(monkeypatch, fake_store):
     monkeypatch.setattr(
-        "app.analysis.ingestion.process_submission",
+        "app.matter_rag.ingestion.process_submission",
         lambda filename, data: [{"chunk_index": 0, "text": data.decode(), "chapter": None, "section": None, "start_page": None, "end_page": None, "embedding": [0.1]}],
     )
 

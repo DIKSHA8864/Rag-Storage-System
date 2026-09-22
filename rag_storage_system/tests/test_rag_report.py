@@ -123,7 +123,7 @@ def test_build_structured_report_includes_rag_backed_sections(monkeypatch, repo)
 
     session = repo.create_intake_session(matter_id=0, title="Intake")
     uploaded_input = repo.create_uploaded_input(
-        intake_session_id=session["id"], original_filename="notes.txt", stored_category="session_1",
+        intake_session_id=session["id"], matter_id=0, original_filename="notes.txt", stored_category="session_1",
         stored_filename="notes.txt", media_type="document", size=10, sha256=None,
     )
     repo.add_extracted_information(uploaded_input["id"], "text", "I was fired after reporting a safety issue.", "document_extractor", False)
@@ -142,7 +142,7 @@ def test_docx_report_renders_the_rag_backed_sections(monkeypatch, repo):
 
     session = repo.create_intake_session(matter_id=0, title="Intake")
     uploaded_input = repo.create_uploaded_input(
-        intake_session_id=session["id"], original_filename="notes.txt", stored_category="session_1",
+        intake_session_id=session["id"], matter_id=0, original_filename="notes.txt", stored_category="session_1",
         stored_filename="notes.txt", media_type="document", size=10, sha256=None,
     )
     repo.add_extracted_information(uploaded_input["id"], "text", "I was fired after reporting a safety issue.", "document_extractor", False)

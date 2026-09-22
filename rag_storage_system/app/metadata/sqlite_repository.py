@@ -603,7 +603,8 @@ class SQLiteMetadataRepository(MetadataRepository):
                 "SELECT * FROM thread_messages WHERE thread_id = ? ORDER BY id", (thread_id,)
             ).fetchall()
             return [dict(row) for row in rows]
-        def get_matter(self, matter_id: int) -> Optional[dict]:
+
+    def get_matter(self, matter_id: int) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM matters WHERE id = ?", (matter_id,)).fetchone()
         return dict(row) if row else None
@@ -744,6 +745,11 @@ class SQLiteMetadataRepository(MetadataRepository):
             ).fetchone()
             return dict(row) if row else None
 
+    def get_intake_session_by_id(self, session_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM intake_sessions WHERE id = ?", (session_id,)).fetchone()
+            return dict(row) if row else None
+
     def update_intake_session_status(self, session_id: int, status: str) -> bool:
         now = _now()
         with self._connect() as conn:
@@ -775,7 +781,8 @@ class SQLiteMetadataRepository(MetadataRepository):
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
                 (intake_session_id, matter_id, original_filename, stored_category, stored_filename, media_type, size, sha256, now, now),
             )
-            return self.get_uploaded_input(cursor.lastrowid)
+            new_id = cursor.lastrowid
+        return self.get_uploaded_input(new_id)
 
     def get_uploaded_input(self, input_id: int) -> Optional[dict]:
         with self._connect() as conn:
@@ -873,7 +880,8 @@ class SQLiteMetadataRepository(MetadataRepository):
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (intake_session_id, matter_id, format, stored_category, stored_filename, now),
             )
-            return self.get_report(cursor.lastrowid)
+            new_id = cursor.lastrowid
+        return self.get_report(new_id)
 
     def get_report(self, report_id: int) -> Optional[dict]:
         with self._connect() as conn:
@@ -1057,7 +1065,8 @@ class SQLiteMetadataRepository(MetadataRepository):
                 "VALUES (?, ?, ?, ?, ?)",
                 (category, name, json.dumps(elements), authority_citation, now),
             )
-            return self.get_cause_of_action(cursor.lastrowid)
+            new_id = cursor.lastrowid
+        return self.get_cause_of_action(new_id)
 
     def get_cause_of_action(self, cause_of_action_id: int) -> Optional[dict]:
         import json
@@ -1112,7 +1121,8 @@ class SQLiteMetadataRepository(MetadataRepository):
                 "stored_category, stored_filename, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (intake_session_id, matter_id, format, json.dumps(cause_of_action_ids), stored_category, stored_filename, now),
             )
-            return self.get_complaint(cursor.lastrowid)
+            new_id = cursor.lastrowid
+        return self.get_complaint(new_id)
 
     def get_complaint(self, complaint_id: int) -> Optional[dict]:
         import json

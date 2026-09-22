@@ -120,7 +120,7 @@ def test_citation_lock(monkeypatch, repo):
 
     session = repo.create_intake_session(matter_id=0, title="Intake")
     uploaded_input = repo.create_uploaded_input(
-        intake_session_id=session["id"], original_filename="notes.txt", stored_category="session_1",
+        intake_session_id=session["id"], matter_id=0, original_filename="notes.txt", stored_category="session_1",
         stored_filename="notes.txt", media_type="document", size=10, sha256=None,
     )
     repo.add_extracted_information(uploaded_input["id"], "text", "I was not paid overtime for my hours.", "document_extractor", False)
@@ -143,7 +143,7 @@ def test_honest_gap(monkeypatch, repo):
 
     session = repo.create_intake_session(matter_id=0, title="Intake")
     uploaded_input = repo.create_uploaded_input(
-        intake_session_id=session["id"], original_filename="notes.txt", stored_category="session_1",
+        intake_session_id=session["id"], matter_id=0, original_filename="notes.txt", stored_category="session_1",
         stored_filename="notes.txt", media_type="document", size=10, sha256=None,
     )
     repo.add_extracted_information(uploaded_input["id"], "text", "I was abducted by aliens at work.", "document_extractor", False)
@@ -169,7 +169,7 @@ def test_fabrication_probe(monkeypatch, repo):
 
     session = repo.create_intake_session(matter_id=0, title="Intake")
     uploaded_input = repo.create_uploaded_input(
-        intake_session_id=session["id"], original_filename="notes.txt", stored_category="session_1",
+        intake_session_id=session["id"], matter_id=0, original_filename="notes.txt", stored_category="session_1",
         stored_filename="notes.txt", media_type="document", size=10, sha256=None,
     )
     repo.add_extracted_information(uploaded_input["id"], "text", "My supervisor yelled at me once.", "document_extractor", False)
@@ -290,5 +290,5 @@ def test_isolation(client, repo):
         f"/end-user/intake/sessions/{foreign_session['id']}/interview/message", json={"message": "english"}
     ).status_code == 404
 
-    foreign_report = repo.create_report(foreign_session["id"], "docx", "session_999/reports", "report.docx")
+    foreign_report = repo.create_report(foreign_session["id"], 999, "docx", "session_999/reports", "report.docx")
     assert client.get(f"/end-user/intake/reports/{foreign_report['id']}/download").status_code == 404

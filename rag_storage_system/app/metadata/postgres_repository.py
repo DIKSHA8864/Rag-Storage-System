@@ -424,7 +424,8 @@ class PostgresMetadataRepository(MetadataRepository):
         with self._connect() as conn:
             rows = conn.execute("SELECT * FROM matters ORDER BY name").fetchall()
         return [dict(row) for row in rows]
-        def get_matter(self, matter_id: int) -> Optional[dict]:
+
+    def get_matter(self, matter_id: int) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM matters WHERE id = %s", (matter_id,)).fetchone()
         return dict(row) if row else None
@@ -528,6 +529,11 @@ class PostgresMetadataRepository(MetadataRepository):
             row = conn.execute(
                 "SELECT * FROM intake_sessions WHERE id = %s AND matter_id = %s", (session_id, matter_id)
             ).fetchone()
+        return dict(row) if row else None
+
+    def get_intake_session_by_id(self, session_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM intake_sessions WHERE id = %s", (session_id,)).fetchone()
         return dict(row) if row else None
 
     def update_intake_session_status(self, session_id: int, status: str) -> bool:
