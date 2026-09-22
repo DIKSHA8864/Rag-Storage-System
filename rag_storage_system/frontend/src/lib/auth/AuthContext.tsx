@@ -20,7 +20,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // localStorage doesn't exist during SSR, so the stored session can
+    // only be read after mount - this one-time hydration read is the
+    // exception the set-state-in-effect rule is meant to allow.
     const session = loadSession();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setToken(session?.token ?? null);
     setIsLoading(false);
   }, []);

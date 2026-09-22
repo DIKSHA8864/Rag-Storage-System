@@ -16,7 +16,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
  * streaming, no styling beyond what's needed to read the response.
  */
 export default function DashboardPage() {
-  const { logout } = useAuth();
+  const { token, logout } = useAuth();
 
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<OwnerResearchResponse | null>(null);
@@ -30,7 +30,6 @@ export default function DashboardPage() {
     setIsLoading(true);
 
     try {
-      const token = localStorage.getItem("ashilegal_owner_access_token");
       if (!token) {
         throw new ApiError(401, "Session expired. Please log in again.");
       }

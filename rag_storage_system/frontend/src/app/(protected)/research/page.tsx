@@ -26,7 +26,7 @@ import { SourcesPanel } from "@/components/research/SourcesPanel";
  * returned, and only ever calls the one existing endpoint.
  */
 export default function ResearchPage() {
-  const { logout } = useAuth();
+  const { token, logout } = useAuth();
 
   const [result, setResult] = useState<OwnerResearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +38,6 @@ export default function ResearchPage() {
     setIsLoading(true);
 
     try {
-      const token = localStorage.getItem("ashilegal_owner_access_token");
       if (!token) {
         throw new ApiError(401, "Session expired. Please log in again.");
       }
