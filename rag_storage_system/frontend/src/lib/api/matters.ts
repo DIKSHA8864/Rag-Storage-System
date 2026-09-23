@@ -5,6 +5,7 @@ import type {
   MatterInfo,
   MatterIntakeSessionDetailResponse,
   MatterListResponse,
+  MatterResearchSuggestionsResponse,
   IntakeSessionListResponse,
   OwnerResearchRequest,
   OwnerResearchResponse,
@@ -51,4 +52,15 @@ export async function matterResearchAsk(
     body: request,
     token,
   });
+}
+
+export async function getMatterResearchSuggestions(
+  matterId: number,
+  sessionId: number,
+  token: string
+): Promise<MatterResearchSuggestionsResponse> {
+  return apiRequest<MatterResearchSuggestionsResponse>(
+    `/admin/matters/${matterId}/intake-sessions/${sessionId}/research-suggestions`,
+    { token }
+  );
 }

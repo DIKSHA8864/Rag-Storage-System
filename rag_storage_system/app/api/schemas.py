@@ -690,6 +690,41 @@ class MatterIntakeSessionDetailResponse(BaseModel):
     facts: list[InterviewFactInfo]
     reports: list[ReportInfo]
 
+
+class MatterResearchSuggestionCitation(BaseModel):
+    filename: str
+    category: str
+    section: str | None = None
+    start_page: int | None = None
+    end_page: int | None = None
+    score: float
+
+
+class MatterResearchSuggestion(BaseModel):
+    """
+    One Matter fact and the knowledge-base material retrieval found for
+    it - a suggestion for further research, never a cited legal
+    authority and never a legal conclusion. Reuses
+    app/report/rag_analysis.py's gather_fact_support() - the exact same
+    retrieval-grounded fact classification the Client Report already
+    runs - rather than a second implementation.
+    """
+
+    fact_text: str
+    classification: str
+    citations: list[MatterResearchSuggestionCitation]
+
+
+class MatterResearchSuggestionsResponse(BaseModel):
+    intake_session_id: int
+    matter_id: int
+    suggestions: list[MatterResearchSuggestion]
+    disclaimer: str = (
+        "These are retrieval-based research suggestions generated from this Matter's own intake facts, "
+        "not cited legal authority and not a legal conclusion. They must be independently verified by an "
+        "attorney before being relied upon or cited."
+    )
+
 # ---------------------------------------------------------------------
 # Report Review Queue (app/api/storage_api.py, app/api/intake_api.py) -
 # every generated Client-intake report starts 'pending_review' and

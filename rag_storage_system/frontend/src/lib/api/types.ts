@@ -311,6 +311,46 @@ export interface ComplaintListResponse {
   complaints: ComplaintInfo[];
 }
 
+export interface PromptVersionInfo {
+  name: string;
+  version: number;
+  text: string;
+  is_active: boolean;
+  created_at: string;
+  created_by: string | null;
+}
+
+export interface PromptVersionListResponse {
+  name: string;
+  versions: PromptVersionInfo[];
+}
+
+export interface PromptVersionCreateRequest {
+  text: string;
+}
+
+export interface MatterResearchSuggestionCitation {
+  filename: string;
+  category: string;
+  section: string | null;
+  start_page: number | null;
+  end_page: number | null;
+  score: number;
+}
+
+export interface MatterResearchSuggestion {
+  fact_text: string;
+  classification: string;
+  citations: MatterResearchSuggestionCitation[];
+}
+
+export interface MatterResearchSuggestionsResponse {
+  intake_session_id: number;
+  matter_id: number;
+  suggestions: MatterResearchSuggestion[];
+  disclaimer: string;
+}
+
 export interface ApiErrorBody {
   detail?: string;
 }

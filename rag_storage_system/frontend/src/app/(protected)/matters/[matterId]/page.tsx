@@ -13,6 +13,7 @@ import { SessionList } from "@/components/matters/SessionList";
 import { SessionDetail } from "@/components/matters/SessionDetail";
 import { MatterResearchPanel } from "@/components/matters/MatterResearchPanel";
 import { ComplaintGenerator } from "@/components/complaints/ComplaintGenerator";
+import { MatterResearchSuggestions } from "@/components/matters/MatterResearchSuggestions";
 
 /**
  * The real Matter Workspace - matter detail, its intake sessions, and
@@ -132,6 +133,18 @@ export default function MatterWorkspacePage() {
           <div style={{ marginTop: "1rem" }}>
             <h2 style={{ fontSize: "1rem", color: "#555" }}>Complaint generator</h2>
             <ComplaintGenerator sessionId={selectedSessionId} token={token ?? ""} onAuthFailure={handleAuthFailure} />
+          </div>
+        )}
+
+        {selectedSessionId && !isLoadingSession && (
+          <div style={{ marginTop: "1rem" }}>
+            <h2 style={{ fontSize: "1rem", color: "#555" }}>Matter research suggestions</h2>
+            <MatterResearchSuggestions
+              matterId={matterId}
+              sessionId={selectedSessionId}
+              token={token ?? ""}
+              onAuthFailure={handleAuthFailure}
+            />
           </div>
         )}
       </section>

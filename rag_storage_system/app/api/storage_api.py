@@ -117,6 +117,9 @@ from app.api.schemas import (
     UploadedInputInfo,
     InterviewFactInfo,
     ReportInfo,
+    MatterResearchSuggestion,
+    MatterResearchSuggestionCitation,
+    MatterResearchSuggestionsResponse,
 )
 from app.security.auth import ensure_matter_access
 from app.disclaimer import DEFAULT_DISCLAIMER_TEXT, get_current_disclaimer_text
@@ -128,6 +131,7 @@ from app.metadata.models import DocumentStatus
 from app.retrieval.retriever import retrieve, retrieve_for_matter
 from app.retrieval_settings import DEFAULT_MIN_CHUNKS, DEFAULT_SCORE_THRESHOLD, DEFAULT_TOP_K, get_current_retrieval_settings
 from app.analysis.answer_generation import stream_grounded_answer
+from app.report.rag_analysis import gather_fact_support
 from app.analysis.report_export import (
     DOCX_MEDIA_TYPE,
     PDF_MEDIA_TYPE,
@@ -1508,3 +1512,54 @@ async def matter_research_ask(
         answer="".join(answer_pieces),
         sources=[OwnerResearchSource(**s) for s in sources_payload],
     )
+
+
+@app.get(
+    "/admin/matters/{matter_id}/intake-sessions/{session_id}/research-suggestions",
+    response_model=MatterResearchSuggestionsResponse,
+    dependencies=[Depends(require_admin_key)],
+)
+def matter_research_suggestions(
+    matter_id: int, session_id: int, owner: dict = Depends(require_admin_key)
+) -> MatterResearchSuggestionsResponse:
+    """
+    Retrieval-grounded research suggestions for one Matter's intake
+    session - reuses app/report/rag_analysis.py's gather_fact_support()
+    (the exact same per-fact retrieval + classification the Client
+    Report already runs) fed this Matter's own facts, never a second
+    RAG system. Kept entirely separate from POST
+    /admin/matters/{matter_id}/research's citation-grounded answer -
+    this endpoint never generates prose, only surfaces retrieval hits
+    against real facts, explicitly labeled as suggestions rather than
+    legal conclusions.
+    """
+
+    ensure_matter_access(owner, matter_id, metadata_repository)
+
+    session = metadata_repository.get_intake_session_by_id(session_id)
+    if session is None or session["matter_id"] != matter_id:
+        raise HTTPException(status_code=404, detail="Intake session not found for this matter.")
+
+    fact_texts: list[str] = []
+    for uploaded_input in metadata_repository.list_uploaded_inputs(session_id):
+        for info in metadata_repository.list_extracted_information(uploaded_input["id"]):
+            if info["text"].strip():
+                fact_texts.append(info["text"])
+
+    for fact in metadata_repository.list_intake_facts(session_id):
+        if fact["fact_value"].strip():
+            fact_texts.append(f"{fact['fact_key']}: {fact['fact_value']}")
+
+    fact_supports = gather_fact_support(fact_texts, metadata_repository, matter_id=matter_id) if fact_texts else []
+
+    suggestions = [
+        MatterResearchSuggestion(
+            fact_text=fs.fact_text,
+            classification=fs.classification,
+            citations=[MatterResearchSuggestionCitation(**c) for c in fs.citations],
+        )
+        for fs in fact_supports
+        if fs.classification in ("match", "partial_match")
+    ]
+
+    return MatterResearchSuggestionsResponse(intake_session_id=session_id, matter_id=matter_id, suggestions=suggestions)
