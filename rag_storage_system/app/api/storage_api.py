@@ -1301,7 +1301,26 @@ async def owner_research_ask(request: OwnerResearchRequest, owner: dict = Depend
         category=request.category,
         score_threshold=settings.score_threshold,
     )
-    @app.post(
+
+    sources_payload: list[dict] = []
+    answer_pieces: list[str] = []
+
+    async for event, payload in stream_grounded_answer(request.query, results, settings.min_chunks):
+        if event == "sources":
+            sources_payload = payload["sources"]
+        elif event == "answer_chunk":
+            answer_pieces.append(payload["text"])
+        elif event == "error":
+            logger.warning("Owner research answer generation error for query %r: %s", request.query, payload["detail"])
+
+    return OwnerResearchResponse(
+        query=request.query,
+        answer="".join(answer_pieces),
+        sources=[OwnerResearchSource(**s) for s in sources_payload],
+    )
+
+
+@app.post(
     "/research/export",
     dependencies=[Depends(require_admin_key)],
 )
@@ -1331,21 +1350,4 @@ def owner_research_export(request: OwnerResearchExportRequest) -> Response:
         content=content,
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-    sources_payload: list[dict] = []
-    answer_pieces: list[str] = []
-
-    async for event, payload in stream_grounded_answer(request.query, results, settings.min_chunks):
-        if event == "sources":
-            sources_payload = payload["sources"]
-        elif event == "answer_chunk":
-            answer_pieces.append(payload["text"])
-        elif event == "error":
-            logger.warning("Owner research answer generation error for query %r: %s", request.query, payload["detail"])
-
-    return OwnerResearchResponse(
-        query=request.query,
-        answer="".join(answer_pieces),
-        sources=[OwnerResearchSource(**s) for s in sources_payload],
     )
