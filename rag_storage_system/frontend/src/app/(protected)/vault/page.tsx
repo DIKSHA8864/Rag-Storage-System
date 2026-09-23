@@ -116,10 +116,17 @@ export default function VaultPage() {
   }, [token, currentPath, handleAuthFailure]);
 
   useEffect(() => {
+    // Fetching on mount is exactly what this effect is for - there's
+    // no earlier synchronous point to read this from, same case the
+    // set-state-in-effect rule is meant to allow.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshCategories();
   }, [refreshCategories]);
 
   useEffect(() => {
+    // Re-fetches whenever currentPath changes (folder navigation) -
+    // same legitimate case as above.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshDocuments();
   }, [refreshDocuments]);
 
