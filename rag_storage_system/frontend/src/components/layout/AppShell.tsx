@@ -31,6 +31,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
 
         {isAuthenticated && (
+          <nav style={{ display: "flex", gap: "1rem" }}>
+            <Link href="/research">Research</Link>
+            <Link href="/vault">Vault</Link>
+          </nav>
+        )}
+
+        {isAuthenticated && (
           <button onClick={handleLogout} style={{ cursor: "pointer" }}>
             Log out
           </button>

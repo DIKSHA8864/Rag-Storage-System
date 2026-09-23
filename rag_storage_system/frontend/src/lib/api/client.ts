@@ -1,7 +1,7 @@
 // The one place that knows how to reach the FastAPI backend - every
-// other API module (auth.ts, research.ts, ...) calls through this,
-// never fetch() directly, so the base URL, auth header, and error
-// shape are handled in exactly one place.
+// other API module (auth.ts, research.ts, documents.ts, ...) calls
+// through this, never fetch() directly, so the base URL, auth header,
+// and error shape are handled in exactly one place.
 
 import type { ApiErrorBody } from "./types";
 
@@ -32,25 +32,17 @@ interface RequestOptions {
   token?: string | null;
 }
 
-async function fetchOrThrow(path: string, options: RequestOptions): Promise<Response> {
-  const { method = "GET", body, token } = options;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+async function fetchOrThrow(path: string, init: RequestInit, token?: string | null): Promise<Response> {
+  const headers = new Headers(init.headers);
 
   if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   let response: Response;
 
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
   } catch {
     throw new ApiError(0, "Could not reach the server. Check your connection and try again.");
   }
@@ -74,7 +66,17 @@ async function fetchOrThrow(path: string, options: RequestOptions): Promise<Resp
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const response = await fetchOrThrow(path, options);
+  const { method = "GET", body, token } = options;
+
+  const response = await fetchOrThrow(
+    path,
+    {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    },
+    token
+  );
 
   // 204 No Content or an empty body - nothing to parse.
   const text = await response.text();
@@ -82,6 +84,33 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 }
 
 export async function apiRequestBlob(path: string, options: RequestOptions = {}): Promise<Blob> {
-  const response = await fetchOrThrow(path, options);
+  const { method = "GET", body, token } = options;
+
+  const response = await fetchOrThrow(
+    path,
+    {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    },
+    token
+  );
+
   return response.blob();
+}
+
+// No Content-Type header here on purpose - the browser sets
+// multipart/form-data with the correct boundary itself when the body
+// is a FormData instance, and setting it manually breaks that.
+export async function apiRequestFormData<T>(
+  path: string,
+  formData: FormData,
+  options: { method?: "POST" | "PUT"; token?: string | null } = {}
+): Promise<T> {
+  const { method = "POST", token } = options;
+
+  const response = await fetchOrThrow(path, { method, body: formData }, token);
+
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
