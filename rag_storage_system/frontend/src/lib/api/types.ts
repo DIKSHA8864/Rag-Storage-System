@@ -124,6 +124,59 @@ export interface AdminStats {
   };
 }
 
+export interface IntakeSessionCreateRequest {
+  title?: string;
+  thread_id?: number | null;
+}
+
+export interface IntakeSessionInfo {
+  id: number;
+  matter_id: number;
+  thread_id: number | null;
+  title: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IntakeSessionListResponse {
+  sessions: IntakeSessionInfo[];
+}
+
+export interface InterviewStateInfo {
+  intake_session_id: number;
+  language: string | null;
+  terms_accepted_at: string | null;
+  terms_version: string | null;
+  current_state: string;
+  current_step_index: number;
+  mandatory_sweep_completed: boolean;
+}
+
+export interface InterviewStartResponse {
+  state: InterviewStateInfo;
+  prompt: string;
+}
+
+export interface InterviewMessageResponse {
+  state: InterviewStateInfo;
+  reply: string;
+  error: boolean;
+  done: boolean;
+}
+
+export interface InterviewMessageInfo {
+  id: number | string;
+  role: string;
+  content: string;
+  created_at?: string;
+}
+
+export interface InterviewResumeResponse {
+  state: InterviewStateInfo;
+  messages: InterviewMessageInfo[];
+}
+
 export interface ApiErrorBody {
   detail?: string;
 }
