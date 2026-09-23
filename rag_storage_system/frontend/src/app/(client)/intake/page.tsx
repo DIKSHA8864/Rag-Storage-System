@@ -88,7 +88,6 @@ export default function IntakePage() {
     // Fetching once the saved key is known is exactly what this
     // effect is for - same legitimate case as every other page-load
     // fetch in this app.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     verifyAndRoute();
   }, [isAuthLoading, isAuthenticated, verifyAndRoute]);
 
