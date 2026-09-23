@@ -25,7 +25,9 @@ function formatSize(bytes: number): string {
  * current folder - filename, size, extension, and the real
  * Uploaded/Processing/Embedding/Indexed/Failed status the backend's
  * processing pipeline set (app/metadata/models.py's DocumentStatus).
- * Never invents a status or a document that isn't in the response.
+ * `status_detail`, when the backend sent one (currently only set on
+ * Failed - see app/jobs/processing.py), is shown verbatim - never
+ * invented or guessed at.
  */
 export function DocumentList({ documents, onDelete, deletingFilename }: DocumentListProps) {
   if (documents.length === 0) {
@@ -42,36 +44,51 @@ export function DocumentList({ documents, onDelete, deletingFilename }: Document
             key={doc.relative_path}
             style={{
               display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
+              flexDirection: "column",
+              gap: "0.35rem",
               border: "1px solid #e5e5e5",
               borderRadius: 4,
               padding: "0.5rem 0.75rem",
             }}
           >
-            <div>
-              <div style={{ fontWeight: 600 }}>📄 {doc.filename}</div>
-              <div style={{ fontSize: "0.8rem", color: "#777" }}>
-                {doc.extension.replace(".", "").toUpperCase()} · {formatSize(doc.size)}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 600 }}>📄 {doc.filename}</div>
+                <div style={{ fontSize: "0.8rem", color: "#777" }}>
+                  {doc.extension.replace(".", "").toUpperCase()} · {formatSize(doc.size)}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span
+                  style={{
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    padding: "0.15rem 0.5rem",
+                    borderRadius: 4,
+                    ...statusStyle,
+                  }}
+                >
+                  {doc.status}
+                </span>
+                <button type="button" onClick={() => onDelete(doc.filename)} disabled={deletingFilename === doc.filename}>
+                  {deletingFilename === doc.filename ? "Deleting..." : "Delete"}
+                </button>
               </div>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <span
+            {doc.status_detail && (
+              <div
                 style={{
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                  padding: "0.15rem 0.5rem",
+                  fontSize: "0.8rem",
                   borderRadius: 4,
+                  padding: "0.35rem 0.5rem",
                   ...statusStyle,
                 }}
               >
-                {doc.status}
-              </span>
-              <button type="button" onClick={() => onDelete(doc.filename)} disabled={deletingFilename === doc.filename}>
-                {deletingFilename === doc.filename ? "Deleting..." : "Delete"}
-              </button>
-            </div>
+                {doc.status_detail}
+              </div>
+            )}
           </li>
         );
       })}

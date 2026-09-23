@@ -1078,6 +1078,7 @@ def list_documents(category: str | None = None) -> DocumentListResponse:
             extension=d["extension"],
             size=d["size"],
             status=d["status"],
+            status_detail=d.get("status_detail"),
         )
         for d in metadata_repository.list_documents(category)
     ]

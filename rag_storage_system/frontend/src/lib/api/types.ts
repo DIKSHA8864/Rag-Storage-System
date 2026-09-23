@@ -60,6 +60,7 @@ export interface DocumentInfo {
   extension: string;
   size: number;
   status: string;
+  status_detail?: string | null;
 }
 
 export interface DocumentListResponse {

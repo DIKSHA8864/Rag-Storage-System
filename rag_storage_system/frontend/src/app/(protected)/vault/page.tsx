@@ -21,6 +21,8 @@ import { DocumentList } from "@/components/vault/DocumentList";
 import { UploadPanel } from "@/components/vault/UploadPanel";
 
 const PROCESS_POLL_INTERVAL_MS = 2000;
+const DOCUMENT_POLL_INTERVAL_MS = 3000;
+const IN_FLIGHT_STATUSES = new Set(["Processing", "Embedding"]);
 
 /**
  * The real Owner Vault - categories/folders, documents, and their
@@ -129,6 +131,22 @@ export default function VaultPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshDocuments();
   }, [refreshDocuments]);
+
+  // Keeps document status genuinely live even when this page didn't
+  // start the processing run itself (e.g. it was left running from an
+  // earlier visit, or POST /process was triggered another way) -
+  // schedules one more real GET /documents whenever a document here
+  // is still Processing/Embedding, and stops on its own once none are.
+  useEffect(() => {
+    const hasInFlightDocument = documents.some((doc) => IN_FLIGHT_STATUSES.has(doc.status));
+    if (!hasInFlightDocument) return;
+
+    const timer = setTimeout(() => {
+      refreshDocuments();
+    }, DOCUMENT_POLL_INTERVAL_MS);
+
+    return () => clearTimeout(timer);
+  }, [documents, refreshDocuments]);
 
   function handleNavigate(path: string) {
     setCurrentPath(path);
@@ -275,9 +293,14 @@ export default function VaultPage() {
       <section style={{ marginTop: "1.5rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2 style={{ fontSize: "1rem", color: "#555", margin: 0 }}>Documents</h2>
-          <button type="button" onClick={handleStartProcessing} disabled={isProcessing}>
-            {isProcessing ? "Processing..." : "Process all documents"}
-          </button>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button type="button" onClick={() => refreshDocuments()} disabled={isLoadingDocuments}>
+              {isLoadingDocuments ? "Refreshing..." : "Refresh status"}
+            </button>
+            <button type="button" onClick={handleStartProcessing} disabled={isProcessing}>
+              {isProcessing ? "Processing..." : "Process all documents"}
+            </button>
+          </div>
         </div>
 
         {processStatus && (

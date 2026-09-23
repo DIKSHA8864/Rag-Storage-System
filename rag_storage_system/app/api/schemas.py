@@ -53,6 +53,7 @@ class DocumentInfo(BaseModel):
     extension: str
     size: int
     status: str = "Uploaded"
+    status_detail: str | None = None
 
 
 class DocumentListResponse(BaseModel):
