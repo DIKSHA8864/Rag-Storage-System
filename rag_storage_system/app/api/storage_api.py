@@ -69,7 +69,7 @@ import logging
 import secrets
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import HTMLResponse
 from app.api.auth_api import router as auth_router
 from app.api.schemas import (
@@ -97,6 +97,7 @@ from app.api.schemas import (
     SearchRequest,
     SearchResponse,
     SearchResultChunk,
+    OwnerResearchExportRequest,
     OwnerResearchRequest,
     OwnerResearchResponse,
     OwnerResearchSource,
@@ -111,7 +112,7 @@ from app.api.schemas import (
     MatterAssignmentListResponse,
 )
 from app.security.auth import ensure_matter_access
-from app.disclaimer import DEFAULT_DISCLAIMER_TEXT
+from app.disclaimer import DEFAULT_DISCLAIMER_TEXT, get_current_disclaimer_text
 from app.ingestion.file_validator import validate_file_object
 from app.jobs.processing import run_processing_job
 from app.jobs.queue import get_job_queue
@@ -120,6 +121,12 @@ from app.metadata.models import DocumentStatus
 from app.retrieval.retriever import retrieve
 from app.retrieval_settings import DEFAULT_MIN_CHUNKS, DEFAULT_SCORE_THRESHOLD, DEFAULT_TOP_K, get_current_retrieval_settings
 from app.analysis.answer_generation import stream_grounded_answer
+from app.analysis.report_export import (
+    DOCX_MEDIA_TYPE,
+    PDF_MEDIA_TYPE,
+    build_owner_research_docx,
+    build_owner_research_pdf,
+)
 from app.security.audit_log import log_audit_event
 from app.security.auth import hash_api_key, require_admin_key
 from app.security.path_security import sanitize_category_path, sanitize_path_segment
@@ -1293,6 +1300,37 @@ async def owner_research_ask(request: OwnerResearchRequest, owner: dict = Depend
         top_k=resolved_top_k,
         category=request.category,
         score_threshold=settings.score_threshold,
+    )
+    @app.post(
+    "/research/export",
+    dependencies=[Depends(require_admin_key)],
+)
+def owner_research_export(request: OwnerResearchExportRequest) -> Response:
+    """
+    Render an already-returned POST /research/ask result as a
+    downloadable .docx or .pdf file - same disclaimer mechanism as
+    POST /compare/export (app/analysis/report_export.py). Never runs
+    retrieval or Claude generation itself; only formats the exact
+    query/answer/sources the client already has, so the exported file
+    can never say something different from what was shown on screen.
+    """
+
+    disclaimer_text = get_current_disclaimer_text(metadata_repository)
+    sources = [source.model_dump() for source in request.sources]
+
+    if request.format == "docx":
+        content = build_owner_research_docx(request.query, request.answer, sources, disclaimer_text)
+        media_type = DOCX_MEDIA_TYPE
+        filename = "research-answer.docx"
+    else:
+        content = build_owner_research_pdf(request.query, request.answer, sources, disclaimer_text)
+        media_type = PDF_MEDIA_TYPE
+        filename = "research-answer.pdf"
+
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
     sources_payload: list[dict] = []

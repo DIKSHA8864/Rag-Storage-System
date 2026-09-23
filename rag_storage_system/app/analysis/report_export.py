@@ -129,3 +129,69 @@ def build_report_pdf(report: dict, disclaimer_text: str) -> bytes:
 
     writer.close()
     return buffer.getvalue()
+def _owner_research_sections(
+    query: str, answer: str, sources: list[dict], disclaimer_text: str
+) -> list[tuple[str, list[str]]]:
+    """
+    Flatten a single Owner Research Q&A into (heading, paragraphs)
+    pairs - the same content model both DOCX and PDF export render
+    below, so the two formats can't drift apart. Renders exactly the
+    query, answer, and sources the client already has from
+    POST /research/ask; never re-runs retrieval or generation.
+    """
+
+    sections: list[tuple[str, list[str]]] = [
+        ("Question", [query]),
+        ("Answer", [answer]),
+    ]
+
+    if sources:
+        sections.append(("Sources", [_source_label(s) for s in sources]))
+    else:
+        sections.append(("Sources", ["No sources - the library did not support this answer."]))
+
+    sections.append(("Disclaimer", [disclaimer_text]))
+
+    return sections
+
+
+def build_owner_research_docx(query: str, answer: str, sources: list[dict], disclaimer_text: str) -> bytes:
+    """Render a single Owner Research answer + the current disclaimer as a .docx file."""
+
+    document = Document()
+    document.add_heading("Research Answer", level=0)
+
+    for heading, paragraphs in _owner_research_sections(query, answer, sources, disclaimer_text):
+        document.add_heading(heading, level=1)
+        for paragraph in paragraphs:
+            document.add_paragraph(paragraph)
+
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def build_owner_research_pdf(query: str, answer: str, sources: list[dict], disclaimer_text: str) -> bytes:
+    """Render a single Owner Research answer + the current disclaimer as a .pdf file."""
+
+    html_parts = ["<h1>Research Answer</h1>"]
+    for heading, paragraphs in _owner_research_sections(query, answer, sources, disclaimer_text):
+        html_parts.append(f"<h2>{html.escape(heading)}</h2>")
+        html_parts.extend(f"<p>{html.escape(paragraph)}</p>" for paragraph in paragraphs)
+
+    story = pymupdf.Story(html="".join(html_parts))
+    mediabox = pymupdf.paper_rect("a4")
+    where = mediabox + (36, 36, -36, -36)
+
+    buffer = io.BytesIO()
+    writer = pymupdf.DocumentWriter(buffer)
+
+    more = 1
+    while more:
+        device = writer.begin_page(mediabox)
+        more, _ = story.place(where)
+        story.draw(device)
+        writer.end_page()
+
+    writer.close()
+    return buffer.getvalue()

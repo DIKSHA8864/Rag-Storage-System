@@ -165,7 +165,29 @@ class OwnerResearchResponse(BaseModel):
     answer: str
     sources: list[OwnerResearchSource]
 
+class OwnerResearchExportRequest(BaseModel):
+    """
+    Body for POST /research/export - renders an already-returned
+    POST /research/ask result as a downloadable .docx or .pdf file.
 
+    Never re-runs retrieval or Claude generation: the client sends
+    back the exact answer and sources it already received (including
+    the honest-gap case, where `sources` is empty and `answer` is the
+    fixed "Insufficient information..." message), so the exported file
+    can never drift from what the Owner actually saw on screen.
+    """
+
+    query: str = Field(..., min_length=1, max_length=1000)
+    answer: str = Field(..., min_length=1)
+    sources: list[OwnerResearchSource] = Field(default_factory=list)
+    format: str = Field(..., description="'docx' or 'pdf'.")
+
+    @field_validator("format")
+    @classmethod
+    def _validate_format(cls, value: str) -> str:
+        if value not in ("docx", "pdf"):
+            raise ValueError("format must be 'docx' or 'pdf'.")
+        return value
 # ---------------------------------------------------------------------
 # End User API (app/api/end_user_api.py) - a separate scope from
 # everything above, authenticated with X-End-User-Key instead of
