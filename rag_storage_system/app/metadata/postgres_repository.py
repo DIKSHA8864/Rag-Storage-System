@@ -884,13 +884,24 @@ class PostgresMetadataRepository(MetadataRepository):
         return [dict(row) for row in rows]
 
     def add_llm_usage_log(
-        self, matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms
+        self, matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms,
+        query_text=None, retrieved_chunk_ids=None, retrieved_chunk_scores=None, citation_check_result=None,
     ) -> dict:
+        import json
+
         with self._connect() as conn:
             row = conn.execute(
                 "INSERT INTO llm_usage_log (matter_id, intake_session_id, purpose, model, "
-                "input_tokens, output_tokens, latency_ms) VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                "input_tokens, output_tokens, latency_ms, query_text, retrieved_chunk_ids, "
+                "retrieved_chunk_scores, citation_check_result) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "RETURNING *",
-                (matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms),
+                (
+                    matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms,
+                    query_text,
+                    json.dumps(retrieved_chunk_ids) if retrieved_chunk_ids is not None else None,
+                    json.dumps(retrieved_chunk_scores) if retrieved_chunk_scores is not None else None,
+                    citation_check_result,
+                ),
             ).fetchone()
         return dict(row)

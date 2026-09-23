@@ -112,6 +112,9 @@ def extract_all_documents() -> list[dict]:
                     "category": category,
                     "status": "extracted",
                     "output_path": str(output_path),
+                    # Only PDFs report this (see app/extraction/pdf_extractor.py's
+                    # OCR fallback) - 0/absent for every other extractor.
+                    "ocr_pages_used": extracted.get("ocr_pages_used", 0),
                 }
             )
 

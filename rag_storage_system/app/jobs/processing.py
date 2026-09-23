@@ -71,8 +71,17 @@ def run_processing_job(
 
     for result in extraction_results:
         if result["status"] == "extracted":
+            ocr_pages_used = result.get("ocr_pages_used", 0)
+            status_detail = (
+                f"{ocr_pages_used} page(s) had no extractable text layer and were read via "
+                "OCR fallback instead - configure OCR_PROVIDER for real text extraction if this "
+                "is still the mock provider."
+                if ocr_pages_used
+                else None
+            )
             metadata_repository.update_document_status(
-                result["category"], result["filename"], DocumentStatus.PROCESSING.value
+                result["category"], result["filename"], DocumentStatus.PROCESSING.value,
+                status_detail=status_detail,
             )
             category_by_document_id[Path(result["filename"]).stem] = result["category"]
         else:

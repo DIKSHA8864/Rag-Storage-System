@@ -109,12 +109,17 @@ def _citations_are_grounded(text: str, allowed_filenames: set[str]) -> bool:
     return True
 
 
-async def _claude_full_answer(query: str, chunks: list[dict]) -> str:
+async def _claude_full_answer(query: str, chunks: list[dict], usage_log: dict | None = None) -> str:
     """
     Runs the real Claude call and returns its full response text -
     buffered, not token-streamed, so generate_answer_stream() can
     citation-check it before any of it reaches the client (see this
     module's docstring for why that rules out live token streaming).
+
+    `usage_log`, when passed, is filled in with the model name and
+    token counts this call actually used - observability data for
+    stream_grounded_answer()'s per-query log, never anything that
+    changes the answer itself.
     """
 
     import anthropic
@@ -140,10 +145,19 @@ async def _claude_full_answer(query: str, chunks: list[dict]) -> str:
         ],
     )
 
+    if usage_log is not None:
+        usage_log["model"] = settings.analysis_model
+        # getattr-guarded: token counts are observability data only -
+        # a test double or an SDK response shape this code doesn't
+        # expect must never turn into a failure of the real answer.
+        usage = getattr(response, "usage", None)
+        usage_log["input_tokens"] = getattr(usage, "input_tokens", 0) or 0
+        usage_log["output_tokens"] = getattr(usage, "output_tokens", 0) or 0
+
     return "".join(block.text for block in response.content if block.type == "text")
 
 
-async def generate_answer_stream(query: str, chunks: list[dict]) -> AsyncIterator[str]:
+async def generate_answer_stream(query: str, chunks: list[dict], usage_log: dict | None = None) -> AsyncIterator[str]:
     """
     Yields the answer text in small pieces, gradually - a citation-
     checked Claude answer when NARRATIVE_PROVIDER=claude and
@@ -156,59 +170,89 @@ async def generate_answer_stream(query: str, chunks: list[dict]) -> AsyncIterato
     treated as a hiccup that degrades the answer rather than letting a
     broken request or an ungrounded claim reach the client, whose
     (unaffected, already-sent) locked citations stay valid regardless.
+
+    `usage_log`, when passed, records which path was actually taken
+    ("grounded", "fabricated_discarded", "claude_error_fallback", or
+    "template_only") under its "citation_check_result" key, alongside
+    whatever _claude_full_answer() filled in - observability data only,
+    never read back to change behavior here.
     """
 
     settings = get_settings()
 
     if settings.narrative_provider == "claude" and settings.anthropic_api_key:
         try:
-            full_answer = await _claude_full_answer(query, chunks)
+            full_answer = await _claude_full_answer(query, chunks, usage_log=usage_log)
             allowed_filenames = {chunk["filename"] for chunk in chunks}
 
             if _citations_are_grounded(full_answer, allowed_filenames):
+                if usage_log is not None:
+                    usage_log["citation_check_result"] = "grounded"
                 async for piece in _stream_words(full_answer):
                     yield piece
                 return
 
+            if usage_log is not None:
+                usage_log["citation_check_result"] = "fabricated_discarded"
             logger.warning(
                 "Claude answer cited a source outside the locked set for this "
                 "request - discarding it and falling back to the deterministic "
                 "template answer instead of letting an ungrounded citation reach the client."
             )
         except Exception:
+            if usage_log is not None:
+                usage_log["citation_check_result"] = "claude_error_fallback"
             logger.warning(
                 "Claude answer generation failed - falling back to the deterministic "
                 "template answer.",
                 exc_info=True,
             )
+    elif usage_log is not None:
+        usage_log["citation_check_result"] = "template_only"
 
     async for piece in _stream_words(_template_answer(chunks)):
         yield piece
 
 
 async def stream_grounded_answer(
-    query: str, results: list[dict], min_chunks: int
+    query: str, results: list[dict], min_chunks: int,
+    *, purpose: str = "grounded_answer", matter_id: int | None = None, intake_session_id: int | None = None,
 ) -> AsyncIterator[tuple[str, dict]]:
     """
     The one shared implementation of "honest-gap check -> lock sources
-    -> generate a grounded answer" - used by both
+    -> generate a grounded answer" - used by
     app/api/end_user_api.py's POST /end-user/query/stream (End User
-    scope) and app/api/storage_api.py's POST /research/ask (Owner/
-    Attorney/Paralegal scope), so the two scopes can never drift into
-    two different answer-generation behaviors.
+    scope), app/api/storage_api.py's POST /research/ask (Owner
+    library-wide research), and POST /admin/matters/{id}/research
+    (Owner Matter-scoped research), so the three scopes can never drift
+    into different answer-generation behaviors.
 
     Takes an ALREADY-RETRIEVED, already-fixed `results` list (the
     caller runs its own scoped retrieval - library-only for Owner
-    research, Matter+library for End User - so Matter isolation is
-    enforced by which retrieval call produced `results`, not by this
-    function). Yields (event_type, payload) tuples:
-    "sources" (once, first), "answer_chunk" (0+, in order), "error"
-    (0-1, on a generation failure), "done" (once, always last) - the
-    exact same event vocabulary app/api/end_user_api.py already
+    research, Matter+library for End User and Matter research - so
+    Matter isolation is enforced by which retrieval call produced
+    `results`, not by this function). Yields (event_type, payload)
+    tuples: "sources" (once, first), "answer_chunk" (0+, in order),
+    "error" (0-1, on a generation failure), "done" (once, always last)
+    - the exact same event vocabulary app/api/end_user_api.py already
     formats as Server-Sent Events; a non-streaming caller can instead
     just collect them into one response (see storage_api.py's
     owner_research_ask()).
+
+    Every call also writes one row to the existing llm_usage_log table
+    (app/observability/usage_log.py's log_rag_query(), best-effort,
+    never raises) recording this exact query, the retrieved chunk
+    ids/scores, which model (if any) answered it, token usage, latency,
+    and the citation-check outcome - `purpose` distinguishes
+    "end_user_query" / "owner_research" / "matter_research" in that log
+    without changing the answer/retrieval behavior itself.
     """
+
+    import time
+
+    from app.observability.usage_log import log_rag_query
+
+    start = time.perf_counter()
 
     if len(results) < min_chunks:
         no_evidence_text = "Insufficient information found in the available knowledge base."
@@ -216,6 +260,14 @@ async def stream_grounded_answer(
         yield "sources", {"sources": []}
         yield "answer_chunk", {"text": no_evidence_text}
         yield "done", {}
+
+        log_rag_query(
+            purpose=purpose, query=query, results=results, model="n/a",
+            input_tokens=0, output_tokens=0,
+            latency_ms=int((time.perf_counter() - start) * 1000),
+            citation_check_result="insufficient_evidence",
+            matter_id=matter_id, intake_session_id=intake_session_id,
+        )
         return
 
     # CITATION LOCK: built once, from this exact `results` list, and
@@ -234,10 +286,22 @@ async def stream_grounded_answer(
     ]
     yield "sources", {"sources": sources}
 
+    usage_log: dict = {}
     try:
-        async for piece in generate_answer_stream(query, results):
+        async for piece in generate_answer_stream(query, results, usage_log=usage_log):
             yield "answer_chunk", {"text": piece}
     except Exception as exc:
+        usage_log.setdefault("citation_check_result", "generation_error")
         yield "error", {"detail": str(exc)}
 
     yield "done", {}
+
+    log_rag_query(
+        purpose=purpose, query=query, results=results,
+        model=usage_log.get("model", "template"),
+        input_tokens=usage_log.get("input_tokens", 0),
+        output_tokens=usage_log.get("output_tokens", 0),
+        latency_ms=int((time.perf_counter() - start) * 1000),
+        citation_check_result=usage_log.get("citation_check_result", "unknown"),
+        matter_id=matter_id, intake_session_id=intake_session_id,
+    )

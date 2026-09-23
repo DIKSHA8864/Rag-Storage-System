@@ -448,5 +448,7 @@ class MetadataRepository(ABC):
     def add_llm_usage_log(
         self, matter_id: Optional[int], intake_session_id: Optional[int], purpose: str,
         model: str, input_tokens: int, output_tokens: int, latency_ms: int,
+        query_text: Optional[str] = None, retrieved_chunk_ids: Optional[list] = None,
+        retrieved_chunk_scores: Optional[list] = None, citation_check_result: Optional[str] = None,
     ) -> dict:
         raise NotImplementedError

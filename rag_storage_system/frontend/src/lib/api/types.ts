@@ -122,6 +122,7 @@ export interface AdminStats {
     Indexed: number;
     Failed: number;
   };
+  last_synced_at: string | null;
 }
 
 export interface IntakeSessionCreateRequest {

@@ -6,13 +6,14 @@ import { useAuth } from "@/lib/auth/useAuth";
 import {
   createCategory,
   deleteDocument,
+  getAdminStats,
   getProcessingStatus,
   listCategories,
   listDocuments,
   startProcessing,
   uploadDocuments,
 } from "@/lib/api/documents";
-import type { CategoryInfo, DocumentInfo, ProcessStatusResponse, UploadedFileResult } from "@/lib/api/types";
+import type { AdminStats, CategoryInfo, DocumentInfo, ProcessStatusResponse, UploadedFileResult } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
@@ -25,14 +26,15 @@ const DOCUMENT_POLL_INTERVAL_MS = 3000;
 const IN_FLIGHT_STATUSES = new Set(["Processing", "Embedding"]);
 
 /**
- * The real Owner Vault - categories/folders, documents, and their
- * processing status, all from the existing backend endpoints
- * (GET/POST /categories, GET /documents,
- * POST /categories/{category}/documents/batch,
+ * The real Owner Vault - categories/folders, documents, their real
+ * processing status, and sync status (last synced time + a one-click
+ * re-index), all from the existing backend endpoints (GET/POST
+ * /categories, GET /documents, POST /categories/{category}/documents/batch,
  * DELETE /categories/{category}/documents/{filename}, POST /process,
- * GET /process/{job_id} - app/api/storage_api.py). No new backend
- * logic - this only calls what already exists and renders exactly
- * what it returns.
+ * GET /process/{job_id}, GET /admin/stats - app/api/storage_api.py).
+ * The upload-driven workflow is unchanged - re-index still means
+ * "reprocess everything currently in storage" via the same POST
+ * /process background job, not a new sync mechanism.
  */
 export default function VaultPage() {
   const { token, logout } = useAuth();
@@ -59,6 +61,10 @@ export default function VaultPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processStatus, setProcessStatus] = useState<ProcessStatusResponse | null>(null);
   const [processError, setProcessError] = useState<string | null>(null);
+
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   const handleAuthFailure = useCallback(
     (err: unknown) => {
@@ -117,6 +123,24 @@ export default function VaultPage() {
     }
   }, [token, currentPath, handleAuthFailure]);
 
+  const refreshStats = useCallback(async () => {
+    setIsLoadingStats(true);
+    setStatsError(null);
+
+    try {
+      if (!token) {
+        throw new ApiError(401, "Session expired. Please log in again.");
+      }
+      const response = await getAdminStats(token);
+      setStats(response);
+    } catch (err) {
+      if (handleAuthFailure(err)) return;
+      setStatsError(err instanceof ApiError ? err.message : "Could not load sync status.");
+    } finally {
+      setIsLoadingStats(false);
+    }
+  }, [token, handleAuthFailure]);
+
   useEffect(() => {
     // Fetching on mount is exactly what this effect is for - there's
     // no earlier synchronous point to read this from, same case the
@@ -124,6 +148,13 @@ export default function VaultPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshCategories();
   }, [refreshCategories]);
+
+  useEffect(() => {
+    // Fetching on mount is exactly what this effect is for - same
+    // legitimate case as refreshCategories() above.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshStats();
+  }, [refreshStats]);
 
   useEffect(() => {
     // Re-fetches whenever currentPath changes (folder navigation) -
@@ -184,7 +215,7 @@ export default function VaultPage() {
       }
       const response = await uploadDocuments(currentPath, files, token);
       setUploadResults(response.results);
-      await Promise.all([refreshDocuments(), refreshCategories()]);
+      await Promise.all([refreshDocuments(), refreshCategories(), refreshStats()]);
     } catch (err) {
       if (handleAuthFailure(err)) return;
       setUploadError(err instanceof ApiError ? err.message : "Upload failed. Please try again.");
@@ -204,7 +235,7 @@ export default function VaultPage() {
         throw new ApiError(401, "Session expired. Please log in again.");
       }
       await deleteDocument(currentPath, filename, token);
-      await Promise.all([refreshDocuments(), refreshCategories()]);
+      await Promise.all([refreshDocuments(), refreshCategories(), refreshStats()]);
     } catch (err) {
       if (handleAuthFailure(err)) return;
       setDeleteError(err instanceof ApiError ? err.message : "Could not delete this document.");
@@ -239,7 +270,7 @@ export default function VaultPage() {
 
         if (status.status === "finished" || status.status === "failed") {
           setIsProcessing(false);
-          await Promise.all([refreshDocuments(), refreshCategories()]);
+          await Promise.all([refreshDocuments(), refreshCategories(), refreshStats()]);
           return;
         }
 
@@ -292,16 +323,30 @@ export default function VaultPage() {
 
       <section style={{ marginTop: "1.5rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ fontSize: "1rem", color: "#555", margin: 0 }}>Documents</h2>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button type="button" onClick={() => refreshDocuments()} disabled={isLoadingDocuments}>
-              {isLoadingDocuments ? "Refreshing..." : "Refresh status"}
-            </button>
-            <button type="button" onClick={handleStartProcessing} disabled={isProcessing}>
-              {isProcessing ? "Processing..." : "Process all documents"}
-            </button>
-          </div>
+          <h2 style={{ fontSize: "1rem", color: "#555", margin: 0 }}>Sync status</h2>
+          <button type="button" onClick={handleStartProcessing} disabled={isProcessing}>
+            {isProcessing ? "Re-indexing..." : "Re-index all documents"}
+          </button>
         </div>
+
+        {isLoadingStats ? (
+          <LoadingSpinner label="Loading sync status..." />
+        ) : statsError ? (
+          <ErrorMessage message={statsError} />
+        ) : (
+          stats && (
+            <div style={{ fontSize: "0.85rem", color: "#666" }}>
+              <p style={{ margin: "0.25rem 0" }}>
+                Last synced: {stats.last_synced_at ? new Date(stats.last_synced_at).toLocaleString() : "Never"}
+              </p>
+              <p style={{ margin: "0.25rem 0" }}>
+                {stats.total_documents} document(s) - {stats.status_counts.Indexed} indexed,{" "}
+                {stats.status_counts.Processing + stats.status_counts.Embedding} processing,{" "}
+                {stats.status_counts.Failed} failed
+              </p>
+            </div>
+          )
+        )}
 
         {processStatus && (
           <p style={{ fontSize: "0.85rem", color: processStatus.status === "failed" ? "#c0392b" : "#666" }}>
@@ -312,6 +357,15 @@ export default function VaultPage() {
           </p>
         )}
         {processError && <ErrorMessage message={processError} />}
+      </section>
+
+      <section style={{ marginTop: "1.5rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 style={{ fontSize: "1rem", color: "#555", margin: 0 }}>Documents</h2>
+          <button type="button" onClick={() => refreshDocuments()} disabled={isLoadingDocuments}>
+            {isLoadingDocuments ? "Refreshing..." : "Refresh status"}
+          </button>
+        </div>
 
         {isLoadingDocuments ? (
           <LoadingSpinner label="Loading documents..." />

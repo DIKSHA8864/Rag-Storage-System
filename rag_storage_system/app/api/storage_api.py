@@ -388,6 +388,7 @@ def admin_stats() -> dict:
     }
 
     total_size = 0
+    last_synced_at = None
 
     for document in documents:
         status = document.get("status", "Uploaded")
@@ -396,12 +397,23 @@ def admin_stats() -> dict:
 
         total_size += int(document.get("size", 0) or 0)
 
+        # "Last sync" = the most recent time any document's status row
+        # actually changed (upload, processing, indexing, or failure) -
+        # documents.updated_at already tracks this for every status
+        # transition (see update_document_status()/update_status_where()
+        # in app/metadata/), so this is a real, already-recorded
+        # timestamp, not a new sync-log system.
+        updated_at = document.get("updated_at")
+        if updated_at and (last_synced_at is None or str(updated_at) > last_synced_at):
+            last_synced_at = str(updated_at)
+
     return {
         "total_documents": len(documents),
         "total_categories": len(folders),
         "storage_bytes": total_size,
         "storage_mb": round(total_size / (1024 * 1024), 2),
         "status_counts": status_counts,
+        "last_synced_at": last_synced_at,
     }
 
 
@@ -1420,7 +1432,9 @@ async def owner_research_ask(request: OwnerResearchRequest, owner: dict = Depend
     sources_payload: list[dict] = []
     answer_pieces: list[str] = []
 
-    async for event, payload in stream_grounded_answer(request.query, results, settings.min_chunks):
+    async for event, payload in stream_grounded_answer(
+        request.query, results, settings.min_chunks, purpose="owner_research"
+    ):
         if event == "sources":
             sources_payload = payload["sources"]
         elif event == "answer_chunk":
@@ -1496,7 +1510,9 @@ async def matter_research_ask(
     sources_payload: list[dict] = []
     answer_pieces: list[str] = []
 
-    async for event, payload in stream_grounded_answer(request.query, results, settings.min_chunks):
+    async for event, payload in stream_grounded_answer(
+        request.query, results, settings.min_chunks, purpose="matter_research", matter_id=matter_id
+    ):
         if event == "sources":
             sources_payload = payload["sources"]
         elif event == "answer_chunk":

@@ -77,6 +77,41 @@ def test_extract_pdf_missing_file_raises(tmp_path):
         extract_pdf(tmp_path / "missing.pdf")
 
 
+@pytest.fixture
+def scanned_pdf(tmp_path):
+    """A PDF page with no text layer at all - stands in for a scanned page."""
+
+    path = tmp_path / "scanned.pdf"
+
+    document = pymupdf.open()
+    document.new_page()
+    document.save(path)
+    document.close()
+
+    return path
+
+
+def test_extract_pdf_falls_back_to_ocr_for_a_page_with_no_text_layer(scanned_pdf):
+    result = extract_pdf(scanned_pdf)
+
+    assert result["ocr_pages_used"] == 1
+    page = result["pages"][0]
+    assert page["ocr_used"] is True
+    assert page["ocr_is_mock"] is True
+    # The mock OCR provider (app/multimodal/ocr.py) never fabricates
+    # plausible-looking text - it returns a clearly labeled placeholder,
+    # so this proves the fallback actually ran rather than silently
+    # leaving the page empty.
+    assert "MOCK OCR" in page["text"]
+
+
+def test_extract_pdf_does_not_run_ocr_when_real_text_extracts_fine(sample_pdf):
+    result = extract_pdf(sample_pdf)
+
+    assert result["ocr_pages_used"] == 0
+    assert all("ocr_used" not in page for page in result["pages"])
+
+
 def test_extract_docx_skips_blank_paragraphs_and_keeps_style(sample_docx):
     result = extract_docx(sample_docx)
 

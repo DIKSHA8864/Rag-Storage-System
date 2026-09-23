@@ -224,6 +224,10 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
     input_tokens INTEGER NOT NULL,
     output_tokens INTEGER NOT NULL,
     latency_ms INTEGER NOT NULL,
+    query_text TEXT,
+    retrieved_chunk_ids TEXT,
+    retrieved_chunk_scores TEXT,
+    citation_check_result TEXT,
     created_at TEXT NOT NULL
 );
 """
@@ -1161,14 +1165,25 @@ class SQLiteMetadataRepository(MetadataRepository):
         return results
 
     def add_llm_usage_log(
-        self, matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms
+        self, matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms,
+        query_text=None, retrieved_chunk_ids=None, retrieved_chunk_scores=None, citation_check_result=None,
     ) -> dict:
+        import json
+
         now = _now()
         with self._connect() as conn:
             cursor = conn.execute(
                 "INSERT INTO llm_usage_log (matter_id, intake_session_id, purpose, model, "
-                "input_tokens, output_tokens, latency_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms, now),
+                "input_tokens, output_tokens, latency_ms, query_text, retrieved_chunk_ids, "
+                "retrieved_chunk_scores, citation_check_result, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms,
+                    query_text,
+                    json.dumps(retrieved_chunk_ids) if retrieved_chunk_ids is not None else None,
+                    json.dumps(retrieved_chunk_scores) if retrieved_chunk_scores is not None else None,
+                    citation_check_result, now,
+                ),
             )
             new_id = cursor.lastrowid
         with self._connect() as conn:
