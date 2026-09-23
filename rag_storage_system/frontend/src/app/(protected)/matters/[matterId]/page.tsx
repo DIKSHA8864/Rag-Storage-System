@@ -12,6 +12,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { SessionList } from "@/components/matters/SessionList";
 import { SessionDetail } from "@/components/matters/SessionDetail";
 import { MatterResearchPanel } from "@/components/matters/MatterResearchPanel";
+import { ComplaintGenerator } from "@/components/complaints/ComplaintGenerator";
 
 /**
  * The real Matter Workspace - matter detail, its intake sessions, and
@@ -124,6 +125,13 @@ export default function MatterWorkspacePage() {
         {sessionDetail && !isLoadingSession && (
           <div style={{ marginTop: "1rem" }}>
             <SessionDetail detail={sessionDetail} />
+          </div>
+        )}
+
+        {selectedSessionId && !isLoadingSession && (
+          <div style={{ marginTop: "1rem" }}>
+            <h2 style={{ fontSize: "1rem", color: "#555" }}>Complaint generator</h2>
+            <ComplaintGenerator sessionId={selectedSessionId} token={token ?? ""} onAuthFailure={handleAuthFailure} />
           </div>
         )}
       </section>

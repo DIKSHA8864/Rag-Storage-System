@@ -23,11 +23,15 @@ from app.api.schemas import (
     CauseOfActionCreateRequest,
     CauseOfActionInfo,
     CauseOfActionListResponse,
+    ComplaintDraftResponse,
     ComplaintGenerateRequest,
     ComplaintInfo,
+    ComplaintListResponse,
+    ComplaintPreviewSection,
 )
 from app.complaint.builder import build_complaint_draft
 from app.complaint.docx_renderer import ComplaintDocxRenderer
+from app.complaint.sections import complaint_sections
 from app.security.auth import ensure_matter_access, require_admin_key
 
 router = APIRouter(prefix="/admin", tags=["complaint-generator"], dependencies=[Depends(require_admin_key)])
@@ -62,10 +66,10 @@ def list_causes_of_action(category: str | None = None) -> CauseOfActionListRespo
     return CauseOfActionListResponse(causes_of_action=[_cause_info(r) for r in rows])
 
 
-@router.post("/intake/sessions/{session_id}/complaint", response_model=ComplaintInfo)
+@router.post("/intake/sessions/{session_id}/complaint", response_model=ComplaintDraftResponse)
 def generate_complaint(
     session_id: int, request: ComplaintGenerateRequest, owner: dict = Depends(require_admin_key)
-) -> ComplaintInfo:
+) -> ComplaintDraftResponse:
     from app.api import storage_api
     from app.storage import get_intake_storage_backend
 
@@ -101,10 +105,35 @@ def generate_complaint(
     )
     repo.add_timeline_event(session_id, "complaint_generated", f"Draft complaint generated for causes of action {request.cause_of_action_ids}.")
 
-    return ComplaintInfo(
+    return ComplaintDraftResponse(
         id=complaint["id"], intake_session_id=session_id, matter_id=session["matter_id"],
         format=complaint["format"], cause_of_action_ids=complaint["cause_of_action_ids"],
         created_at=str(complaint["created_at"]),
+        sections=[ComplaintPreviewSection(heading=heading, paragraphs=paragraphs) for heading, paragraphs in complaint_sections(draft)],
+    )
+
+
+@router.get("/intake/sessions/{session_id}/complaints", response_model=ComplaintListResponse)
+def list_session_complaints(session_id: int, owner: dict = Depends(require_admin_key)) -> ComplaintListResponse:
+    from app.api import storage_api
+
+    repo = storage_api.metadata_repository
+    session = repo.get_intake_session_by_id(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Intake session not found.")
+
+    ensure_matter_access(owner, session["matter_id"], repo)
+
+    complaints = repo.list_complaints(session_id)
+    return ComplaintListResponse(
+        complaints=[
+            ComplaintInfo(
+                id=c["id"], intake_session_id=session_id, matter_id=session["matter_id"],
+                format=c["format"], cause_of_action_ids=c["cause_of_action_ids"],
+                created_at=str(c["created_at"]),
+            )
+            for c in complaints
+        ]
     )
 
 

@@ -264,6 +264,53 @@ export interface MatterIntakeSessionDetailResponse {
   reports: ReportInfo[];
 }
 
+export interface CauseOfActionInfo {
+  id: number;
+  category: string;
+  name: string;
+  elements: string[];
+  authority_citation: string;
+  created_at: string;
+}
+
+export interface CauseOfActionListResponse {
+  causes_of_action: CauseOfActionInfo[];
+}
+
+export interface CauseOfActionCreateRequest {
+  category: string;
+  name: string;
+  elements: string[];
+  authority_citation: string;
+}
+
+export interface ComplaintGenerateRequest {
+  cause_of_action_ids: number[];
+  format: "docx";
+}
+
+export interface ComplaintInfo {
+  id: number;
+  intake_session_id: number;
+  matter_id: number;
+  format: string;
+  cause_of_action_ids: number[];
+  created_at: string;
+}
+
+export interface ComplaintPreviewSection {
+  heading: string;
+  paragraphs: string[];
+}
+
+export interface ComplaintDraftResponse extends ComplaintInfo {
+  sections: ComplaintPreviewSection[];
+}
+
+export interface ComplaintListResponse {
+  complaints: ComplaintInfo[];
+}
+
 export interface ApiErrorBody {
   detail?: string;
 }

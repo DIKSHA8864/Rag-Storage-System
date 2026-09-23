@@ -760,3 +760,22 @@ class ComplaintInfo(BaseModel):
     format: str
     cause_of_action_ids: list[int]
     created_at: str
+
+
+class ComplaintPreviewSection(BaseModel):
+    heading: str
+    paragraphs: list[str]
+
+
+class ComplaintDraftResponse(BaseModel):
+    id: int
+    intake_session_id: int
+    matter_id: int
+    format: str
+    cause_of_action_ids: list[int]
+    created_at: str
+    sections: list[ComplaintPreviewSection]
+
+
+class ComplaintListResponse(BaseModel):
+    complaints: list[ComplaintInfo]
