@@ -43,6 +43,10 @@ export function ReportPanel({ sessionId, endUserKey, language }: ReportPanelProp
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    // localStorage doesn't exist during SSR, so the saved report id
+    // can only be read after mount - same legitimate case as
+    // AuthContext.tsx's own session-hydration effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setReportId(loadIntakeReportId());
   }, []);
 
