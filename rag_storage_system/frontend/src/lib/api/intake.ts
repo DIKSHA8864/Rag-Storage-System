@@ -1,4 +1,4 @@
-import { endUserRequest } from "./endUserClient";
+import { endUserRequest, endUserRequestBlob } from "./endUserClient";
 import type {
   IntakeSessionCreateRequest,
   IntakeSessionInfo,
@@ -6,6 +6,8 @@ import type {
   InterviewMessageResponse,
   InterviewResumeResponse,
   InterviewStartResponse,
+  ReportGenerateRequest,
+  ReportInfo,
 } from "./types";
 
 export async function listIntakeSessions(endUserKey: string): Promise<IntakeSessionListResponse> {
@@ -44,4 +46,20 @@ export async function sendInterviewMessage(
 
 export async function resumeInterview(sessionId: number, endUserKey: string): Promise<InterviewResumeResponse> {
   return endUserRequest<InterviewResumeResponse>(`/end-user/intake/sessions/${sessionId}/interview`, { endUserKey });
+}
+
+export async function generateIntakeReport(
+  sessionId: number,
+  request: ReportGenerateRequest,
+  endUserKey: string
+): Promise<ReportInfo> {
+  return endUserRequest<ReportInfo>(`/end-user/intake/sessions/${sessionId}/report`, {
+    method: "POST",
+    body: request,
+    endUserKey,
+  });
+}
+
+export async function downloadIntakeReport(reportId: number, endUserKey: string): Promise<Blob> {
+  return endUserRequestBlob(`/end-user/intake/reports/${reportId}/download`, { endUserKey });
 }

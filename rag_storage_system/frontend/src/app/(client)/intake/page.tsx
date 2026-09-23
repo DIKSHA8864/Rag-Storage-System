@@ -11,7 +11,7 @@ import { AccessCodeForm } from "@/components/intake/AccessCodeForm";
 import { BasicInfoForm } from "@/components/intake/BasicInfoForm";
 import { InterviewChat } from "@/components/intake/InterviewChat";
 import { clearIntakeSessionId, loadIntakeSessionId, saveIntakeSessionId } from "@/lib/clientAuth/intakeSessionStorage";
-
+import { clearIntakeReportId } from "@/lib/clientAuth/intakeReportStorage";
 type Phase = "loading" | "code" | "info" | "interview";
 
 /**
@@ -135,8 +135,9 @@ export default function IntakePage() {
     }
   }
 
-  function handleStartOver() {
+    function handleStartOver() {
     clearIntakeSessionId();
+    clearIntakeReportId();
     logout();
     setSessionId(null);
     setPhase("code");

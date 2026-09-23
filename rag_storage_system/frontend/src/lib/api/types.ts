@@ -177,6 +177,37 @@ export interface InterviewResumeResponse {
   messages: InterviewMessageInfo[];
 }
 
+export interface ReportGenerateRequest {
+  format: "docx" | "pdf" | "image";
+}
+
+export interface ReportInfo {
+  id: number;
+  intake_session_id: number;
+  format: string;
+  created_at: string;
+}
+
+export interface PendingReportInfo {
+  report_id: number;
+  intake_session_id: number;
+  format: string;
+  created_at: string;
+  status: string;
+}
+
+export interface ReportReviewListResponse {
+  reports: PendingReportInfo[];
+}
+
+export interface ReportReviewInfo {
+  report_id: number;
+  status: string;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  rejection_reason?: string | null;
+}
+
 export interface ApiErrorBody {
   detail?: string;
 }

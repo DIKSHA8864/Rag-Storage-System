@@ -7,6 +7,7 @@ import type { InterviewStateInfo } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { ReportPanel } from "./ReportPanel";
 
 interface InterviewChatProps {
   sessionId: number;
@@ -246,10 +247,13 @@ export function InterviewChat({ sessionId, endUserKey, onStartOver }: InterviewC
 
       {sendError && <ErrorMessage message={sendError} />}
 
-      {isComplete ? (
-        <p style={{ marginTop: "1rem", color: "#2e7d32", fontWeight: 600 }}>
-          {state.language === "es" ? "Su entrevista ha finalizado. Gracias." : "Your interview is complete. Thank you."}
-        </p>
+            {isComplete ? (
+        <>
+          <p style={{ marginTop: "1rem", color: "#2e7d32", fontWeight: 600 }}>
+            {state.language === "es" ? "Su entrevista ha finalizado. Gracias." : "Your interview is complete. Thank you."}
+          </p>
+          <ReportPanel sessionId={sessionId} endUserKey={endUserKey} language={state.language} />
+        </>
       ) : (
         <div style={{ marginTop: "1rem" }}>
           {state.current_state === "language_selection" && (

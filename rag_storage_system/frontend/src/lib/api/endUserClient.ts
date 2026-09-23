@@ -22,20 +22,14 @@ interface EndUserRequestOptions {
   endUserKey: string;
 }
 
-export async function endUserRequest<T>(path: string, options: EndUserRequestOptions): Promise<T> {
-  const { method = "GET", body, endUserKey } = options;
+async function fetchOrThrow(path: string, init: RequestInit, endUserKey: string): Promise<Response> {
+  const headers = new Headers(init.headers);
+  headers.set("X-End-User-Key", endUserKey);
 
   let response: Response;
 
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        "X-End-User-Key": endUserKey,
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
   } catch {
     throw new ApiError(0, "Could not reach the server. Check your connection and try again.");
   }
@@ -55,6 +49,31 @@ export async function endUserRequest<T>(path: string, options: EndUserRequestOpt
     throw new ApiError(response.status, detail);
   }
 
+  return response;
+}
+
+export async function endUserRequest<T>(path: string, options: EndUserRequestOptions): Promise<T> {
+  const { method = "GET", body, endUserKey } = options;
+
+  const response = await fetchOrThrow(
+    path,
+    {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    },
+    endUserKey
+  );
+
   const text = await response.text();
   return (text ? JSON.parse(text) : undefined) as T;
+}
+
+export async function endUserRequestBlob(
+  path: string,
+  options: { method?: "GET" | "POST"; endUserKey: string }
+): Promise<Blob> {
+  const { method = "GET", endUserKey } = options;
+  const response = await fetchOrThrow(path, { method }, endUserKey);
+  return response.blob();
 }
