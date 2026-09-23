@@ -673,6 +673,23 @@ class InterviewFactsResponse(BaseModel):
     facts: list[InterviewFactInfo]
 
 
+class MatterIntakeSessionDetailResponse(BaseModel):
+    """
+    Body for GET /admin/matters/{matter_id}/intake-sessions/{session_id} -
+    everything the Owner needs to see about one Client's intake within
+    a Matter: the session itself, its timeline, uploaded documents,
+    recorded facts, and any generated reports. Reuses the exact same
+    schemas the Client's own view of this data already returns (see
+    app/api/intake_api.py, app/api/interview_api.py) - never a second,
+    drifting representation of the same rows.
+    """
+
+    session: IntakeSessionInfo
+    timeline: list[TimelineEventInfo]
+    uploaded_inputs: list[UploadedInputInfo]
+    facts: list[InterviewFactInfo]
+    reports: list[ReportInfo]
+
 # ---------------------------------------------------------------------
 # Report Review Queue (app/api/storage_api.py, app/api/intake_api.py) -
 # every generated Client-intake report starts 'pending_review' and

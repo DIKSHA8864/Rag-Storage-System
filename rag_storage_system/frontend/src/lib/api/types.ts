@@ -208,6 +208,62 @@ export interface ReportReviewInfo {
   rejection_reason?: string | null;
 }
 
+export interface MatterInfo {
+  id: number;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface MatterListResponse {
+  matters: MatterInfo[];
+}
+
+export interface MatterCreateRequest {
+  name: string;
+}
+
+export interface MatterCreatedResponse {
+  id: number;
+  name: string;
+  api_key: string;
+  created_at: string;
+}
+
+export interface TimelineEventInfo {
+  id: number;
+  event_type: string;
+  description: string;
+  created_at: string;
+}
+
+export interface UploadedInputInfo {
+  id: number;
+  intake_session_id: number;
+  original_filename: string;
+  media_type: string;
+  size: number;
+  processing_status: string;
+  status_detail?: string | null;
+  created_at: string;
+}
+
+export interface InterviewFactInfo {
+  id: number;
+  category: string;
+  fact_key: string;
+  fact_value: string;
+  created_at: string;
+}
+
+export interface MatterIntakeSessionDetailResponse {
+  session: IntakeSessionInfo;
+  timeline: TimelineEventInfo[];
+  uploaded_inputs: UploadedInputInfo[];
+  facts: InterviewFactInfo[];
+  reports: ReportInfo[];
+}
+
 export interface ApiErrorBody {
   detail?: string;
 }

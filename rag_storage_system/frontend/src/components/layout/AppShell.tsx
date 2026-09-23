@@ -31,10 +31,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
 
           {isAuthenticated && (
-          <nav style={{ display: "flex", gap: "1rem" }}>
+                    <nav style={{ display: "flex", gap: "1rem" }}>
             <Link href="/dashboard">Dashboard</Link>
             <Link href="/research">Research</Link>
             <Link href="/vault">Vault</Link>
+            <Link href="/matters">Matters</Link>
           </nav>
         )}
 

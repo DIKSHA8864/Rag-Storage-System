@@ -110,6 +110,13 @@ from app.api.schemas import (
     MatterAssignmentCreateRequest,
     MatterAssignmentInfo,
     MatterAssignmentListResponse,
+    MatterIntakeSessionDetailResponse,
+    IntakeSessionInfo,
+    IntakeSessionListResponse,
+    TimelineEventInfo,
+    UploadedInputInfo,
+    InterviewFactInfo,
+    ReportInfo,
 )
 from app.security.auth import ensure_matter_access
 from app.disclaimer import DEFAULT_DISCLAIMER_TEXT, get_current_disclaimer_text
@@ -118,7 +125,7 @@ from app.jobs.processing import run_processing_job
 from app.jobs.queue import get_job_queue
 from app.metadata import get_metadata_repository
 from app.metadata.models import DocumentStatus
-from app.retrieval.retriever import retrieve
+from app.retrieval.retriever import retrieve, retrieve_for_matter
 from app.retrieval_settings import DEFAULT_MIN_CHUNKS, DEFAULT_SCORE_THRESHOLD, DEFAULT_TOP_K, get_current_retrieval_settings
 from app.analysis.answer_generation import stream_grounded_answer
 from app.analysis.report_export import (
@@ -545,6 +552,107 @@ def list_matter_assignments(matter_id: int, owner: dict = Depends(require_admin_
             )
             for a in assignments
         ]
+    )
+
+
+@app.get(
+    "/admin/matters/{matter_id}",
+    response_model=MatterInfo,
+    dependencies=[Depends(require_admin_key)],
+)
+def get_matter_detail(matter_id: int, owner: dict = Depends(require_admin_key)) -> MatterInfo:
+    """Real, single-Matter detail - same isolation as every other Matter-scoped endpoint."""
+
+    ensure_matter_access(owner, matter_id, metadata_repository)
+
+    matter = metadata_repository.get_matter(matter_id)
+    if matter is None:
+        raise HTTPException(status_code=404, detail="Matter not found.")
+
+    return MatterInfo(
+        id=matter["id"], name=matter["name"], is_active=bool(matter["is_active"]), created_at=str(matter["created_at"]),
+    )
+
+
+@app.get(
+    "/admin/matters/{matter_id}/intake-sessions",
+    response_model=IntakeSessionListResponse,
+    dependencies=[Depends(require_admin_key)],
+)
+def list_matter_intake_sessions(matter_id: int, owner: dict = Depends(require_admin_key)) -> IntakeSessionListResponse:
+    """
+    Every intake session a Client has started under this Matter - the
+    Owner-side view of exactly what GET /end-user/intake/sessions
+    already returns to the Client themselves, scoped the same way.
+    """
+
+    ensure_matter_access(owner, matter_id, metadata_repository)
+
+    sessions = metadata_repository.list_intake_sessions(matter_id)
+    return IntakeSessionListResponse(
+        sessions=[
+            IntakeSessionInfo(
+                id=s["id"], matter_id=s["matter_id"], thread_id=s.get("thread_id"),
+                title=s["title"], status=s["status"],
+                created_at=str(s["created_at"]), updated_at=str(s["updated_at"]),
+            )
+            for s in sessions
+        ]
+    )
+
+
+@app.get(
+    "/admin/matters/{matter_id}/intake-sessions/{session_id}",
+    response_model=MatterIntakeSessionDetailResponse,
+    dependencies=[Depends(require_admin_key)],
+)
+def get_matter_intake_session_detail(
+    matter_id: int, session_id: int, owner: dict = Depends(require_admin_key)
+) -> MatterIntakeSessionDetailResponse:
+    """
+    One intake session's full real record for the Owner: the session
+    itself, its timeline, every uploaded document, every recorded
+    fact, and any generated reports - the same rows the Client's own
+    session view is built from, never a second copy of them.
+    """
+
+    ensure_matter_access(owner, matter_id, metadata_repository)
+
+    session = metadata_repository.get_intake_session(session_id, matter_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Intake session not found.")
+
+    timeline = metadata_repository.list_timeline_events(session_id)
+    uploaded_inputs = metadata_repository.list_uploaded_inputs(session_id)
+    facts = metadata_repository.list_intake_facts(session_id)
+    reports = metadata_repository.list_reports(session_id)
+
+    return MatterIntakeSessionDetailResponse(
+        session=IntakeSessionInfo(
+            id=session["id"], matter_id=session["matter_id"], thread_id=session.get("thread_id"),
+            title=session["title"], status=session["status"],
+            created_at=str(session["created_at"]), updated_at=str(session["updated_at"]),
+        ),
+        timeline=[
+            TimelineEventInfo(id=e["id"], event_type=e["event_type"], description=e["description"], created_at=str(e["created_at"]))
+            for e in timeline
+        ],
+        uploaded_inputs=[
+            UploadedInputInfo(
+                id=u["id"], intake_session_id=u["intake_session_id"], original_filename=u["original_filename"],
+                media_type=u["media_type"], size=u["size"], processing_status=u["processing_status"],
+                status_detail=u.get("status_detail"), created_at=str(u["created_at"]),
+            )
+            for u in uploaded_inputs
+        ],
+        facts=[
+            InterviewFactInfo(id=f["id"], category=f["category"], fact_key=f["fact_key"], fact_value=f["fact_value"], created_at=str(f["created_at"]))
+            for f in facts
+        ],
+        reports=[
+            ReportInfo(id=r["id"], intake_session_id=r["intake_session_id"], format=r["format"], created_at=str(r["created_at"]))
+            for r in reports
+        ],
     )
 
 @app.get(
@@ -1353,4 +1461,50 @@ def owner_research_export(request: OwnerResearchExportRequest) -> Response:
         content=content,
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+@app.post(
+    "/admin/matters/{matter_id}/research",
+    response_model=OwnerResearchResponse,
+    dependencies=[Depends(require_admin_key)],
+)
+async def matter_research_ask(
+    matter_id: int, request: OwnerResearchRequest, owner: dict = Depends(require_admin_key)
+) -> OwnerResearchResponse:
+    """
+    Real Matter-scoped research: the exact same citation-locked,
+    Claude-or-template answer generation POST /research/ask already
+    uses (app/analysis/answer_generation.py's stream_grounded_answer())
+    - not a second RAG system, the identical one - fed
+    retrieve_for_matter()'s results instead of retrieve()'s, so the
+    answer draws on the Owner's library AND this Matter's own ingested
+    documents (app/matter_rag/), never any other Matter's namespace.
+    """
+
+    ensure_matter_access(owner, matter_id, metadata_repository)
+
+    settings = get_current_retrieval_settings(metadata_repository)
+    resolved_top_k = request.top_k if request.top_k is not None else settings.top_k
+
+    results = retrieve_for_matter(
+        request.query, matter_id, top_k=resolved_top_k, score_threshold=settings.score_threshold
+    )
+
+    sources_payload: list[dict] = []
+    answer_pieces: list[str] = []
+
+    async for event, payload in stream_grounded_answer(request.query, results, settings.min_chunks):
+        if event == "sources":
+            sources_payload = payload["sources"]
+        elif event == "answer_chunk":
+            answer_pieces.append(payload["text"])
+        elif event == "error":
+            logger.warning(
+                "Matter %s research answer generation error for query %r: %s",
+                matter_id, request.query, payload["detail"],
+            )
+
+    return OwnerResearchResponse(
+        query=request.query,
+        answer="".join(answer_pieces),
+        sources=[OwnerResearchSource(**s) for s in sources_payload],
     )
