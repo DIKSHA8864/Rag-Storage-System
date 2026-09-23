@@ -73,7 +73,11 @@ export default function ResearchPage() {
 
         {result && !isLoading && (
           <>
-            <AnswerPanel answer={result.answer} hasSupport={result.sources.length > 0} />
+            <AnswerPanel
+              answer={result.answer}
+              hasSupport={result.sources.length > 0}
+              sources={result.sources}
+            />
             <SourcesPanel sources={result.sources} />
           </>
         )}
