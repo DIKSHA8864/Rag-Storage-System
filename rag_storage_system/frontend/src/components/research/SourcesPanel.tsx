@@ -4,6 +4,17 @@ interface SourcesPanelProps {
   sources: OwnerResearchSource[];
 }
 
+// Matter-scoped research (POST /admin/matters/{id}/research) mixes
+// two kinds of source in the same list: the firm's shared legal
+// library, and this Matter's own private documents (retrieved via
+// app/matter_rag/'s "matter-{id}" category namespace - see
+// app/retrieval/retriever.py's retrieve_for_matter()). Relabeling
+// that raw category string here - never inventing a new field - keeps
+// client-reported material visibly separate from legal authority.
+function formatCategory(category: string): string {
+  return category.startsWith("matter-") ? "This Matter's Documents" : category;
+}
+
 /**
  * Renders exactly the `sources` array POST /research/ask returned -
  * every entry here traces to a chunk the backend's retrieval actually
@@ -69,7 +80,7 @@ export function SourcesPanel({ sources }: SourcesPanelProps) {
               <dl style={{ margin: "0.35rem 0 0 0", fontSize: "0.85rem", color: "#666" }}>
                 <div style={{ display: "flex", gap: "0.35rem" }}>
                   <dt style={{ fontWeight: 600 }}>Category:</dt>
-                  <dd style={{ margin: 0 }}>{source.category}</dd>
+                  <dd style={{ margin: 0 }}>{formatCategory(source.category)}</dd>
                 </div>
 
                 {source.section && (
