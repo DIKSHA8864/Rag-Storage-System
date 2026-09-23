@@ -1,18 +1,28 @@
+import type { OwnerResearchSource } from "@/lib/api/types";
+import { parseAnswerCitations } from "@/lib/research/citations";
+
 interface AnswerPanelProps {
   answer: string;
   hasSupport: boolean;
+  sources: OwnerResearchSource[];
 }
 
 /**
  * Renders the real answer text returned by POST /research/ask -
- * nothing here generates or alters that text. When hasSupport is
- * false (the backend's honest-gap path fired - see
- * app/analysis/answer_generation.py's stream_grounded_answer()), the
+ * nothing here generates or alters that text. Inline "[filename]"
+ * citations the backend wrote into the answer (see
+ * app/analysis/answer_generation.py) are linked to their matching
+ * card in the Sources panel when the filename matches one of
+ * `sources` exactly - any bracketed text that doesn't match a real
+ * source is left as plain text instead of becoming a fake link.
+ *
+ * When hasSupport is false (the backend's honest-gap path fired), the
  * answer is styled as an explicit "library doesn't support this"
- * notice instead of a normal answer, so the honest-gap behavior stays
- * visible to the user rather than looking like an ordinary result.
+ * notice instead of a normal answer, so that behavior stays visible.
  */
-export function AnswerPanel({ answer, hasSupport }: AnswerPanelProps) {
+export function AnswerPanel({ answer, hasSupport, sources }: AnswerPanelProps) {
+  const segments = parseAnswerCitations(answer, sources);
+
   return (
     <section
       style={{
@@ -31,7 +41,32 @@ export function AnswerPanel({ answer, hasSupport }: AnswerPanelProps) {
         </p>
       )}
 
-      <p style={{ margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{answer}</p>
+      <p style={{ margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+        {segments.map((segment, i) =>
+          segment.type === "citation" && segment.sourceIndex !== undefined ? (
+            <a
+              key={i}
+              href={`#source-${segment.sourceIndex}`}
+              title={sources[segment.sourceIndex]?.filename}
+              style={{
+                display: "inline-block",
+                margin: "0 0.15rem",
+                padding: "0 0.35rem",
+                fontSize: "0.8rem",
+                fontWeight: 600,
+                color: "#1a5fb4",
+                background: "#eaf1fb",
+                borderRadius: 4,
+                textDecoration: "none",
+              }}
+            >
+              [{segment.sourceIndex + 1}]
+            </a>
+          ) : (
+            <span key={i}>{segment.text}</span>
+          )
+        )}
+      </p>
     </section>
   );
 }
