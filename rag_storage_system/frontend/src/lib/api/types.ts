@@ -33,7 +33,12 @@ export interface OwnerResearchResponse {
   answer: string;
   sources: OwnerResearchSource[];
 }
-
+export interface OwnerResearchExportRequest {
+  query: string;
+  answer: string;
+  sources: OwnerResearchSource[];
+  format: "docx" | "pdf";
+}
 export interface ApiErrorBody {
   detail?: string;
 }

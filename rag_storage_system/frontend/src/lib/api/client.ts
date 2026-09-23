@@ -32,7 +32,7 @@ interface RequestOptions {
   token?: string | null;
 }
 
-export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function fetchOrThrow(path: string, options: RequestOptions): Promise<Response> {
   const { method = "GET", body, token } = options;
 
   const headers: Record<string, string> = {
@@ -70,7 +70,18 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     throw new ApiError(response.status, detail);
   }
 
+  return response;
+}
+
+export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const response = await fetchOrThrow(path, options);
+
   // 204 No Content or an empty body - nothing to parse.
   const text = await response.text();
   return (text ? JSON.parse(text) : undefined) as T;
+}
+
+export async function apiRequestBlob(path: string, options: RequestOptions = {}): Promise<Blob> {
+  const response = await fetchOrThrow(path, options);
+  return response.blob();
 }
