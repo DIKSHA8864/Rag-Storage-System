@@ -54,6 +54,7 @@ class DocumentInfo(BaseModel):
     size: int
     status: str = "Uploaded"
     status_detail: str | None = None
+    created_at: str
 
 
 class DocumentListResponse(BaseModel):

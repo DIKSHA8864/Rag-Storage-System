@@ -30,8 +30,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           AshiLegal
         </Link>
 
-        {isAuthenticated && (
+          {isAuthenticated && (
           <nav style={{ display: "flex", gap: "1rem" }}>
+            <Link href="/dashboard">Dashboard</Link>
             <Link href="/research">Research</Link>
             <Link href="/vault">Vault</Link>
           </nav>

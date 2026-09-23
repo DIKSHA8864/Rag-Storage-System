@@ -61,6 +61,7 @@ export interface DocumentInfo {
   size: number;
   status: string;
   status_detail?: string | null;
+  created_at: string;
 }
 
 export interface DocumentListResponse {
@@ -107,6 +108,20 @@ export interface ProcessStatusResponse {
   status: string;
   result?: ProcessResult | null;
   error?: string | null;
+}
+
+export interface AdminStats {
+  total_documents: number;
+  total_categories: number;
+  storage_bytes: number;
+  storage_mb: number;
+  status_counts: {
+    Uploaded: number;
+    Processing: number;
+    Embedding: number;
+    Indexed: number;
+    Failed: number;
+  };
 }
 
 export interface ApiErrorBody {

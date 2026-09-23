@@ -371,6 +371,7 @@ def admin_stats() -> dict:
     status_counts = {
         "Uploaded": 0,
         "Processing": 0,
+        "Embedding": 0,
         "Indexed": 0,
         "Failed": 0,
     }
@@ -1079,6 +1080,7 @@ def list_documents(category: str | None = None) -> DocumentListResponse:
             size=d["size"],
             status=d["status"],
             status_detail=d.get("status_detail"),
+            created_at=str(d["created_at"]),
         )
         for d in metadata_repository.list_documents(category)
     ]

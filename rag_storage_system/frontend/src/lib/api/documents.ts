@@ -1,5 +1,6 @@
 import { apiRequest, apiRequestFormData } from "./client";
 import type {
+  AdminStats,
   CategoryCreateRequest,
   CategoryInfo,
   CategoryListResponse,
@@ -25,6 +26,14 @@ function encodeCategoryPath(category: string): string {
 
 export async function listCategories(token: string): Promise<CategoryListResponse> {
   return apiRequest<CategoryListResponse>("/categories", { token });
+}
+
+export async function getAdminStats(token: string): Promise<AdminStats> {
+  return apiRequest<AdminStats>("/admin/stats", { token });
+}
+
+export async function listAllDocuments(token: string): Promise<DocumentListResponse> {
+  return apiRequest<DocumentListResponse>("/documents", { token });
 }
 
 export async function createCategory(
