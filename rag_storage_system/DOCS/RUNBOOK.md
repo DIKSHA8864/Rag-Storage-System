@@ -14,6 +14,26 @@
 - **Stale test failures after a pull** — clear __pycache__:
   `Get-ChildItem -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force`
 
+## Voice/Video (Client intake OCR/Speech-to-Text/Vision)
+Real providers are opt-in (`OCR_PROVIDER`/`STT_PROVIDER`/`VISION_PROVIDER` in
+`.env` — see `config/settings.py`); each defaults to `mock` (a clearly-labeled
+placeholder, never fabricated text) until turned on:
+- `OCR_PROVIDER=tesseract` — needs the `tesseract-ocr` system package
+  (`apt-get install tesseract-ocr` / `brew install tesseract`). No API key,
+  no network call at request time.
+- `STT_PROVIDER=whisper` — needs no system package (faster-whisper bundles its
+  own audio decoding), but downloads the chosen Whisper model
+  (`WHISPER_MODEL_SIZE`, default `base`, ~75MB) from Hugging Face on first
+  use, then caches it. Transcribes audio AND video files identically — no
+  separate video-demuxing step (see app/multimodal/speech_to_text.py's
+  WhisperSTTProvider docstring).
+- `VISION_PROVIDER=claude` — needs `ANTHROPIC_API_KEY` (same key
+  `NARRATIVE_PROVIDER=claude` already uses).
+- **"embedding model FAILED to load"**-style failure loading the Whisper
+  model — same outbound-network restriction as the embedding model above;
+  works once that restriction is lifted (a real deploy target, not this
+  sandbox).
+
 ## Backup / restore
 See scripts/backup_postgres.sh / restore_postgres.sh. Run the drill quarterly;
 log date + operator + row-count verification below.

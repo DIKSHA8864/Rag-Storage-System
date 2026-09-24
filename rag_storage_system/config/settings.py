@@ -166,18 +166,38 @@ class Settings(BaseSettings):
     audit_log_path: str = "logs/audit.log"
     sentry_dsn: str = ""
     # ------------------------------------------------------------------
-    # Phase 3 - Multimodal intake (app/multimodal/). OCR/STT/Vision are
-    # pluggable, provider-agnostic interfaces (app/multimodal/ocr.py,
-    # speech_to_text.py, vision.py) - "mock" (default) needs no external
-    # service or API key. It returns a clearly-labeled placeholder
-    # instead of fabricating plausible text, so a report built from it
-    # can never be mistaken for a real extraction. Swap in a real
-    # provider later by adding an implementation class and pointing
-    # these at it - no caller changes.
+    # Phase 3/5 - Multimodal intake (app/multimodal/) - Voice/Video.
+    # OCR/STT/Vision are pluggable, provider-agnostic interfaces
+    # (app/multimodal/ocr.py, speech_to_text.py, vision.py) - "mock"
+    # (default) needs no external service or API key. It returns a
+    # clearly-labeled placeholder instead of fabricating plausible
+    # text, so a report built from it can never be mistaken for a real
+    # extraction.
+    #
+    # Real providers (opt in, same swappable-backend principle as
+    # EMBEDDING_PROVIDER/NARRATIVE_PROVIDER):
+    #   OCR_PROVIDER=tesseract     - local Tesseract OCR, free, no API
+    #                                key (needs the `tesseract-ocr`
+    #                                system package)
+    #   STT_PROVIDER=whisper       - local Whisper (faster-whisper),
+    #                                free, no API key, transcribes
+    #                                audio AND video files identically
+    #                                (see speech_to_text.py's
+    #                                WhisperSTTProvider)
+    #   VISION_PROVIDER=claude     - Claude's vision input, needs
+    #                                ANTHROPIC_API_KEY (already used by
+    #                                NARRATIVE_PROVIDER=claude above)
     # ------------------------------------------------------------------
     ocr_provider: str = "mock"
     stt_provider: str = "mock"
     vision_provider: str = "mock"
+
+    # Only read when STT_PROVIDER=whisper - see speech_to_text.py's
+    # WhisperSTTProvider. Larger sizes are more accurate and slower;
+    # "base" is a reasonable default for CPU-only self-hosting.
+    whisper_model_size: str = "base"
+    whisper_device: str = "cpu"
+    whisper_compute_type: str = "int8"
 
     # Separate root from ORIGINAL_STORAGE_PATH above - a Client's
     # intake uploads must stay logically separate from the Owner's

@@ -3,8 +3,9 @@ OCR provider interface - pulls text out of an image (a scanned page, a
 photographed document). Pluggable so this never hard-codes to one AI
 vendor: get_ocr_provider() reads OCR_PROVIDER (config/settings.py) and
 returns whichever implementation is configured. "mock" (default) needs
-no external service - this sandbox has no OCR engine installed (no
-pytesseract, no cloud vision API key).
+no external service; "tesseract" (see TesseractOCRProvider below) is a
+real, free, local implementation - no API key, no network call at
+request time, just the `tesseract-ocr` system package.
 """
 
 from abc import ABC, abstractmethod
@@ -50,10 +51,42 @@ class MockOCRProvider(OCRProvider):
         )
 
 
+class TesseractOCRProvider(OCRProvider):
+    """
+    Real OCR via the local Tesseract engine (the `pytesseract` binding).
+    Free, no API key, no network call at request time - only the
+    `tesseract-ocr` system package needs to be installed wherever this
+    runs (`apt-get install tesseract-ocr` / `brew install tesseract`;
+    see README's Setup section). Raises on a genuinely unreadable
+    image (corrupt bytes, unsupported format) rather than returning a
+    placeholder - app/multimodal/pipeline.py already treats any
+    processor exception as that file's processing failure, exactly
+    like a corrupt PDF/DOCX already does in document_processor.py.
+    """
+
+    name = "tesseract"
+
+    def extract_text(self, image_bytes: bytes, filename: str) -> tuple[str, bool]:
+        import io
+
+        import pytesseract
+        from PIL import Image
+
+        try:
+            with Image.open(io.BytesIO(image_bytes)) as image:
+                text = pytesseract.image_to_string(image)
+        except Exception as exc:
+            raise RuntimeError(f"Tesseract OCR failed for '{filename}': {exc}") from exc
+
+        return text.strip(), False
+
+
 def get_ocr_provider() -> OCRProvider:
     provider = get_settings().ocr_provider
 
     if provider == "mock":
         return MockOCRProvider()
+    if provider == "tesseract":
+        return TesseractOCRProvider()
 
     raise RuntimeError(f"Unknown OCR_PROVIDER: {provider!r}")
