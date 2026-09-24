@@ -519,6 +519,59 @@ class MetadataRepository(ABC):
     ) -> Optional[dict]:
         raise NotImplementedError
 
+    # ------------------------------------------------------------------
+    # End-user accounts (app/security/end_user_accounts.py). Emails are
+    # always stored and looked up already normalized (lowercase,
+    # stripped) - callers normalize, repositories don't.
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_end_user_invite(self, email: str, tenant_id: int, invited_by: Optional[str]) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_end_user(self, end_user_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_end_user_by_email(self, email: str) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_end_users(self, tenant_id: int) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def activate_end_user(self, end_user_id: int, password_hash: str, matter_id: int, activated_at) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_end_user_password(self, end_user_id: int, password_hash: str) -> dict:
+        """Sets a new password AND bumps session_version, so every existing session for this account stops working."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_end_user_status(self, end_user_id: int, status: str) -> dict:
+        """Sets status AND bumps session_version, so a deactivation takes effect on every existing session immediately."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_verification_code(self, email: str, purpose: str, code_hash: str, expires_at) -> dict:
+        """Stores a new code for (email, purpose), invalidating any earlier unconsumed one for the same pair."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_latest_verification_code(self, email: str, purpose: str) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def increment_verification_attempts(self, code_id: int) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def consume_verification_code(self, code_id: int, consumed_at) -> None:
+        raise NotImplementedError
+
     @abstractmethod
     def get_tenant_resource_usage(self, tenant_id: int) -> dict:
         """{'matters': int, 'documents': int, 'storage_bytes': int} for `tenant_id` - the resources app/billing/service.py checks matter/document/storage plan limits against."""

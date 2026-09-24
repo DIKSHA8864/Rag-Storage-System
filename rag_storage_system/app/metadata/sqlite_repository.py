@@ -263,6 +263,31 @@ CREATE TABLE IF NOT EXISTS plans (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS end_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL DEFAULT 1,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT,
+    status TEXT NOT NULL DEFAULT 'invited',
+    matter_id INTEGER,
+    session_version INTEGER NOT NULL DEFAULT 0,
+    invited_by TEXT,
+    created_at TEXT NOT NULL,
+    activated_at TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS verification_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    consumed_at TEXT,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS tenant_subscriptions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER UNIQUE NOT NULL,
@@ -283,6 +308,10 @@ CREATE TABLE IF NOT EXISTS tenant_subscriptions (
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _iso(value) -> str:
+    return value if isinstance(value, str) else value.isoformat()
 
 
 def _add_days(iso_timestamp: str, days: int) -> str:
@@ -1429,3 +1458,98 @@ class SQLiteMetadataRepository(MetadataRepository):
                 "SELECT COALESCE(SUM(size), 0) AS n FROM documents WHERE tenant_id = ?", (tenant_id,)
             ).fetchone()["n"]
         return {"matters": matters, "documents": documents, "storage_bytes": storage_bytes}
+
+    # ------------------------------------------------------------------
+    # End-user accounts
+    # ------------------------------------------------------------------
+
+    def create_end_user_invite(self, email: str, tenant_id: int, invited_by: Optional[str]) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO end_users (tenant_id, email, status, invited_by, created_at, updated_at) "
+                "VALUES (?, ?, 'invited', ?, ?, ?)",
+                (tenant_id, email, invited_by, now, now),
+            )
+            new_id = cursor.lastrowid
+        return self.get_end_user(new_id)
+
+    def get_end_user(self, end_user_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM end_users WHERE id = ?", (end_user_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_end_user_by_email(self, email: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM end_users WHERE email = ?", (email,)).fetchone()
+        return dict(row) if row else None
+
+    def list_end_users(self, tenant_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM end_users WHERE tenant_id = ? ORDER BY email", (tenant_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def activate_end_user(self, end_user_id: int, password_hash: str, matter_id: int, activated_at) -> dict:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE end_users SET password_hash = ?, matter_id = ?, status = 'active', "
+                "activated_at = ?, updated_at = ? WHERE id = ?",
+                (password_hash, matter_id, _iso(activated_at), _now(), end_user_id),
+            )
+        return self.get_end_user(end_user_id)
+
+    def update_end_user_password(self, end_user_id: int, password_hash: str) -> dict:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE end_users SET password_hash = ?, session_version = session_version + 1, "
+                "updated_at = ? WHERE id = ?",
+                (password_hash, _now(), end_user_id),
+            )
+        return self.get_end_user(end_user_id)
+
+    def set_end_user_status(self, end_user_id: int, status: str) -> dict:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE end_users SET status = ?, session_version = session_version + 1, "
+                "updated_at = ? WHERE id = ?",
+                (status, _now(), end_user_id),
+            )
+        return self.get_end_user(end_user_id)
+
+    def create_verification_code(self, email: str, purpose: str, code_hash: str, expires_at) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE verification_codes SET consumed_at = ? "
+                "WHERE email = ? AND purpose = ? AND consumed_at IS NULL",
+                (now, email, purpose),
+            )
+            cursor = conn.execute(
+                "INSERT INTO verification_codes (email, purpose, code_hash, expires_at, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (email, purpose, code_hash, _iso(expires_at), now),
+            )
+            new_id = cursor.lastrowid
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM verification_codes WHERE id = ?", (new_id,)).fetchone()
+        return dict(row)
+
+    def get_latest_verification_code(self, email: str, purpose: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM verification_codes WHERE email = ? AND purpose = ? ORDER BY id DESC LIMIT 1",
+                (email, purpose),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def increment_verification_attempts(self, code_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE verification_codes SET attempts = attempts + 1 WHERE id = ?", (code_id,))
+
+    def consume_verification_code(self, code_id: int, consumed_at) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE verification_codes SET consumed_at = ? WHERE id = ?", (_iso(consumed_at), code_id)
+            )

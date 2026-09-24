@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { useEndUserAuth } from "@/lib/clientAuth/useEndUserAuth";
@@ -7,30 +8,36 @@ import { listIntakeSessions, createIntakeSession } from "@/lib/api/intake";
 import type { IntakeSessionInfo } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
-import { AccessCodeForm } from "@/components/intake/AccessCodeForm";
+import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { BasicInfoForm } from "@/components/intake/BasicInfoForm";
 import { InterviewChat } from "@/components/intake/InterviewChat";
+import { RequireEndUser } from "@/components/portal/RequireEndUser";
 import { clearIntakeSessionId, loadIntakeSessionId, saveIntakeSessionId } from "@/lib/clientAuth/intakeSessionStorage";
 import { clearIntakeReportId } from "@/lib/clientAuth/intakeReportStorage";
-type Phase = "loading" | "code" | "info" | "interview";
+
+type Phase = "loading" | "info" | "interview" | "error";
 
 /**
- * The real, public Client Intake entry point - covers the landing
- * screen (access code) and basic client information, then hands off
- * into the real conversational interview (InterviewChat), where
- * language selection and terms acceptance are the first two turns the
- * backend itself drives (app/intake_engine/) - not a separate,
- * disconnected frontend-only gate.
+ * The signed-in end user's intake: resumes their most recent intake
+ * session if they have one, otherwise asks for basic information and
+ * starts a new one. Every session belongs to this user's own personal
+ * Matter (app/security/end_user_accounts.py) - the backend never shows
+ * one user another user's intake.
  */
-export default function IntakePage() {
-  const { endUserKey, isLoading: isAuthLoading, isAuthenticated, login, logout } = useEndUserAuth();
+function IntakeContent() {
+  const { endUserToken, logout } = useEndUserAuth();
+  const router = useRouter();
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [sessionId, setSessionId] = useState<number | null>(null);
-  const [codeError, setCodeError] = useState<string | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+
+  const handleUnauthorized = useCallback(() => {
+    logout();
+    router.push("/portal/login");
+  }, [logout, router]);
 
   const resolveNextPhase = useCallback((sessions: IntakeSessionInfo[]) => {
     const savedId = loadIntakeSessionId();
@@ -56,77 +63,44 @@ export default function IntakePage() {
     setPhase("info");
   }, []);
 
-  const verifyAndRoute = useCallback(async () => {
-    if (!endUserKey) {
-      setPhase("code");
-      return;
-    }
+  const loadSessions = useCallback(async () => {
+    if (!endUserToken) return;
+    setLoadError(null);
 
     try {
-      const response = await listIntakeSessions(endUserKey);
+      const response = await listIntakeSessions(endUserToken);
       resolveNextPhase(response.sessions);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        logout();
-        setPhase("code");
+        handleUnauthorized();
         return;
       }
-      setPhase("code");
-      setCodeError(err instanceof ApiError ? err.message : "Could not connect. Please try again.");
+      setLoadError(err instanceof ApiError ? err.message : "Could not connect. Please try again.");
+      setPhase("error");
     }
-  }, [endUserKey, logout, resolveNextPhase]);
+  }, [endUserToken, resolveNextPhase, handleUnauthorized]);
 
   useEffect(() => {
-    if (isAuthLoading) return;
-
-    if (!isAuthenticated) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setPhase("code");
-      return;
-    }
-
-    // Fetching once the saved key is known is exactly what this
-    // effect is for - same legitimate case as every other page-load
-    // fetch in this app.
-    verifyAndRoute();
-  }, [isAuthLoading, isAuthenticated, verifyAndRoute]);
-
-  async function handleSubmitCode(code: string) {
-    setCodeError(null);
-    setIsVerifying(true);
-
-    try {
-      const sessions = await login(code);
-      resolveNextPhase(sessions);
-    } catch (err) {
-      setCodeError(
-        err instanceof ApiError && err.status === 401
-          ? "That access code was not recognized. Please check it and try again."
-          : err instanceof ApiError
-            ? err.message
-            : "Could not connect. Please try again."
-      );
-    } finally {
-      setIsVerifying(false);
-    }
-  }
+    // Page-load fetch, same legitimate case as every other one in this app.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadSessions();
+  }, [loadSessions]);
 
   async function handleSubmitInfo(name: string) {
-    if (!endUserKey) return;
+    if (!endUserToken) return;
 
     setInfoError(null);
     setIsCreatingSession(true);
 
     try {
       const title = name.trim() ? `Intake - ${name.trim()}` : "New intake";
-      const session = await createIntakeSession({ title }, endUserKey);
+      const session = await createIntakeSession({ title }, endUserToken);
       saveIntakeSessionId(session.id);
       setSessionId(session.id);
       setPhase("interview");
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        logout();
-        setPhase("code");
+        handleUnauthorized();
         return;
       }
       setInfoError(err instanceof ApiError ? err.message : "Could not start your intake. Please try again.");
@@ -135,29 +109,50 @@ export default function IntakePage() {
     }
   }
 
-    function handleStartOver() {
+  function handleNewIntake() {
     clearIntakeSessionId();
     clearIntakeReportId();
-    logout();
     setSessionId(null);
-    setPhase("code");
+    setPhase("info");
   }
 
   if (phase === "loading") {
     return <LoadingSpinner label="Loading..." />;
   }
 
-  if (phase === "code") {
-    return <AccessCodeForm onSubmit={handleSubmitCode} isSubmitting={isVerifying} error={codeError} />;
+  if (phase === "error") {
+    return (
+      <div style={{ maxWidth: 560, margin: "3rem auto", padding: "0 1rem" }}>
+        <ErrorMessage message={loadError ?? "Something went wrong."} />
+        <button type="button" onClick={loadSessions} style={{ marginTop: "1rem" }}>
+          Retry / Reintentar
+        </button>
+      </div>
+    );
   }
 
   if (phase === "info") {
     return <BasicInfoForm onSubmit={handleSubmitInfo} isSubmitting={isCreatingSession} error={infoError} />;
   }
 
-  if (phase === "interview" && sessionId && endUserKey) {
-    return <InterviewChat sessionId={sessionId} endUserKey={endUserKey} onStartOver={handleStartOver} />;
+  if (phase === "interview" && sessionId && endUserToken) {
+    return (
+      <InterviewChat
+        sessionId={sessionId}
+        endUserToken={endUserToken}
+        onStartOver={handleNewIntake}
+        onUnauthorized={handleUnauthorized}
+      />
+    );
   }
 
   return <LoadingSpinner label="Loading..." />;
+}
+
+export default function IntakePage() {
+  return (
+    <RequireEndUser>
+      <IntakeContent />
+    </RequireEndUser>
+  );
 }

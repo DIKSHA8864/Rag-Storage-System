@@ -30,6 +30,7 @@ storage, the metadata database, or pgvector - it exists only for the
 duration of one request (see app/analysis/ingestion.py).
 """
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
@@ -67,6 +68,8 @@ from app.analysis.answer_generation import stream_grounded_answer
 from app.billing import get_billing_service
 from app.billing.service import RESOURCE_LLM_CALLS, PlanLimitExceededError
 from app.retrieval_settings import get_current_retrieval_settings
+
+logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/end-user",
     tags=["end-user"],
@@ -260,13 +263,24 @@ async def _stream_query_answer(
     settings = _current_retrieval_settings()
     resolved_top_k = top_k if top_k is not None else settings.top_k
 
-    results = retrieve(
-        query,
-        top_k=resolved_top_k,
-        category=category,
-        score_threshold=settings.score_threshold,
-        tenant_id=matter["tenant_id"],
-    )
+    # The 200 status line is already sent by the time this generator
+    # runs, so a retrieval failure (database/embedding model unreachable)
+    # can't become an HTTP error anymore - it must be an explicit "error"
+    # event. Otherwise the stream just ends, and a client can't tell an
+    # outage apart from an honest "the library has nothing on this".
+    try:
+        results = retrieve(
+            query,
+            top_k=resolved_top_k,
+            category=category,
+            score_threshold=settings.score_threshold,
+            tenant_id=matter["tenant_id"],
+        )
+    except Exception:
+        logger.exception("Retrieval failed for an end-user query")
+        yield _sse_event("error", {"detail": "The library search is unavailable right now. Please try again shortly."})
+        yield _sse_event("done", {})
+        return
 
     if thread_id is not None:
         repo.add_thread_message(thread_id, "user", query)

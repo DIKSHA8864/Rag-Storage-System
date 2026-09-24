@@ -9,7 +9,7 @@ import { loadIntakeReportId, saveIntakeReportId } from "@/lib/clientAuth/intakeR
 
 interface ReportPanelProps {
   sessionId: number;
-  endUserKey: string;
+  endUserToken: string;
   language: string | null;
 }
 
@@ -35,7 +35,7 @@ function downloadBlob(blob: Blob, filename: string) {
  * (POST /admin/reports/{id}/approve) before this component can
  * download it - that gate is enforced server-side, not skipped here.
  */
-export function ReportPanel({ sessionId, endUserKey, language }: ReportPanelProps) {
+export function ReportPanel({ sessionId, endUserToken, language }: ReportPanelProps) {
   const [reportId, setReportId] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -57,7 +57,7 @@ export function ReportPanel({ sessionId, endUserKey, language }: ReportPanelProp
     setIsGenerating(true);
 
     try {
-      const report = await generateIntakeReport(sessionId, { format: "pdf" }, endUserKey);
+      const report = await generateIntakeReport(sessionId, { format: "pdf" }, endUserToken);
       saveIntakeReportId(report.id);
       setReportId(report.id);
     } catch (err) {
@@ -76,7 +76,7 @@ export function ReportPanel({ sessionId, endUserKey, language }: ReportPanelProp
     setIsDownloading(true);
 
     try {
-      const blob = await downloadIntakeReport(reportId, endUserKey);
+      const blob = await downloadIntakeReport(reportId, endUserToken);
       downloadBlob(blob, `intake-report-${reportId}.pdf`);
     } catch (err) {
       setDownloadNotice(

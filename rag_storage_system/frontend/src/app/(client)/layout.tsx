@@ -1,15 +1,19 @@
 import type { ReactNode } from "react";
 
 import { EndUserAuthProvider } from "@/lib/clientAuth/EndUserAuthContext";
+import { PortalHeader } from "@/components/portal/PortalHeader";
 
 /**
- * Every page under app/(client)/ is the PUBLIC, client-facing surface
- * - authenticated with the firm-issued X-End-User-Key
- * (app/security/auth.py's require_end_user_key), a completely
- * separate credential from the Owner's JWT used under
- * app/(protected)/. Never nested inside ProtectedRoute - a client
- * must never need an Owner login to reach their own intake.
+ * Every page under app/(client)/ is the end-user portal - signed in
+ * with an individual end-user account (POST /end-user/auth/login,
+ * app/security/end_user_accounts.py), a completely separate session
+ * from the Owner/Admin's under app/(protected)/.
  */
 export default function ClientLayout({ children }: { children: ReactNode }) {
-  return <EndUserAuthProvider>{children}</EndUserAuthProvider>;
+  return (
+    <EndUserAuthProvider>
+      <PortalHeader />
+      {children}
+    </EndUserAuthProvider>
+  );
 }

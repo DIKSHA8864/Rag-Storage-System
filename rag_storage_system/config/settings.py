@@ -248,6 +248,30 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     billing_provider: str = "manual"
 
+    # ------------------------------------------------------------------
+    # End-user accounts (app/security/end_user_accounts.py) - the Owner
+    # invites each email; the user signs up once with a one-time code
+    # sent to that inbox, then logs in with email + password.
+    # ------------------------------------------------------------------
+    end_user_token_expire_minutes: int = 480
+    verification_code_expire_minutes: int = 10
+    # Where the "create your account" link in invite emails points.
+    frontend_base_url: str = "http://localhost:3000"
+
+    # How verification codes/invites are delivered (app/notifications/email_sender.py):
+    #   "console" (default) - printed to the API server's terminal, for
+    #       local testing only; refused when ENVIRONMENT=production.
+    #   "smtp" - a real mail server. For a Gmail sender: SMTP_HOST=smtp.gmail.com,
+    #       SMTP_PORT=587, SMTP_USERNAME=<the gmail address>, SMTP_PASSWORD=<a
+    #       Google "App Password", not the account password>.
+    email_provider: str = "console"
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_use_tls: bool = True
+
     def resolve(self, relative_path: str) -> Path:
         """Resolve a configured path relative to the project root."""
 

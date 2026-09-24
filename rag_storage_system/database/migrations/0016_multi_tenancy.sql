@@ -4,6 +4,11 @@
 -- and every caller that doesn't yet pass a tenant_id keeps working
 -- exactly as before, attributed to the seeded "Default Organization"
 -- (id=1). New tenants created going forward get real isolation.
+--
+-- Every statement here must be safe to re-run: PostgresMetadataRepository
+-- re-applies every migration file on EVERY startup (no migration-tracking
+-- table), so a bare ADD CONSTRAINT would fail - and stop the app starting -
+-- on every run after the first. Hence the pg_constraint guards below.
 
 CREATE TABLE IF NOT EXISTS tenants (
     id SERIAL PRIMARY KEY,
@@ -37,17 +42,32 @@ CREATE INDEX IF NOT EXISTS idx_matters_tenant ON matters (tenant_id);
 
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id);
 ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_relative_path_key;
-ALTER TABLE documents ADD CONSTRAINT documents_tenant_relative_path_key UNIQUE (tenant_id, relative_path);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'documents_tenant_relative_path_key') THEN
+        ALTER TABLE documents ADD CONSTRAINT documents_tenant_relative_path_key UNIQUE (tenant_id, relative_path);
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_documents_tenant ON documents (tenant_id);
 
 ALTER TABLE folders ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id);
 ALTER TABLE folders DROP CONSTRAINT IF EXISTS folders_path_key;
-ALTER TABLE folders ADD CONSTRAINT folders_tenant_path_key UNIQUE (tenant_id, path);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'folders_tenant_path_key') THEN
+        ALTER TABLE folders ADD CONSTRAINT folders_tenant_path_key UNIQUE (tenant_id, path);
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_folders_tenant ON folders (tenant_id);
 
 ALTER TABLE prompt_versions ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id);
 ALTER TABLE prompt_versions DROP CONSTRAINT IF EXISTS prompt_versions_name_version_key;
-ALTER TABLE prompt_versions ADD CONSTRAINT prompt_versions_tenant_name_version_key UNIQUE (tenant_id, name, version);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'prompt_versions_tenant_name_version_key') THEN
+        ALTER TABLE prompt_versions ADD CONSTRAINT prompt_versions_tenant_name_version_key UNIQUE (tenant_id, name, version);
+    END IF;
+END $$;
 
 ALTER TABLE cause_of_action_library ADD COLUMN IF NOT EXISTS tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id);
 

@@ -40,6 +40,22 @@ placeholder, never fabricated text) until turned on:
   works once that restriction is lifted (a real deploy target, not this
   sandbox).
 
+## User accounts (people who Ask and do Intake)
+- The **admin** (created with `scripts/create_owner.py`, signs in at `/login`)
+  invites people on the **Users** page. Only invited emails can sign up.
+- Each person signs up once at `/portal/signup`: a 6-digit code is emailed to
+  confirm the inbox, then they choose their own password. After that they sign
+  in at `/portal/login` and see only **Ask** and **My Intake** - each person
+  sees only their own history.
+- **Someone leaves:** Users page -> **Deactivate**. Every open session ends
+  immediately and they can't sign in again (their history stays for the admin).
+- **Email delivery:** `EMAIL_PROVIDER=console` (default) prints codes in the API
+  terminal for local testing. For real email set `EMAIL_PROVIDER=smtp` - see
+  `.env.example` for Gmail App Password setup. Console mode is refused when
+  `ENVIRONMENT=production`.
+- Matter access codes (Matters page) still work for API integrations only; the
+  web portal uses accounts.
+
 ## Backup / restore
 See scripts/backup_postgres.sh / restore_postgres.sh. Run the drill quarterly;
 log date + operator + row-count verification below.

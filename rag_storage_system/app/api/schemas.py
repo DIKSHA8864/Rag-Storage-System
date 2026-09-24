@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class CategoryCreateRequest(BaseModel):
@@ -905,3 +905,74 @@ class BillingUsageResponse(BaseModel):
         default=None,
         description="The active plan's limits for each resource - a null field means that resource is unlimited. The whole object is null if the tenant has no subscription.",
     )
+
+# ----------------------------------------------------------------------
+# End-user accounts (app/security/end_user_accounts.py, app/api/users_api.py,
+# app/api/end_user_auth_api.py)
+# ----------------------------------------------------------------------
+
+class EndUserAccountInfo(BaseModel):
+    id: int
+    email: str
+    status: str
+    invited_by: str | None = None
+    created_at: str
+    activated_at: str | None = None
+
+
+class EndUserListResponse(BaseModel):
+    users: list[EndUserAccountInfo]
+
+
+class InviteEndUsersRequest(BaseModel):
+    """Body for POST /admin/users - one or more employee emails to invite."""
+
+    emails: list[EmailStr] = Field(..., min_length=1, max_length=500)
+
+
+class InviteSkippedEmail(BaseModel):
+    email: str
+    reason: str
+
+
+class InviteEndUsersResponse(BaseModel):
+    invited: list[EndUserAccountInfo]
+    skipped: list[InviteSkippedEmail]
+
+
+class EndUserEmailRequest(BaseModel):
+    email: EmailStr
+
+
+class EndUserSignupCompleteRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    password: str = Field(..., min_length=8, max_length=128)
+
+
+class EndUserPasswordResetCompleteRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+class EndUserLoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class EndUserSessionResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    email: str
+
+
+class EndUserMeResponse(BaseModel):
+    id: int
+    email: str
+    status: str
+
+
+class GenericMessageResponse(BaseModel):
+    detail: str

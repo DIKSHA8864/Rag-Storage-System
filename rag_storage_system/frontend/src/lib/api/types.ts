@@ -426,3 +426,38 @@ export interface BillingUsageResponse {
   usage: UsageInfo;
   limits: PlanLimitsInfo | null;
 }
+// ---------------------------------------------------------------------
+// End-user accounts (app/api/users_api.py, app/api/end_user_auth_api.py)
+// ---------------------------------------------------------------------
+
+export interface EndUserAccountInfo {
+  id: number;
+  email: string;
+  status: "invited" | "active" | "deactivated" | string;
+  invited_by: string | null;
+  created_at: string;
+  activated_at: string | null;
+}
+
+export interface EndUserListResponse {
+  users: EndUserAccountInfo[];
+}
+
+export interface InviteEndUsersResponse {
+  invited: EndUserAccountInfo[];
+  skipped: { email: string; reason: string }[];
+}
+
+export interface EndUserSessionResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  email: string;
+}
+
+export interface GenericMessageResponse {
+  detail: string;
+}
+
+// Same shape the backend returns for Owner research sources (app/analysis/answer_generation.py's locked `sources`).
+export type EndUserQuerySource = OwnerResearchSource;

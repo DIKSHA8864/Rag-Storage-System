@@ -1,14 +1,15 @@
 // Mirrors lib/api/client.ts's fetch/error-handling shape, but for the
-// End User / Client Intake surface, which authenticates with the raw
-// X-End-User-Key header (app/security/auth.py's require_end_user_key)
-// instead of the Owner's JWT Bearer token - two genuinely separate
-// credential types, kept in separate client modules on purpose so an
-// Owner token and a Client access code can never be mixed up.
+// End User portal, which authenticates with an end-user SESSION token
+// (POST /end-user/auth/login - app/security/end_user_accounts.py)
+// instead of the Owner's token. Kept in a separate module on purpose
+// so an Owner session and an end-user session can never be mixed up:
+// the backend rejects an Owner token on end-user endpoints and an
+// end-user token on Owner endpoints either way.
 
 import { ApiError } from "./client";
 import type { ApiErrorBody } from "./types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 if (!API_BASE_URL) {
   throw new Error(
@@ -19,12 +20,26 @@ if (!API_BASE_URL) {
 interface EndUserRequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
-  endUserKey: string;
+  endUserToken: string | null;
 }
 
-async function fetchOrThrow(path: string, init: RequestInit, endUserKey: string): Promise<Response> {
+export async function readErrorDetail(response: Response): Promise<string> {
+  try {
+    const errorBody = (await response.json()) as ApiErrorBody;
+    if (errorBody.detail) {
+      return typeof errorBody.detail === "string" ? errorBody.detail : "Please check the details you entered.";
+    }
+  } catch {
+    // Response wasn't JSON (or had no body) - fall through to the generic message.
+  }
+  return `Request failed with status ${response.status}.`;
+}
+
+export async function endUserFetch(path: string, init: RequestInit, endUserToken: string | null): Promise<Response> {
   const headers = new Headers(init.headers);
-  headers.set("X-End-User-Key", endUserKey);
+  if (endUserToken) {
+    headers.set("Authorization", `Bearer ${endUserToken}`);
+  }
 
   let response: Response;
 
@@ -35,34 +50,23 @@ async function fetchOrThrow(path: string, init: RequestInit, endUserKey: string)
   }
 
   if (!response.ok) {
-    let detail = `Request failed with status ${response.status}.`;
-
-    try {
-      const errorBody = (await response.json()) as ApiErrorBody;
-      if (errorBody.detail) {
-        detail = errorBody.detail;
-      }
-    } catch {
-      // Response wasn't JSON (or had no body) - keep the generic message.
-    }
-
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, await readErrorDetail(response));
   }
 
   return response;
 }
 
 export async function endUserRequest<T>(path: string, options: EndUserRequestOptions): Promise<T> {
-  const { method = "GET", body, endUserKey } = options;
+  const { method = "GET", body, endUserToken } = options;
 
-  const response = await fetchOrThrow(
+  const response = await endUserFetch(
     path,
     {
       method,
       headers: { "Content-Type": "application/json" },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     },
-    endUserKey
+    endUserToken
   );
 
   const text = await response.text();
@@ -71,9 +75,9 @@ export async function endUserRequest<T>(path: string, options: EndUserRequestOpt
 
 export async function endUserRequestBlob(
   path: string,
-  options: { method?: "GET" | "POST"; endUserKey: string }
+  options: { method?: "GET" | "POST"; endUserToken: string }
 ): Promise<Blob> {
-  const { method = "GET", endUserKey } = options;
-  const response = await fetchOrThrow(path, { method }, endUserKey);
+  const { method = "GET", endUserToken } = options;
+  const response = await endUserFetch(path, { method }, endUserToken);
   return response.blob();
 }

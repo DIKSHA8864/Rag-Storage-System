@@ -15,8 +15,10 @@ interface CreateMatterFormProps {
  * Creates a real Matter via POST /admin/matters - the returned
  * api_key is shown in plaintext exactly once (the backend never
  * stores or returns it again), so this is the only place it will
- * ever be visible. Hand it to the Client so they can start their
- * intake at /intake.
+ * ever be visible. It's an API credential (X-End-User-Key) for
+ * integrations - people sign in to the web portal with their own
+ * account instead (invited from the Users page), which gets its own
+ * personal Matter automatically.
  */
 export function CreateMatterForm({ onSubmit, isSubmitting, error }: CreateMatterFormProps) {
   const [name, setName] = useState("");
@@ -60,6 +62,10 @@ export function CreateMatterForm({ onSubmit, isSubmitting, error }: CreateMatter
           <code style={{ display: "block", padding: "0.5rem", background: "#fff", borderRadius: 4, wordBreak: "break-all" }}>
             {created.api_key}
           </code>
+          <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.8rem", color: "#666" }}>
+            This code is for API integrations only. To give a person access to the web portal, invite their email
+            from the Users page - each person gets their own account and their own private Matter automatically.
+          </p>
         </div>
       )}
     </div>

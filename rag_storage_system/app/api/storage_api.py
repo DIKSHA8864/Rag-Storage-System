@@ -289,6 +289,14 @@ from app.api.billing_api import router as billing_router  # noqa: E402
 
 app.include_router(billing_router)
 
+# End-user accounts: Owner-only user management + public signup/login.
+# See app/api/users_api.py, app/api/end_user_auth_api.py.
+from app.api.users_api import router as users_router  # noqa: E402
+from app.api.end_user_auth_api import router as end_user_auth_router  # noqa: E402
+
+app.include_router(users_router)
+app.include_router(end_user_auth_router)
+
 
 @app.get("/")
 def root() -> dict:

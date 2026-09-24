@@ -11,8 +11,9 @@ import { ReportPanel } from "./ReportPanel";
 
 interface InterviewChatProps {
   sessionId: number;
-  endUserKey: string;
+  endUserToken: string;
   onStartOver: () => void;
+  onUnauthorized: () => void;
 }
 
 interface ChatMessage {
@@ -59,7 +60,7 @@ function termsQuickReply(language: string | null): { label: string; value: strin
  * question. Language selection and terms acceptance are simply the
  * first two turns of this same conversation - not a separate flow.
  */
-export function InterviewChat({ sessionId, endUserKey, onStartOver }: InterviewChatProps) {
+export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthorized }: InterviewChatProps) {
   const [state, setState] = useState<InterviewStateInfo | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -77,13 +78,17 @@ export function InterviewChat({ sessionId, endUserKey, onStartOver }: InterviewC
     setLoadError(null);
 
     try {
-      const resumed = await resumeInterview(sessionId, endUserKey);
+      const resumed = await resumeInterview(sessionId, endUserToken);
       setState(resumed.state);
       setMessages(resumed.messages.map((m) => ({ id: m.id, role: m.role, content: m.content })));
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onUnauthorized();
+        return;
+      }
       if (err instanceof ApiError && err.status === 404) {
         try {
-          const started = await startInterview(sessionId, endUserKey);
+          const started = await startInterview(sessionId, endUserToken);
           setState(started.state);
           setMessages([{ id: "opening", role: "assistant", content: started.prompt }]);
         } catch (startErr) {
@@ -97,7 +102,7 @@ export function InterviewChat({ sessionId, endUserKey, onStartOver }: InterviewC
     } finally {
       setIsLoading(false);
     }
-  }, [sessionId, endUserKey]);
+  }, [sessionId, endUserToken, onUnauthorized]);
 
   useEffect(() => {
     // Fetching on mount is exactly what this effect is for - same
@@ -128,13 +133,13 @@ export function InterviewChat({ sessionId, endUserKey, onStartOver }: InterviewC
     setDraft("");
 
     try {
-      const result = await sendInterviewMessage(sessionId, message, endUserKey);
+      const result = await sendInterviewMessage(sessionId, message, endUserToken);
       setState(result.state);
       setMessages((prev) => [...prev, { id: `${optimisticId}-reply`, role: "assistant", content: result.reply }]);
       setLastTurnRejected(result.error);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        onStartOver();
+        onUnauthorized();
         return;
       }
       setSendError(err instanceof ApiError ? err.message : "Could not send your answer. Please try again.");
@@ -172,7 +177,7 @@ export function InterviewChat({ sessionId, endUserKey, onStartOver }: InterviewC
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <h1 style={{ fontSize: "1.25rem" }}>Client Intake</h1>
         <button type="button" onClick={onStartOver} style={{ fontSize: "0.8rem" }}>
-          Start over / Empezar de nuevo
+          New intake / Nueva admision
         </button>
       </div>
 
@@ -252,7 +257,7 @@ export function InterviewChat({ sessionId, endUserKey, onStartOver }: InterviewC
           <p style={{ marginTop: "1rem", color: "#2e7d32", fontWeight: 600 }}>
             {state.language === "es" ? "Su entrevista ha finalizado. Gracias." : "Your interview is complete. Thank you."}
           </p>
-          <ReportPanel sessionId={sessionId} endUserKey={endUserKey} language={state.language} />
+          <ReportPanel sessionId={sessionId} endUserToken={endUserToken} language={state.language} />
         </>
       ) : (
         <div style={{ marginTop: "1rem" }}>

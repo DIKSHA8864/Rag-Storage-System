@@ -1040,4 +1040,93 @@ class PostgresMetadataRepository(MetadataRepository):
             storage_bytes = conn.execute(
                 "SELECT COALESCE(SUM(size), 0) AS n FROM documents WHERE tenant_id = %s", (tenant_id,)
             ).fetchone()["n"]
-        return {"matters": matters, "documents": documents, "storage_bytes": storage_bytes}
+        # SUM() over an integer column comes back as NUMERIC (a Python
+        # Decimal) in Postgres - normalized so both backends return ints.
+        return {"matters": int(matters), "documents": int(documents), "storage_bytes": int(storage_bytes)}
+
+    # ------------------------------------------------------------------
+    # End-user accounts
+    # ------------------------------------------------------------------
+
+    def create_end_user_invite(self, email: str, tenant_id: int, invited_by: Optional[str]) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO end_users (tenant_id, email, status, invited_by) "
+                "VALUES (%s, %s, 'invited', %s) RETURNING *",
+                (tenant_id, email, invited_by),
+            ).fetchone()
+        return dict(row)
+
+    def get_end_user(self, end_user_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM end_users WHERE id = %s", (end_user_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_end_user_by_email(self, email: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM end_users WHERE email = %s", (email,)).fetchone()
+        return dict(row) if row else None
+
+    def list_end_users(self, tenant_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM end_users WHERE tenant_id = %s ORDER BY email", (tenant_id,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def activate_end_user(self, end_user_id: int, password_hash: str, matter_id: int, activated_at) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "UPDATE end_users SET password_hash = %s, matter_id = %s, status = 'active', "
+                "activated_at = %s, updated_at = NOW() WHERE id = %s RETURNING *",
+                (password_hash, matter_id, activated_at, end_user_id),
+            ).fetchone()
+        return dict(row)
+
+    def update_end_user_password(self, end_user_id: int, password_hash: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "UPDATE end_users SET password_hash = %s, session_version = session_version + 1, "
+                "updated_at = NOW() WHERE id = %s RETURNING *",
+                (password_hash, end_user_id),
+            ).fetchone()
+        return dict(row)
+
+    def set_end_user_status(self, end_user_id: int, status: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "UPDATE end_users SET status = %s, session_version = session_version + 1, "
+                "updated_at = NOW() WHERE id = %s RETURNING *",
+                (status, end_user_id),
+            ).fetchone()
+        return dict(row)
+
+    def create_verification_code(self, email: str, purpose: str, code_hash: str, expires_at) -> dict:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE verification_codes SET consumed_at = NOW() "
+                "WHERE email = %s AND purpose = %s AND consumed_at IS NULL",
+                (email, purpose),
+            )
+            row = conn.execute(
+                "INSERT INTO verification_codes (email, purpose, code_hash, expires_at) "
+                "VALUES (%s, %s, %s, %s) RETURNING *",
+                (email, purpose, code_hash, expires_at),
+            ).fetchone()
+        return dict(row)
+
+    def get_latest_verification_code(self, email: str, purpose: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM verification_codes WHERE email = %s AND purpose = %s ORDER BY id DESC LIMIT 1",
+                (email, purpose),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def increment_verification_attempts(self, code_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE verification_codes SET attempts = attempts + 1 WHERE id = %s", (code_id,))
+
+    def consume_verification_code(self, code_id: int, consumed_at) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE verification_codes SET consumed_at = %s WHERE id = %s", (consumed_at, code_id))

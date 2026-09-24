@@ -213,21 +213,127 @@ def hash_api_key(key: str) -> str:
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 
+END_USER_ROLE = "end_user"
+
+
+def create_end_user_token(end_user_id: int, email: str, tenant_id: int, session_version: int) -> str:
+    """
+    Session token for an individual end-user account
+    (app/security/end_user_accounts.py). role="end_user" means
+    decode_access_token() above rejects it outright, so it can never
+    reach an Owner/Admin endpoint. `sv` is the account's
+    session_version at issue time - see _resolve_end_user_account().
+    """
+
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+
+    payload = {
+        "sub": str(end_user_id),
+        "email": email,
+        "role": END_USER_ROLE,
+        "tenant_id": tenant_id,
+        "sv": session_version,
+        "iat": now,
+        "exp": now + timedelta(minutes=settings.end_user_token_expire_minutes),
+    }
+
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def _resolve_end_user_account(token: str) -> dict:
+    """
+    Validate an end-user session token AND re-check the account in the
+    database on every request - a deactivated account, or one whose
+    password was reset since this token was issued (session_version
+    mismatch), is rejected immediately, not only when the token expires.
+    """
+
+    settings = get_settings()
+
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired. Please log in again.")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session. Please log in again.")
+
+    if payload.get("role") != END_USER_ROLE or not payload.get("sub"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session. Please log in again.")
+
+    from app.api import storage_api  # deferred: see require_end_user_key() below for why
+
+    account = storage_api.metadata_repository.get_end_user(int(payload["sub"]))
+
+    if (
+        account is None
+        or account["status"] != "active"
+        or account["session_version"] != payload.get("sv")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your session is no longer valid. Please log in again.",
+        )
+
+    return account
+
+
+def require_end_user_account(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> dict:
+    """FastAPI dependency: the signed-in end-user account (a metadata-repository end_users row)."""
+
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Please log in.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return _resolve_end_user_account(credentials.credentials)
+
+
 def require_end_user_key(
     provided_key: str | None = Depends(_end_user_key_header),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> dict:
     """
     Resolves the caller to a Matter (an isolated End User identity -
     see app/metadata/base.py's matters methods, POST /admin/matters):
-    {"id": int, "name": str}.
+    {"id": int, "name": str, "tenant_id": int}.
 
-    Checks real per-matter keys first, then falls back to the single
-    legacy END_USER_API_KEY (config/settings.py) as an implicit
-    "Default" matter (id=0) - every existing caller and test that
-    never created a Matter keeps working unchanged; real multi-matter
-    isolation (POST /end-user/threads, etc.) is opt-in via
-    POST /admin/matters.
+    Two ways in:
+      1. `Authorization: Bearer <end-user session token>` - an
+         individual end-user account (app/security/end_user_accounts.py),
+         resolved to that account's own personal Matter. This is how
+         the frontend's user portal signs in.
+      2. `X-End-User-Key` - a per-Matter access code, then the single
+         legacy END_USER_API_KEY (config/settings.py) as an implicit
+         "Default" matter (id=0). Kept so existing API integrations,
+         scripts/smoke_test.py, and the test suite keep working.
+
+    A Bearer token, when present, is the only credential considered -
+    an invalid one is rejected rather than silently falling back to 2.
     """
+
+    if credentials is not None and credentials.scheme.lower() == "bearer":
+        account = _resolve_end_user_account(credentials.credentials)
+
+        from app.api import storage_api
+
+        matter = storage_api.metadata_repository.get_matter(account["matter_id"]) if account.get("matter_id") else None
+        if matter is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Your session is no longer valid. Please log in again.",
+            )
+
+        return {
+            "id": matter["id"],
+            "name": matter["name"],
+            "tenant_id": matter.get("tenant_id", 1),
+            "end_user_id": account["id"],
+        }
 
     if not provided_key:
         raise HTTPException(

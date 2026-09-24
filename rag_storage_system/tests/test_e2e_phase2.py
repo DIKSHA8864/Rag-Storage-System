@@ -183,6 +183,26 @@ def test_loosely_keyword_matched_document_never_answers_an_end_user_question(cli
     ]
 
 
+def test_retrieval_failure_is_an_explicit_error_event_not_a_silent_empty_answer(client, monkeypatch):
+    """
+    The stream's 200 status is already sent before retrieval runs, so an
+    outage (database/embedding model unreachable) must surface as an
+    explicit "error" event - never as a stream that just ends, which a
+    client could mistake for an honest "no authority found".
+    """
+
+    def _broken_retrieve(*args, **kwargs):
+        raise RuntimeError("embedding model unavailable")
+
+    monkeypatch.setattr(end_user_api, "retrieve", _broken_retrieve)
+
+    events = _parse_sse(_stream(client, query="Can an employee be fired for filing a complaint?"))
+    event_types = [etype for etype, _ in events]
+
+    assert event_types == ["error", "done"]
+    assert "unavailable" in events[0][1]["detail"]
+
+
 # ---------------------------------------------------------------------
 # 3. Fabricated citation guard
 # ---------------------------------------------------------------------

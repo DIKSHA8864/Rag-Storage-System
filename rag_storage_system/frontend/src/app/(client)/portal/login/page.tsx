@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
-import { useAuth } from "@/lib/auth/useAuth";
 import { ApiError } from "@/lib/api/client";
+import { useEndUserAuth } from "@/lib/clientAuth/useEndUserAuth";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
-export default function LoginPage() {
-  const { login, isAuthenticated, isLoading: isSessionLoading } = useAuth();
+export default function PortalLoginPage() {
+  const { login, isAuthenticated, isLoading } = useEndUserAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -18,14 +18,11 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Already logged in (e.g. navigated back to /login manually, or a
-  // stored session was found on load) - go straight to the protected
-  // area instead of showing the form again.
   useEffect(() => {
-    if (!isSessionLoading && isAuthenticated) {
-      router.replace("/dashboard");
+    if (!isLoading && isAuthenticated) {
+      router.replace("/ask");
     }
-  }, [isSessionLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, router]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -34,26 +31,22 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.push("/dashboard");
+      router.push("/ask");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Login failed. Please try again.");
+      setError(err instanceof ApiError ? err.message : "Sign-in failed. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  // Checking for an existing session, or one was just found and the
-  // redirect above is about to fire - don't flash the form either way.
-  if (isSessionLoading || isAuthenticated) {
+  if (isLoading || isAuthenticated) {
     return <LoadingSpinner label="Checking your session..." />;
   }
 
   return (
-    <div style={{ maxWidth: 360, margin: "3rem auto" }}>
-      <h1>Administrator Login</h1>
-      <p style={{ color: "#666", fontSize: "0.9rem" }}>
-        Not an administrator? <Link href="/portal/login">Sign in to the user portal</Link>.
-      </p>
+    <div style={{ maxWidth: 380, margin: "3rem auto", padding: "0 1rem" }}>
+      <h1>Sign in</h1>
+      <p style={{ color: "#666", fontSize: "0.9rem" }}>Use the email address your administrator invited.</p>
 
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         <label>
@@ -85,9 +78,17 @@ export default function LoginPage() {
         {error && <ErrorMessage message={error} />}
 
         <button type="submit" disabled={isSubmitting} aria-busy={isSubmitting}>
-          {isSubmitting ? "Logging in..." : "Log in"}
+          {isSubmitting ? "Signing in..." : "Sign in"}
         </button>
       </form>
+
+      <div style={{ marginTop: "1.25rem", display: "flex", flexDirection: "column", gap: "0.4rem", fontSize: "0.9rem" }}>
+        <Link href="/portal/signup">First time here? Create your account</Link>
+        <Link href="/portal/forgot-password">Forgot your password?</Link>
+        <Link href="/login" style={{ color: "#777" }}>
+          Administrator? Sign in here
+        </Link>
+      </div>
     </div>
   );
 }
