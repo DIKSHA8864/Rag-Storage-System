@@ -355,3 +355,74 @@ export interface MatterResearchSuggestionsResponse {
 export interface ApiErrorBody {
   detail?: string;
 }
+
+export interface PlanInfo {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  price_cents: number;
+  billing_interval: string;
+  max_matters: number | null;
+  max_documents: number | null;
+  max_storage_bytes: number | null;
+  max_llm_calls_per_month: number | null;
+  max_owners: number | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface PlanListResponse {
+  plans: PlanInfo[];
+}
+
+export interface PlanCreateRequest {
+  slug: string;
+  name: string;
+  description?: string | null;
+  price_cents?: number;
+  billing_interval?: string;
+  max_matters?: number | null;
+  max_documents?: number | null;
+  max_storage_bytes?: number | null;
+  max_llm_calls_per_month?: number | null;
+  max_owners?: number | null;
+}
+
+export interface SubscriptionInfo {
+  tenant_id: number;
+  status: string;
+  current_period_start: string;
+  current_period_end: string;
+  trial_end: string | null;
+  canceled_at: string | null;
+  plan: PlanInfo;
+}
+
+export interface SubscribeRequest {
+  plan_slug: string;
+  trial_days?: number | null;
+}
+
+export interface ChangePlanRequest {
+  plan_slug: string;
+}
+
+export interface UsageInfo {
+  matters: number;
+  documents: number;
+  storage_bytes: number;
+  llm_calls_per_month: number;
+}
+
+export interface PlanLimitsInfo {
+  max_matters: number | null;
+  max_documents: number | null;
+  max_storage_bytes: number | null;
+  max_llm_calls_per_month: number | null;
+}
+
+export interface BillingUsageResponse {
+  usage: UsageInfo;
+  limits: PlanLimitsInfo | null;
+}

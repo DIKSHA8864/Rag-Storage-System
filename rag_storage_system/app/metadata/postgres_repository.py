@@ -930,3 +930,114 @@ class PostgresMetadataRepository(MetadataRepository):
                 ),
             ).fetchone()
         return dict(row)
+
+    def count_llm_usage_since(self, tenant_id: int, since: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM llm_usage_log WHERE tenant_id = %s AND created_at >= %s",
+                (tenant_id, since),
+            ).fetchone()
+        return row["n"]
+
+    # ------------------------------------------------------------------
+    # Billing: Plans
+    # ------------------------------------------------------------------
+
+    def create_plan(
+        self, slug: str, name: str, description: Optional[str] = None, price_cents: int = 0,
+        billing_interval: str = "monthly", max_matters: Optional[int] = None,
+        max_documents: Optional[int] = None, max_storage_bytes: Optional[int] = None,
+        max_llm_calls_per_month: Optional[int] = None, max_owners: Optional[int] = None,
+    ) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO plans (slug, name, description, price_cents, billing_interval, "
+                "max_matters, max_documents, max_storage_bytes, max_llm_calls_per_month, max_owners, is_active) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE) RETURNING *",
+                (
+                    slug, name, description, price_cents, billing_interval,
+                    max_matters, max_documents, max_storage_bytes, max_llm_calls_per_month, max_owners,
+                ),
+            ).fetchone()
+        return dict(row)
+
+    def get_plan(self, plan_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM plans WHERE id = %s", (plan_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_plan_by_slug(self, slug: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM plans WHERE slug = %s", (slug,)).fetchone()
+        return dict(row) if row else None
+
+    def list_plans(self, active_only: bool = False) -> list[dict]:
+        with self._connect() as conn:
+            if active_only:
+                rows = conn.execute("SELECT * FROM plans WHERE is_active = TRUE ORDER BY id").fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM plans ORDER BY id").fetchall()
+        return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Billing: Tenant Subscriptions
+    # ------------------------------------------------------------------
+
+    def create_tenant_subscription(
+        self, tenant_id: int, plan_id: int, status: str, current_period_start: str,
+        current_period_end: str, trial_end: Optional[str] = None, provider: Optional[str] = None,
+        provider_customer_id: Optional[str] = None, provider_subscription_id: Optional[str] = None,
+    ) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO tenant_subscriptions (tenant_id, plan_id, status, current_period_start, "
+                "current_period_end, trial_end, provider, provider_customer_id, provider_subscription_id) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
+                (
+                    tenant_id, plan_id, status, current_period_start, current_period_end, trial_end,
+                    provider, provider_customer_id, provider_subscription_id,
+                ),
+            ).fetchone()
+        return dict(row)
+
+    def get_subscription_for_tenant(self, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM tenant_subscriptions WHERE tenant_id = %s", (tenant_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_subscription_status(
+        self, tenant_id: int, status: str, canceled_at: Optional[str] = None
+    ) -> Optional[dict]:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE tenant_subscriptions SET status = %s, canceled_at = %s, updated_at = NOW() "
+                "WHERE tenant_id = %s",
+                (status, canceled_at, tenant_id),
+            )
+        return self.get_subscription_for_tenant(tenant_id)
+
+    def change_tenant_plan(
+        self, tenant_id: int, plan_id: int, current_period_start: str, current_period_end: str
+    ) -> Optional[dict]:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE tenant_subscriptions SET plan_id = %s, current_period_start = %s, "
+                "current_period_end = %s, status = 'active', updated_at = NOW() WHERE tenant_id = %s",
+                (plan_id, current_period_start, current_period_end, tenant_id),
+            )
+        return self.get_subscription_for_tenant(tenant_id)
+
+    def get_tenant_resource_usage(self, tenant_id: int) -> dict:
+        with self._connect() as conn:
+            matters = conn.execute(
+                "SELECT COUNT(*) AS n FROM matters WHERE tenant_id = %s", (tenant_id,)
+            ).fetchone()["n"]
+            documents = conn.execute(
+                "SELECT COUNT(*) AS n FROM documents WHERE tenant_id = %s", (tenant_id,)
+            ).fetchone()["n"]
+            storage_bytes = conn.execute(
+                "SELECT COALESCE(SUM(size), 0) AS n FROM documents WHERE tenant_id = %s", (tenant_id,)
+            ).fetchone()["n"]
+        return {"matters": matters, "documents": documents, "storage_bytes": storage_bytes}

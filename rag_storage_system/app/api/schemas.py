@@ -814,3 +814,94 @@ class ComplaintDraftResponse(BaseModel):
 
 class ComplaintListResponse(BaseModel):
     complaints: list[ComplaintInfo]
+
+
+# ----------------------------------------------------------------------
+# Billing / Subscription (Phase 5 Step 25 - app/billing/)
+# ----------------------------------------------------------------------
+
+class PlanInfo(BaseModel):
+    id: int
+    slug: str
+    name: str
+    description: str | None = None
+    price_cents: int
+    billing_interval: str
+    max_matters: int | None = None
+    max_documents: int | None = None
+    max_storage_bytes: int | None = None
+    max_llm_calls_per_month: int | None = None
+    max_owners: int | None = None
+    is_active: bool
+    created_at: str
+
+
+class PlanListResponse(BaseModel):
+    plans: list[PlanInfo]
+
+
+class PlanCreateRequest(BaseModel):
+    """Body for POST /admin/billing/plans - defines a plan's configurable limits/entitlements. A limit left unset (null) means unlimited."""
+
+    slug: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = None
+    price_cents: int = Field(default=0, ge=0)
+    billing_interval: str = Field(default="monthly")
+    max_matters: int | None = Field(default=None, ge=0)
+    max_documents: int | None = Field(default=None, ge=0)
+    max_storage_bytes: int | None = Field(default=None, ge=0)
+    max_llm_calls_per_month: int | None = Field(default=None, ge=0)
+    max_owners: int | None = Field(default=None, ge=0)
+
+    @field_validator("billing_interval")
+    @classmethod
+    def _validate_billing_interval(cls, value: str) -> str:
+        if value not in ("monthly", "yearly"):
+            raise ValueError("billing_interval must be 'monthly' or 'yearly'")
+        return value
+
+
+class SubscriptionInfo(BaseModel):
+    tenant_id: int
+    status: str
+    current_period_start: str
+    current_period_end: str
+    trial_end: str | None = None
+    canceled_at: str | None = None
+    plan: PlanInfo
+
+
+class SubscribeRequest(BaseModel):
+    """Body for POST /admin/billing/subscription - assigns the caller's tenant to a plan."""
+
+    plan_slug: str = Field(..., min_length=1)
+    trial_days: int | None = Field(default=None, ge=1)
+
+
+class ChangePlanRequest(BaseModel):
+    """Body for PUT /admin/billing/subscription - moves the caller's tenant's EXISTING subscription to a different plan."""
+
+    plan_slug: str = Field(..., min_length=1)
+
+
+class UsageInfo(BaseModel):
+    matters: int
+    documents: int
+    storage_bytes: int
+    llm_calls_per_month: int
+
+
+class PlanLimitsInfo(BaseModel):
+    max_matters: int | None = None
+    max_documents: int | None = None
+    max_storage_bytes: int | None = None
+    max_llm_calls_per_month: int | None = None
+
+
+class BillingUsageResponse(BaseModel):
+    usage: UsageInfo
+    limits: PlanLimitsInfo | None = Field(
+        default=None,
+        description="The active plan's limits for each resource - a null field means that resource is unlimited. The whole object is null if the tenant has no subscription.",
+    )

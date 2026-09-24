@@ -64,6 +64,8 @@ import json
 from fastapi.responses import StreamingResponse
 
 from app.analysis.answer_generation import stream_grounded_answer
+from app.billing import get_billing_service
+from app.billing.service import RESOURCE_LLM_CALLS, PlanLimitExceededError
 from app.retrieval_settings import get_current_retrieval_settings
 router = APIRouter(
     prefix="/end-user",
@@ -112,6 +114,17 @@ def end_user_query(request: Request, body: EndUserQueryRequest, matter: dict = D
             for result in results
         ],
     )
+
+
+def _enforce_llm_usage_limit(tenant_id: int) -> None:
+    """Raise HTTP 402 Payment Required if this tenant's plan's LLM-call limit for the current billing period is already reached - see app/billing/service.py's check_limit()."""
+
+    from app.api import storage_api
+
+    try:
+        get_billing_service(storage_api.metadata_repository).check_limit(tenant_id, RESOURCE_LLM_CALLS)
+    except PlanLimitExceededError as exc:
+        raise HTTPException(status_code=402, detail=str(exc))
 
 
 async def _resolve_input_chunks(query: Optional[str], file: Optional[UploadFile]) -> list[dict]:
@@ -308,6 +321,8 @@ async def end_user_query_stream(
     foreign thread_id), "done" (once, always last).
     """
 
+    _enforce_llm_usage_limit(matter["tenant_id"])
+
     return StreamingResponse(
         _stream_query_answer(request.query, request.top_k, request.category, matter, request.thread_id),
         media_type="text/event-stream",
@@ -353,6 +368,7 @@ async def end_user_compare(
             status_code=400, detail="No extractable text found in the submission."
         )
 
+    _enforce_llm_usage_limit(matter["tenant_id"])
     report = build_analysis_report(input_chunks, category=category, tenant_id=matter["tenant_id"])
 
     return AnalysisReport(**report)
@@ -384,6 +400,7 @@ async def end_user_compare_export(
             status_code=400, detail="No extractable text found in the submission."
         )
 
+    _enforce_llm_usage_limit(matter["tenant_id"])
     report = build_analysis_report(input_chunks, category=category, tenant_id=matter["tenant_id"])
     disclaimer_text = _current_disclaimer_text()
 

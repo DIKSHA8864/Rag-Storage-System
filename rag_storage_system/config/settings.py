@@ -213,6 +213,13 @@ class Settings(BaseSettings):
     def intake_zip_max_total_size_bytes(self) -> int:
         return self.intake_zip_max_total_size_mb * 1024 * 1024
 
+    # ------------------------------------------------------------------
+    # Phase 5 Step 25 - Billing/Subscription (app/billing/). "manual"
+    # (default) needs no external payment gateway - see
+    # app/billing/provider.py's ManualPaymentProvider.
+    # ------------------------------------------------------------------
+    billing_provider: str = "manual"
+
     def resolve(self, relative_path: str) -> Path:
         """Resolve a configured path relative to the project root."""
 

@@ -246,11 +246,49 @@ CREATE TABLE IF NOT EXISTS llm_usage_log (
     citation_check_result TEXT,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    price_cents INTEGER NOT NULL DEFAULT 0,
+    billing_interval TEXT NOT NULL DEFAULT 'monthly',
+    max_matters INTEGER,
+    max_documents INTEGER,
+    max_storage_bytes INTEGER,
+    max_llm_calls_per_month INTEGER,
+    max_owners INTEGER,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenant_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER UNIQUE NOT NULL,
+    plan_id INTEGER NOT NULL REFERENCES plans(id),
+    status TEXT NOT NULL DEFAULT 'active',
+    current_period_start TEXT NOT NULL,
+    current_period_end TEXT NOT NULL,
+    trial_end TEXT,
+    canceled_at TEXT,
+    provider TEXT,
+    provider_customer_id TEXT,
+    provider_subscription_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _add_days(iso_timestamp: str, days: int) -> str:
+    from datetime import timedelta
+
+    return (datetime.fromisoformat(iso_timestamp) + timedelta(days=days)).isoformat()
 
 
 def _relative_path(category: str, filename: str) -> str:
@@ -299,6 +337,30 @@ class SQLiteMetadataRepository(MetadataRepository):
                 existing_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
                 if "tenant_id" not in existing_columns:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id INTEGER NOT NULL DEFAULT 1")
+
+            # Billing foundation (Phase 5 Step 25): the pre-existing
+            # Default Organization (tenant_id=1) is seeded onto a real,
+            # explicitly unlimited plan (every limit column NULL) so
+            # every Phase 1-4 workflow/test that predates billing keeps
+            # working unchanged - it is a real plan+subscription row,
+            # not a bypass, and app/billing/service.py treats a NULL
+            # limit as "no cap" for any plan, not just this seeded one.
+            now = _now()
+            conn.execute(
+                "INSERT OR IGNORE INTO plans "
+                "(id, slug, name, description, price_cents, billing_interval, max_matters, "
+                "max_documents, max_storage_bytes, max_llm_calls_per_month, max_owners, is_active, created_at) "
+                "VALUES (1, 'default-unlimited', 'Default (Unlimited)', "
+                "'Seeded for the pre-existing Default Organization tenant - every limit is unlimited.', "
+                "0, 'monthly', NULL, NULL, NULL, NULL, NULL, 1, ?)",
+                (now,),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO tenant_subscriptions "
+                "(id, tenant_id, plan_id, status, current_period_start, current_period_end, created_at, updated_at) "
+                "VALUES (1, 1, 1, 'active', ?, ?, ?, ?)",
+                (now, _add_days(now, 30), now, now),
+            )
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -1249,3 +1311,121 @@ class SQLiteMetadataRepository(MetadataRepository):
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM llm_usage_log WHERE id = ?", (new_id,)).fetchone()
         return dict(row)
+
+    def count_llm_usage_since(self, tenant_id: int, since: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM llm_usage_log WHERE tenant_id = ? AND created_at >= ?",
+                (tenant_id, since),
+            ).fetchone()
+        return row["n"]
+
+    # ------------------------------------------------------------------
+    # Billing: Plans
+    # ------------------------------------------------------------------
+
+    def create_plan(
+        self, slug: str, name: str, description: Optional[str] = None, price_cents: int = 0,
+        billing_interval: str = "monthly", max_matters: Optional[int] = None,
+        max_documents: Optional[int] = None, max_storage_bytes: Optional[int] = None,
+        max_llm_calls_per_month: Optional[int] = None, max_owners: Optional[int] = None,
+    ) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO plans (slug, name, description, price_cents, billing_interval, "
+                "max_matters, max_documents, max_storage_bytes, max_llm_calls_per_month, max_owners, "
+                "is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
+                (
+                    slug, name, description, price_cents, billing_interval,
+                    max_matters, max_documents, max_storage_bytes, max_llm_calls_per_month, max_owners, now,
+                ),
+            )
+            new_id = cursor.lastrowid
+        return self.get_plan(new_id)
+
+    def get_plan(self, plan_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_plan_by_slug(self, slug: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM plans WHERE slug = ?", (slug,)).fetchone()
+        return dict(row) if row else None
+
+    def list_plans(self, active_only: bool = False) -> list[dict]:
+        with self._connect() as conn:
+            if active_only:
+                rows = conn.execute("SELECT * FROM plans WHERE is_active = 1 ORDER BY id").fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM plans ORDER BY id").fetchall()
+        return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Billing: Tenant Subscriptions
+    # ------------------------------------------------------------------
+
+    def create_tenant_subscription(
+        self, tenant_id: int, plan_id: int, status: str, current_period_start: str,
+        current_period_end: str, trial_end: Optional[str] = None, provider: Optional[str] = None,
+        provider_customer_id: Optional[str] = None, provider_subscription_id: Optional[str] = None,
+    ) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO tenant_subscriptions (tenant_id, plan_id, status, current_period_start, "
+                "current_period_end, trial_end, provider, provider_customer_id, provider_subscription_id, "
+                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    tenant_id, plan_id, status, current_period_start, current_period_end, trial_end,
+                    provider, provider_customer_id, provider_subscription_id, now, now,
+                ),
+            )
+            new_id = cursor.lastrowid
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM tenant_subscriptions WHERE id = ?", (new_id,)).fetchone()
+        return dict(row)
+
+    def get_subscription_for_tenant(self, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM tenant_subscriptions WHERE tenant_id = ?", (tenant_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_subscription_status(
+        self, tenant_id: int, status: str, canceled_at: Optional[str] = None
+    ) -> Optional[dict]:
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE tenant_subscriptions SET status = ?, canceled_at = ?, updated_at = ? WHERE tenant_id = ?",
+                (status, canceled_at, now, tenant_id),
+            )
+        return self.get_subscription_for_tenant(tenant_id)
+
+    def change_tenant_plan(
+        self, tenant_id: int, plan_id: int, current_period_start: str, current_period_end: str
+    ) -> Optional[dict]:
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE tenant_subscriptions SET plan_id = ?, current_period_start = ?, "
+                "current_period_end = ?, status = 'active', updated_at = ? WHERE tenant_id = ?",
+                (plan_id, current_period_start, current_period_end, now, tenant_id),
+            )
+        return self.get_subscription_for_tenant(tenant_id)
+
+    def get_tenant_resource_usage(self, tenant_id: int) -> dict:
+        with self._connect() as conn:
+            matters = conn.execute(
+                "SELECT COUNT(*) AS n FROM matters WHERE tenant_id = ?", (tenant_id,)
+            ).fetchone()["n"]
+            documents = conn.execute(
+                "SELECT COUNT(*) AS n FROM documents WHERE tenant_id = ?", (tenant_id,)
+            ).fetchone()["n"]
+            storage_bytes = conn.execute(
+                "SELECT COALESCE(SUM(size), 0) AS n FROM documents WHERE tenant_id = ?", (tenant_id,)
+            ).fetchone()["n"]
+        return {"matters": matters, "documents": documents, "storage_bytes": storage_bytes}

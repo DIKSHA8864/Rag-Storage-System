@@ -458,3 +458,68 @@ class MetadataRepository(ABC):
         tenant_id: int = 1,
     ) -> dict:
         raise NotImplementedError
+
+    @abstractmethod
+    def count_llm_usage_since(self, tenant_id: int, since: str) -> int:
+        """Count llm_usage_log rows for `tenant_id` created at/after `since` (an ISO-8601 timestamp) - the current billing period's LLM-call usage."""
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Billing: Plans (app/billing/) - a global catalog, not tenant-owned.
+    # A NULL/None limit column means "unlimited" - see app/billing/service.py.
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_plan(
+        self, slug: str, name: str, description: Optional[str] = None, price_cents: int = 0,
+        billing_interval: str = "monthly", max_matters: Optional[int] = None,
+        max_documents: Optional[int] = None, max_storage_bytes: Optional[int] = None,
+        max_llm_calls_per_month: Optional[int] = None, max_owners: Optional[int] = None,
+    ) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_plan(self, plan_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_plan_by_slug(self, slug: str) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_plans(self, active_only: bool = False) -> list[dict]:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Billing: Tenant Subscriptions (app/billing/) - exactly one row per
+    # tenant, linking it to its current plan and status.
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_tenant_subscription(
+        self, tenant_id: int, plan_id: int, status: str, current_period_start: str,
+        current_period_end: str, trial_end: Optional[str] = None, provider: Optional[str] = None,
+        provider_customer_id: Optional[str] = None, provider_subscription_id: Optional[str] = None,
+    ) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_subscription_for_tenant(self, tenant_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_subscription_status(
+        self, tenant_id: int, status: str, canceled_at: Optional[str] = None
+    ) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def change_tenant_plan(
+        self, tenant_id: int, plan_id: int, current_period_start: str, current_period_end: str
+    ) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_tenant_resource_usage(self, tenant_id: int) -> dict:
+        """{'matters': int, 'documents': int, 'storage_bytes': int} for `tenant_id` - the resources app/billing/service.py checks matter/document/storage plan limits against."""
+        raise NotImplementedError

@@ -131,6 +131,8 @@ from app.metadata.models import DocumentStatus
 from app.retrieval.retriever import retrieve, retrieve_for_matter
 from app.retrieval_settings import DEFAULT_MIN_CHUNKS, DEFAULT_SCORE_THRESHOLD, DEFAULT_TOP_K, get_current_retrieval_settings
 from app.analysis.answer_generation import stream_grounded_answer
+from app.billing import get_billing_service
+from app.billing.service import RESOURCE_DOCUMENTS, RESOURCE_LLM_CALLS, RESOURCE_MATTERS, RESOURCE_STORAGE_BYTES, PlanLimitExceededError
 from app.report.rag_analysis import gather_fact_support
 from app.analysis.report_export import (
     DOCX_MEDIA_TYPE,
@@ -149,6 +151,23 @@ logger = logging.getLogger(__name__)
 
 storage_backend = get_storage_backend()
 metadata_repository = get_metadata_repository()
+
+
+def _enforce_plan_limit(tenant_id: int, resource: str, requested_increment: int = 1) -> None:
+    """
+    Raise HTTP 402 Payment Required if consuming `requested_increment`
+    more of `resource` would exceed `tenant_id`'s plan limit - see
+    app/billing/service.py's check_limit() for exactly when this does
+    (and, more often, deliberately does not) block. References the
+    bare `metadata_repository` name so a test's
+    monkeypatch.setattr(storage_api, "metadata_repository", ...) is
+    always respected, same as every other endpoint in this module.
+    """
+
+    try:
+        get_billing_service(metadata_repository).check_limit(tenant_id, resource, requested_increment)
+    except PlanLimitExceededError as exc:
+        raise HTTPException(status_code=402, detail=str(exc))
 
 # Not called eagerly here (unlike storage_backend/metadata_repository
 # above) - get_vector_store() always builds a real Postgres/pgvector
@@ -264,6 +283,11 @@ app.include_router(interview_router)
 from app.api.complaint_api import router as complaint_router  # noqa: E402
 
 app.include_router(complaint_router)
+
+# Billing / Subscription (Phase 5 Step 25) - Owner-JWT scoped. See app/api/billing_api.py.
+from app.api.billing_api import router as billing_router  # noqa: E402
+
+app.include_router(billing_router)
 
 
 @app.get("/")
@@ -511,6 +535,7 @@ def create_matter(
 
     api_key = secrets.token_urlsafe(32)
     tenant_id = owner["tenant_id"] if owner else 1
+    _enforce_plan_limit(tenant_id, RESOURCE_MATTERS)
     matter = metadata_repository.create_matter(request.name, hash_api_key(api_key), tenant_id=tenant_id)
 
     log_audit_event(
@@ -1094,10 +1119,13 @@ async def upload_document(
     storage, and reported back with the rejection reason.
     """
 
+    data = await file.read()
+    _enforce_plan_limit(owner["tenant_id"], RESOURCE_DOCUMENTS)
+    _enforce_plan_limit(owner["tenant_id"], RESOURCE_STORAGE_BYTES, requested_increment=len(data))
+
     stored_category = storage_backend.create_category(_tenant_storage_category(category, owner["tenant_id"]))
     safe_category = _strip_tenant_prefix(stored_category, owner["tenant_id"])
     metadata_repository.create_folder(safe_category, tenant_id=owner["tenant_id"])
-    data = await file.read()
     result = _store_upload(data, file.filename or "unnamed", category, tenant_id=owner["tenant_id"])
     await file.close()
 
@@ -1134,15 +1162,23 @@ async def upload_documents_batch(
     GET /upload-test remains available as a plain-HTML alternative.
     """
 
+    uploads = []
+    for upload in files:
+        uploads.append((upload.filename or "unnamed", await upload.read()))
+        await upload.close()
+
+    _enforce_plan_limit(owner["tenant_id"], RESOURCE_DOCUMENTS, requested_increment=len(uploads))
+    _enforce_plan_limit(
+        owner["tenant_id"], RESOURCE_STORAGE_BYTES, requested_increment=sum(len(data) for _, data in uploads)
+    )
+
     stored_category = storage_backend.create_category(_tenant_storage_category(category, owner["tenant_id"]))
     safe_category = _strip_tenant_prefix(stored_category, owner["tenant_id"])
     metadata_repository.create_folder(safe_category, tenant_id=owner["tenant_id"])
 
     results = []
-    for upload in files:
-        data = await upload.read()
-        results.append(_store_upload(data, upload.filename or "unnamed", category, tenant_id=owner["tenant_id"]))
-        await upload.close()
+    for filename, data in uploads:
+        results.append(_store_upload(data, filename, category, tenant_id=owner["tenant_id"]))
 
     total_stored = sum(1 for r in results if r.status == "stored")
     total_rejected = sum(1 for r in results if r.status == "rejected")
@@ -1491,6 +1527,8 @@ async def owner_research_ask(request: OwnerResearchRequest, owner: dict = Depend
     available for debugging/inspecting retrieval directly.
     """
 
+    _enforce_plan_limit(owner["tenant_id"], RESOURCE_LLM_CALLS)
+
     settings = get_current_retrieval_settings(metadata_repository)
     resolved_top_k = request.top_k if request.top_k is not None else settings.top_k
 
@@ -1572,6 +1610,7 @@ async def matter_research_ask(
     """
 
     ensure_matter_access(owner, matter_id, metadata_repository)
+    _enforce_plan_limit(owner["tenant_id"], RESOURCE_LLM_CALLS)
 
     settings = get_current_retrieval_settings(metadata_repository)
     resolved_top_k = request.top_k if request.top_k is not None else settings.top_k

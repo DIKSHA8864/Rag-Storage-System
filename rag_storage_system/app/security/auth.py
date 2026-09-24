@@ -173,6 +173,23 @@ def require_admin_key(
     return decode_access_token(credentials.credentials)
 
 
+def require_owner_role(owner: dict = Depends(require_admin_key)) -> dict:
+    """
+    FastAPI dependency for endpoints only the firm's Owner may use -
+    today, that is billing/subscription management and the global
+    plan catalog (app/api/billing_api.py). "attorney"/"paralegal" are
+    valid Owner-JWT holders (require_admin_key above accepts them) but
+    must not manage the firm's subscription.
+    """
+
+    if owner.get("role") != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Owner role required.",
+        )
+    return owner
+
+
 # ----------------------------------------------------------------------
 # End User authentication
 # ----------------------------------------------------------------------
