@@ -89,14 +89,16 @@ def _hash_code(email: str, purpose: str, code: str) -> str:
     return hmac.new(key, f"{email}:{purpose}:{code}".encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def _send_email(to_email: str, subject: str, body: str) -> bool:
+def _send_email(to_email: str, subject: str, body: str, kind: str) -> bool:
+    """`kind` is what gets logged on failure - never `subject`/`body`, which can carry a live code."""
+
     from app.notifications.email_sender import get_email_sender
 
     try:
         get_email_sender().send(to_email, subject, body)
         return True
     except Exception:
-        logger.exception("Could not send '%s' email to %s", subject, to_email)
+        logger.exception("Could not send %s email to %s", kind, to_email)
         return False
 
 
@@ -147,6 +149,7 @@ def invite_end_users(
             f"Create your account here: {signup_url}\n\n"
             f"Sign up with this email address ({email}). We'll email you a one-time "
             f"code to confirm it's you, then you'll choose your own password.",
+            kind="invite",
         )
 
     return {"invited": invited, "skipped": skipped}
@@ -215,6 +218,7 @@ def request_code(repo: MetadataRepository, email: str, purpose: str) -> None:
         f"Your one-time code to {action} is:\n\n    {code}\n\n"
         f"It expires in {settings.verification_code_expire_minutes} minutes. "
         f"If you didn't request this, you can ignore this email.",
+        kind=f"{purpose} code",
     )
 
 

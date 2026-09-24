@@ -361,3 +361,28 @@ def test_console_email_provider_is_refused_in_production(monkeypatch):
 
     with pytest.raises(RuntimeError, match="not allowed"):
         email_sender.get_email_sender()
+
+
+def test_failed_code_email_never_logs_the_code(repo, monkeypatch, caplog):
+    """A send failure (e.g. a wrong Gmail App Password) is logged - but the live code must not appear in the log."""
+
+    from app.security import end_user_accounts
+
+    class _FailingSender:
+        def __init__(self):
+            self.subjects: list[str] = []
+
+        def send(self, to_email: str, subject: str, body: str) -> None:
+            self.subjects.append(subject)
+            raise RuntimeError("535 Username and Password not accepted")
+
+    sender = _FailingSender()
+    monkeypatch.setattr("app.notifications.email_sender.get_email_sender", lambda: sender)
+    end_user_accounts.invite_end_users(repo, ["someone@example.com"], tenant_id=1, invited_by="admin@example.com")
+
+    with caplog.at_level("ERROR"):
+        end_user_accounts.request_code(repo, "someone@example.com", end_user_accounts.PURPOSE_SIGNUP)
+
+    code = re.search(r"\b(\d{6})\b", sender.subjects[-1]).group(1)
+    assert "Could not send signup code email to someone@example.com" in caplog.text
+    assert code not in caplog.text
