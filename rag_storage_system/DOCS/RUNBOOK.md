@@ -29,6 +29,12 @@ placeholder, never fabricated text) until turned on:
   WhisperSTTProvider docstring).
 - `VISION_PROVIDER=claude` — needs `ANTHROPIC_API_KEY` (same key
   `NARRATIVE_PROVIDER=claude` already uses).
+- `VIDEO_FRAME_SAMPLE_COUNT` (default `3`) — how many evenly-spaced frames
+  app/multimodal/video_processor.py samples from an uploaded video (via
+  PyAV, no ffmpeg subprocess needed) and captions through `VISION_PROVIDER`,
+  in addition to transcribing its audio track. Set to `0` to skip frame
+  captioning (audio-only) — useful to avoid per-frame cost once a paid
+  Vision provider is configured.
 - **"embedding model FAILED to load"**-style failure loading the Whisper
   model — same outbound-network restriction as the embedding model above;
   works once that restriction is lifted (a real deploy target, not this

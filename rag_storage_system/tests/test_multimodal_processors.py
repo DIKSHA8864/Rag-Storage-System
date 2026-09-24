@@ -35,10 +35,20 @@ def test_process_audio_returns_mock_transcript():
 
 
 def test_process_video_returns_mock_transcript():
-    result = process_video("clip.mp4", b"fake video bytes")
+    """
+    Fake (non-video-container) bytes: the transcript still comes back
+    (the mock STT provider never actually parses the bytes), while
+    frame sampling (app/multimodal/video_processor.py's
+    _sample_frame_pngs()) fails softly - PyAV can't open bogus bytes -
+    and simply contributes no frame_caption items, exactly like a
+    corrupt real video would.
+    """
 
-    assert result.content_type == "transcript"
-    assert result.is_mock is True
+    results = process_video("clip.mp4", b"fake video bytes")
+
+    assert len(results) == 1
+    assert results[0].content_type == "transcript"
+    assert results[0].is_mock is True
 
 
 def test_pipeline_processes_a_plain_text_upload():

@@ -32,6 +32,7 @@ from PIL import Image, ImageDraw
 
 from app.multimodal.ocr import TesseractOCRProvider, get_ocr_provider
 from app.multimodal.speech_to_text import WhisperSTTProvider, get_stt_provider
+from app.multimodal.video_processor import _sample_frame_pngs, process_video
 from app.multimodal.vision import ClaudeVisionProvider, get_vision_provider
 
 
@@ -272,3 +273,108 @@ def test_get_stt_provider_returns_whisper_when_configured(monkeypatch):
     ))
 
     assert isinstance(get_stt_provider(), WhisperSTTProvider)
+
+
+# ---------------------------------------------------------------------
+# Video frame analysis - real PyAV frame extraction against a real,
+# ffmpeg-generated video; captioning goes through the (mock, by
+# default) Vision provider.
+# ---------------------------------------------------------------------
+
+_FFMPEG_MISSING = shutil.which("ffmpeg") is None
+
+
+def _make_test_video(path: Path, duration: int = 6) -> None:
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-f", "lavfi", "-i", f"sine=frequency=440:duration={duration}",
+            "-f", "lavfi", "-i", f"testsrc=duration={duration}:size=160x120:rate=5",
+            "-c:v", "libx264", "-c:a", "aac", "-shortest", str(path),
+        ],
+        check=True, capture_output=True,
+    )
+
+
+@pytest.mark.skipif(_FFMPEG_MISSING, reason="ffmpeg not installed in this environment")
+def test_sample_frame_pngs_extracts_evenly_spaced_real_frames(tmp_path):
+    video_path = tmp_path / "clip.mp4"
+    _make_test_video(video_path, duration=6)
+
+    frames = _sample_frame_pngs(video_path, 3)
+
+    assert len(frames) == 3
+    timestamps = [t for t, _ in frames]
+    assert timestamps == sorted(timestamps)
+    assert all(0 < t < 6 for t in timestamps)
+
+    for _, png_bytes in frames:
+        with Image.open(io.BytesIO(png_bytes)) as image:
+            assert image.format == "PNG"
+            assert image.size == (160, 120)
+
+
+def test_sample_frame_pngs_returns_nothing_for_a_zero_count(tmp_path):
+    assert _sample_frame_pngs(tmp_path / "irrelevant.mp4", 0) == []
+
+
+def test_sample_frame_pngs_fails_softly_on_unopenable_bytes(tmp_path):
+    bogus_path = tmp_path / "not_really_a_video.mp4"
+    bogus_path.write_bytes(b"this is not a video container")
+
+    assert _sample_frame_pngs(bogus_path, 3) == []
+
+
+@pytest.mark.skipif(_FFMPEG_MISSING, reason="ffmpeg not installed in this environment")
+def test_process_video_captions_real_frames_with_the_mock_vision_provider(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.multimodal.video_processor.get_settings", lambda: SimpleNamespace(video_frame_sample_count=3)
+    )
+    video_path = tmp_path / "clip.mp4"
+    _make_test_video(video_path, duration=6)
+
+    results = process_video("clip.mp4", video_path.read_bytes())
+
+    assert results[0].content_type == "transcript"
+    frame_captions = [r for r in results if r.content_type == "frame_caption"]
+    assert len(frame_captions) == 3
+    for caption in frame_captions:
+        assert caption.is_mock is True
+        assert caption.provider == "mock"
+        assert caption.text.startswith("[")  # "[<timestamp>s] <caption>"
+
+
+@pytest.mark.skipif(_FFMPEG_MISSING, reason="ffmpeg not installed in this environment")
+def test_process_video_skips_frame_captioning_when_sample_count_is_zero(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.multimodal.video_processor.get_settings", lambda: SimpleNamespace(video_frame_sample_count=0)
+    )
+    video_path = tmp_path / "clip.mp4"
+    _make_test_video(video_path, duration=2)
+
+    results = process_video("clip.mp4", video_path.read_bytes())
+
+    assert len(results) == 1
+    assert results[0].content_type == "transcript"
+
+
+@pytest.mark.skipif(_FFMPEG_MISSING, reason="ffmpeg not installed in this environment")
+def test_process_video_keeps_the_transcript_even_if_every_frame_caption_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "app.multimodal.video_processor.get_settings", lambda: SimpleNamespace(video_frame_sample_count=2)
+    )
+
+    class _BrokenVisionProvider:
+        name = "broken"
+
+        def describe(self, image_bytes, filename):
+            raise RuntimeError("vision API unavailable")
+
+    monkeypatch.setattr("app.multimodal.video_processor.get_vision_provider", lambda: _BrokenVisionProvider())
+
+    video_path = tmp_path / "clip.mp4"
+    _make_test_video(video_path, duration=4)
+
+    results = process_video("clip.mp4", video_path.read_bytes())
+
+    assert len(results) == 1
+    assert results[0].content_type == "transcript"

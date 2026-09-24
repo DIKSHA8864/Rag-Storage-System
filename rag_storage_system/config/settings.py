@@ -199,6 +199,14 @@ class Settings(BaseSettings):
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
 
+    # How many representative frames app/multimodal/video_processor.py
+    # samples (evenly spaced across the video's duration, via PyAV - no
+    # ffmpeg subprocess needed) and captions through VISION_PROVIDER,
+    # in addition to transcribing the video's audio track. 0 disables
+    # frame captioning entirely (audio-only, the original behavior) -
+    # useful to avoid per-frame cost with a paid Vision provider.
+    video_frame_sample_count: int = 3
+
     # Separate root from ORIGINAL_STORAGE_PATH above - a Client's
     # intake uploads must stay logically separate from the Owner's
     # knowledge base (see app/storage/__init__.py's

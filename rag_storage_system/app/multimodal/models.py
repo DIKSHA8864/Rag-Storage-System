@@ -54,7 +54,7 @@ def media_type_for_extension(extension: str) -> Optional[MediaType]:
 class ExtractedContent:
     """One piece of text pulled out of an uploaded input (or one ZIP member)."""
 
-    content_type: str  # "text" | "ocr_text" | "transcript" | "caption"
+    content_type: str  # "text" | "ocr_text" | "transcript" | "caption" | "frame_caption"
     text: str
     provider: str
     is_mock: bool

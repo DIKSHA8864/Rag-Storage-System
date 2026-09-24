@@ -36,7 +36,7 @@ def _process_single_file(filename: str, data: bytes) -> list[ExtractedContent]:
     if media_type == MediaType.AUDIO:
         return [process_audio(filename, data)]
     if media_type == MediaType.VIDEO:
-        return [process_video(filename, data)]
+        return process_video(filename, data)
 
     raise ValueError(f"Unsupported file type for multimodal processing: {extension}")
 
