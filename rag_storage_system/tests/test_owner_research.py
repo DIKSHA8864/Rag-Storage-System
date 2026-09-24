@@ -87,6 +87,20 @@ def _fake_async_anthropic(response_text: str):
     return _FakeAsyncAnthropic, fake_messages
 
 
+def _fake_relevance_client(response_text: str):
+    """A fake SYNCHRONOUS anthropic.Anthropic client, for app/analysis/relevance_guard.py's relevance-classification call (separate from the async generation client above)."""
+
+    block = SimpleNamespace(type="text", text=response_text)
+    usage = SimpleNamespace(input_tokens=5, output_tokens=5)
+    response = SimpleNamespace(content=[block], usage=usage)
+
+    class _FakeMessages:
+        def create(self, **kwargs):
+            return response
+
+    return SimpleNamespace(messages=_FakeMessages())
+
+
 # ---------------------------------------------------------------------
 # 1/3. Authenticated Owner asks a real question and gets grounded citations
 # ---------------------------------------------------------------------
@@ -157,8 +171,100 @@ def test_unsupported_question_triggers_honest_gap_behavior(client, monkeypatch):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["answer"] == "Insufficient information found in the available knowledge base."
+    assert body["answer"] == "No authority on this point was found in the firm's legal library."
     assert body["sources"] == []
+
+
+# ---------------------------------------------------------------------
+# 4b. Relevance gate: retrieved chunks that only share vocabulary with
+# the question (a CGL/D&O/Workers' Comp/defamation document, say) must
+# never become "supporting" sources or reach the answer generator -
+# see app/analysis/relevance_guard.py.
+# ---------------------------------------------------------------------
+
+
+def _cgl_exclusion_hit() -> dict:
+    return _hit(
+        "cgl_policy_exclusions.pdf", "Insurance",
+        # score_threshold=0.0 is what these tests pass into the fake
+        # retrieve() anyway (see its lambda signature) - final_score
+        # here just needs to be a plausible "retrieval thought this was
+        # worth returning" value, exactly like a real, keyword-matched
+        # but topically unrelated chunk would get.
+        0.42,
+    )
+
+
+def test_a_loosely_keyword_matched_but_unrelated_document_never_becomes_a_source(client, monkeypatch):
+    """
+    Reproduces the reported bug: retrieval surfaces only a CGL policy's
+    exclusions clause (it happens to mention "employment", "termination",
+    "discrimination", "complaint") for an employment discrimination
+    question. The relevance gate must recognize it as NOT materially
+    relevant and refuse to answer, rather than generating a substantive
+    answer "grounded" in an unrelated insurance document.
+    """
+
+    monkeypatch.setattr(
+        storage_api, "retrieve",
+        lambda query, top_k, category=None, score_threshold=0.0, tenant_id=1: [_cgl_exclusion_hit()],
+    )
+    monkeypatch.setattr(
+        "app.analysis.relevance_guard.get_settings",
+        lambda: SimpleNamespace(anthropic_api_key="test-key", analysis_model="claude-opus-5"),
+    )
+    monkeypatch.setattr("anthropic.Anthropic", lambda api_key: _fake_relevance_client("[]"))
+
+    response = client.post(
+        "/research/ask",
+        json={"query": "Can an employee be fired for filing a discrimination complaint?"},
+        headers=_owner_header(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["answer"] == "No authority on this point was found in the firm's legal library."
+    assert body["sources"] == []
+    assert "cgl_policy_exclusions.pdf" not in str(body)
+
+
+def test_relevant_source_is_kept_and_the_unrelated_one_is_dropped_before_generation(client, monkeypatch):
+    """The generator must never even SEE the excluded chunk - proves filtering happens before generation, not just before citation display."""
+
+    relevant_hit = _hit("employment_handbook.pdf", "HR Policy", 0.85)
+    monkeypatch.setattr(
+        storage_api, "retrieve",
+        lambda query, top_k, category=None, score_threshold=0.0, tenant_id=1: [relevant_hit, _cgl_exclusion_hit()],
+    )
+    monkeypatch.setattr(
+        "app.analysis.relevance_guard.get_settings",
+        lambda: SimpleNamespace(anthropic_api_key="test-key", analysis_model="claude-opus-5"),
+    )
+    # Only index 0 (the employment handbook) is materially relevant.
+    monkeypatch.setattr("anthropic.Anthropic", lambda api_key: _fake_relevance_client("[0]"))
+    monkeypatch.setattr("app.analysis.answer_generation.get_settings", lambda: _FakeClaudeSettings())
+
+    grounded_text = "An employee may be terminated only for lawful reasons [employment_handbook.pdf]."
+    fake_client_cls, fake_messages = _fake_async_anthropic(grounded_text)
+    monkeypatch.setattr("anthropic.AsyncAnthropic", fake_client_cls)
+
+    response = client.post(
+        "/research/ask",
+        json={"query": "Can an employee be fired for filing a discrimination complaint?"},
+        headers=_owner_header(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["sources"] == [
+        {
+            "filename": "employment_handbook.pdf", "category": "HR Policy", "section": "2.1",
+            "start_page": 1, "end_page": 1, "score": 0.85,
+        }
+    ]
+    # The excluded chunk's text never reached the generator's prompt.
+    sent_prompt = str(fake_messages.last_call)
+    assert "cgl_policy_exclusions.pdf" not in sent_prompt
 
 
 # ---------------------------------------------------------------------

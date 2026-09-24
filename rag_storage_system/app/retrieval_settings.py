@@ -18,7 +18,20 @@ from typing import Optional
 from app.metadata.base import MetadataRepository
 
 DEFAULT_TOP_K = 5
-DEFAULT_SCORE_THRESHOLD = 0.0
+# 0.0 (every retrieval call's real starting point until this was
+# tuned) let ANY chunk through, including one that only shares
+# vocabulary with the query via app/retrieval/reranker.py's keyword
+# channel - the exact failure mode that let a CGL/D&O/Workers' Comp/
+# defamation document "answer" an unrelated employment question just
+# because it happened to mention the same words. 0.3 reuses the same,
+# already-calibrated cutoff app/analysis/matcher.py's
+# MATCH_SCORE_THRESHOLD_PARTIAL uses for the identical final_score
+# scale (same embedding model, same reranker) - see that module's
+# docstring for the calibration readings ("same topic, different
+# wording" ~0.36, "unrelated" ~0.01). This is a numeric floor, not a
+# substitute for app/analysis/relevance_guard.py's legal-issue-level
+# check - both apply.
+DEFAULT_SCORE_THRESHOLD = 0.3
 DEFAULT_MIN_CHUNKS = 1
 
 

@@ -25,6 +25,7 @@ duplicated here beyond what's needed to prove it flows into an export.
 import io
 import json
 import re
+from types import SimpleNamespace
 
 import pytest
 from docx import Document
@@ -93,6 +94,20 @@ def _stream(client, **json_body) -> str:
         return "".join(response.iter_text())
 
 
+def _fake_relevance_client(response_text: str):
+    """A fake anthropic.Anthropic client for app/analysis/relevance_guard.py's relevance-classification call."""
+
+    block = SimpleNamespace(type="text", text=response_text)
+    usage = SimpleNamespace(input_tokens=5, output_tokens=5)
+    response = SimpleNamespace(content=[block], usage=usage)
+
+    class _FakeMessages:
+        def create(self, **kwargs):
+            return response
+
+    return SimpleNamespace(messages=_FakeMessages())
+
+
 # ---------------------------------------------------------------------
 # 1. Normal research question
 # ---------------------------------------------------------------------
@@ -129,9 +144,43 @@ def test_missing_authority_returns_insufficient_information(client, monkeypatch)
     assert events[0] == ("sources", {"sources": []})
     answer_events = [data for etype, data in events if etype == "answer_chunk"]
     assert answer_events == [
-        {"text": "Insufficient information found in the available knowledge base."}
+        {"text": "No authority on this point was found in the firm's legal library."}
     ]
     assert events[-1][0] == "done"
+
+
+# ---------------------------------------------------------------------
+# 2b. Relevance gate: End User Q&A must not answer from a chunk that
+# only shares vocabulary with the question either - see
+# app/analysis/relevance_guard.py. Owner/Matter Research coverage is in
+# tests/test_owner_research.py and tests/test_matter_research.py; this
+# proves the SAME shared implementation protects this third caller too.
+# ---------------------------------------------------------------------
+
+
+def test_loosely_keyword_matched_document_never_answers_an_end_user_question(client, monkeypatch):
+    cgl_exclusion_hit = _hit(
+        filename="cgl_policy_exclusions.pdf",
+        score=0.42,
+        text=(
+            "This CGL policy excludes claims arising from employment-related practices "
+            "including termination, discrimination, and harassment complaints."
+        ),
+    )
+    monkeypatch.setattr(end_user_api, "retrieve", lambda *a, **k: [cgl_exclusion_hit])
+    monkeypatch.setattr(
+        "app.analysis.relevance_guard.get_settings",
+        lambda: SimpleNamespace(anthropic_api_key="test-key", analysis_model="claude-opus-5"),
+    )
+    monkeypatch.setattr("anthropic.Anthropic", lambda api_key: _fake_relevance_client("[]"))
+
+    events = _parse_sse(_stream(client, query="Can an employee be fired for filing a discrimination complaint?"))
+
+    assert events[0] == ("sources", {"sources": []})
+    answer_events = [data for etype, data in events if etype == "answer_chunk"]
+    assert answer_events == [
+        {"text": "No authority on this point was found in the firm's legal library."}
+    ]
 
 
 # ---------------------------------------------------------------------
@@ -386,7 +435,7 @@ def test_retrieval_settings_min_chunks_actually_gates_the_answer(client, monkeyp
     assert events[0] == ("sources", {"sources": []})
     answer_events = [data for etype, data in events if etype == "answer_chunk"]
     assert answer_events == [
-        {"text": "Insufficient information found in the available knowledge base."}
+        {"text": "No authority on this point was found in the firm's legal library."}
     ]
 
 

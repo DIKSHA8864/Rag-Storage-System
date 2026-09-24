@@ -33,6 +33,18 @@ pasted query can only ever be interpreted as content to answer from,
 never as an instruction to the model. Citation lock (see above) is the
 backstop even if that boundary were somehow crossed: an ungrounded
 citation is caught and discarded regardless of how it was produced.
+
+RELEVANCE GATE (stream_grounded_answer(), before any of the above ever
+runs): retrieval optimizes for recall, so its candidate chunks can
+include one that only shares vocabulary with the question (a CGL/D&O/
+Workers' Compensation/defamation document that happens to mention
+"employment", "termination", "discrimination", or "complaint") without
+addressing the same legal issue at all. app/analysis/relevance_guard.py's
+filter_materially_relevant_chunks() removes those before the honest-gap
+check, the locked `sources`, or generate_answer_stream() ever see
+them - so a question with no materially relevant authority in the
+library gets the honest-gap answer instead of one built from
+loosely-related sources.
 """
 
 import asyncio
@@ -232,11 +244,20 @@ async def stream_grounded_answer(
     (Owner Matter-scoped research), so the three scopes can never drift
     into different answer-generation behaviors.
 
-    Takes an ALREADY-RETRIEVED, already-fixed `results` list (the
-    caller runs its own scoped retrieval - library-only for Owner
-    research, Matter+library for End User and Matter research - so
-    Matter isolation is enforced by which retrieval call produced
-    `results`, not by this function). Yields (event_type, payload)
+    Takes an ALREADY-RETRIEVED `results` list (the caller runs its own
+    scoped retrieval - library-only for Owner research, Matter+library
+    for End User and Matter research - so Matter isolation is enforced
+    by which retrieval call produced `results`, not by this function).
+    `results` is then narrowed to only the chunks
+    app/analysis/relevance_guard.py's filter_materially_relevant_chunks()
+    verifies materially address the question's actual legal issue
+    (never widened, never given anything beyond what `results` already
+    contains) BEFORE the honest-gap check below runs, `sources` is
+    locked, or generate_answer_stream() ever sees them - this is what
+    stops a chunk that merely shares vocabulary with the question
+    (from an unrelated CGL/D&O/Workers' Comp/defamation document, say)
+    from ever becoming a "supporting" source or reaching the model.
+    Yields (event_type, payload)
     tuples: "sources" (once, first), "answer_chunk" (0+, in order),
     "error" (0-1, on a generation failure), "done" (once, always last)
     - the exact same event vocabulary app/api/end_user_api.py already
@@ -255,12 +276,27 @@ async def stream_grounded_answer(
 
     import time
 
+    from app.analysis.relevance_guard import filter_materially_relevant_chunks
     from app.observability.usage_log import log_rag_query
 
     start = time.perf_counter()
 
-    if len(results) < min_chunks:
-        no_evidence_text = "Insufficient information found in the available knowledge base."
+    # RELEVANCE GATE: retrieval (app/retrieval/reranker.py's final_score)
+    # optimizes for recall and can surface a chunk that merely shares
+    # vocabulary with `query` (an insurance policy's exclusions clause
+    # mentioning "discrimination", say) without actually addressing the
+    # same legal issue. filter_materially_relevant_chunks() only ever
+    # REMOVES such chunks - see its docstring - so everything below this
+    # line (the honest-gap check, the locked `sources`, and what
+    # generate_answer_stream() is even given to work from) already
+    # excludes anything not verified as materially relevant. This can
+    # never make an ungrounded/fabricated answer more likely; it can
+    # only make one that was about to cite something irrelevant refuse
+    # to answer instead.
+    relevant_results = filter_materially_relevant_chunks(query, results, tenant_id=tenant_id)
+
+    if len(relevant_results) < min_chunks:
+        no_evidence_text = "No authority on this point was found in the firm's legal library."
 
         yield "sources", {"sources": []}
         yield "answer_chunk", {"text": no_evidence_text}
@@ -275,9 +311,12 @@ async def stream_grounded_answer(
         )
         return
 
-    # CITATION LOCK: built once, from this exact `results` list, and
-    # yielded before a single answer token exists. generate_answer_stream()
-    # below is only ever given this same, already-fixed chunk list.
+    # CITATION LOCK: built once, from this exact `relevant_results` list,
+    # and yielded before a single answer token exists. generate_answer_stream()
+    # below is only ever given this same, already-fixed, already-relevance-
+    # filtered chunk list - an unrelated CGL/D&O/Workers' Comp/defamation
+    # document that merely shared keywords with `query` was already
+    # excluded above and can never appear as a "supporting" source here.
     sources = [
         {
             "filename": r["filename"],
@@ -287,13 +326,13 @@ async def stream_grounded_answer(
             "end_page": r.get("end_page"),
             "score": r["final_score"],
         }
-        for r in results
+        for r in relevant_results
     ]
     yield "sources", {"sources": sources}
 
     usage_log: dict = {}
     try:
-        async for piece in generate_answer_stream(query, results, usage_log=usage_log, tenant_id=tenant_id):
+        async for piece in generate_answer_stream(query, relevant_results, usage_log=usage_log, tenant_id=tenant_id):
             yield "answer_chunk", {"text": piece}
     except Exception as exc:
         usage_log.setdefault("citation_check_result", "generation_error")
