@@ -111,17 +111,17 @@ class ClaudeNarrativeGenerator(NarrativeGenerator):
         self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
         self._model = settings.analysis_model
 
-    def generate(self, comparison: ComparisonResult) -> ReportNarrative:
+    def generate(self, comparison: ComparisonResult, tenant_id: int = 1) -> ReportNarrative:
         from app.api import storage_api
         from app.prompts import get_active_prompt
 
         system_prompt = get_active_prompt(
-            storage_api.metadata_repository, "narrative_system_prompt", _SYSTEM_PROMPT
+            storage_api.metadata_repository, "narrative_system_prompt", _SYSTEM_PROMPT, tenant_id=tenant_id
         )
 
         from app.observability.usage_log import track_llm_call
 
-        with track_llm_call("narrative_generation", self._model) as record_usage:
+        with track_llm_call("narrative_generation", self._model, tenant_id=tenant_id) as record_usage:
             response = self._client.messages.create(
                 model=self._model,
                 max_tokens=4096,

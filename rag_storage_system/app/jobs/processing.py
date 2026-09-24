@@ -65,11 +65,23 @@ def run_processing_job(
 
     # Chunks/embeddings only carry a document_id (the filename stem -
     # see app/segmentation/segmentation_manager.py), not the category
-    # it came from, so it's recovered here from this same extraction
-    # pass rather than threading a new field through every phase.
+    # or tenant it came from, so both are recovered here from this same
+    # extraction pass rather than threading new fields through every
+    # phase. NOTE: this filename-stem keying predates Step 24 and is a
+    # known, pre-existing collision surface - two different tenants (or
+    # even two categories, before multi-tenancy) uploading a
+    # same-named file could still collide here. Real physical
+    # separation (storage/originals/tenant-<id>/...) prevents the
+    # files themselves from colliding; this map is what could still
+    # misattribute a chunk if two tenants use the exact same filename
+    # in the same processing run - a real, called-out limitation of
+    # the segmentation/chunking layer's document_id scheme, not
+    # something this pass silently declares fixed.
     category_by_document_id: dict[str, str] = {}
+    tenant_id_by_document_id: dict[str, int] = {}
 
     for result in extraction_results:
+        tenant_id = result.get("tenant_id", 1)
         if result["status"] == "extracted":
             ocr_pages_used = result.get("ocr_pages_used", 0)
             status_detail = (
@@ -81,15 +93,17 @@ def run_processing_job(
             )
             metadata_repository.update_document_status(
                 result["category"], result["filename"], DocumentStatus.PROCESSING.value,
-                status_detail=status_detail,
+                status_detail=status_detail, tenant_id=tenant_id,
             )
             category_by_document_id[Path(result["filename"]).stem] = result["category"]
+            tenant_id_by_document_id[Path(result["filename"]).stem] = tenant_id
         else:
             metadata_repository.update_document_status(
                 result["category"],
                 result["filename"],
                 DocumentStatus.FAILED.value,
                 status_detail=result["error"],
+                tenant_id=tenant_id,
             )
 
     segments = process_all_documents()
@@ -114,6 +128,7 @@ def run_processing_job(
             section=embedding.get("section"),
             start_page=embedding.get("start_page"),
             end_page=embedding.get("end_page"),
+            tenant_id=tenant_id_by_document_id.get(embedding["document_id"], 1),
         )
 
     metadata_repository.update_status_where(

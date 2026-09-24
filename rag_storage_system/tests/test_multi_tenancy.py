@@ -100,6 +100,53 @@ def test_documents_are_isolated_per_tenant(client):
     assert "TenantASecrets" not in tenant_b_categories
 
 
+def test_causes_of_action_library_is_isolated_per_tenant(client):
+    """A curated cause of action created by one tenant is invisible to another tenant's library."""
+
+    create_response = client.post(
+        "/admin/causes-of-action",
+        json={
+            "category": "Contracts",
+            "name": "Breach of Contract",
+            "elements": ["A valid contract existed", "Defendant breached it"],
+            "authority_citation": "Restatement (Second) of Contracts § 235",
+        },
+        headers=_owner_header(tenant_id=1),
+    )
+    assert create_response.status_code == 200
+
+    tenant_a_names = {
+        c["name"] for c in client.get("/admin/causes-of-action", headers=_owner_header(tenant_id=1)).json()["causes_of_action"]
+    }
+    tenant_b_names = {
+        c["name"] for c in client.get("/admin/causes-of-action", headers=_owner_header(tenant_id=2)).json()["causes_of_action"]
+    }
+
+    assert "Breach of Contract" in tenant_a_names
+    assert "Breach of Contract" not in tenant_b_names
+
+
+def test_prompt_versions_are_isolated_per_tenant(client):
+    """A custom system prompt saved by one tenant does not leak into another tenant's prompt history."""
+
+    create_response = client.post(
+        "/admin/prompts/answer_system_prompt",
+        json={"text": "Tenant A's custom answer prompt."},
+        headers=_owner_header(tenant_id=1),
+    )
+    assert create_response.status_code == 200
+
+    tenant_a_versions = client.get(
+        "/admin/prompts/answer_system_prompt", headers=_owner_header(tenant_id=1)
+    ).json()["versions"]
+    tenant_b_versions = client.get(
+        "/admin/prompts/answer_system_prompt", headers=_owner_header(tenant_id=2)
+    ).json()["versions"]
+
+    assert any(v["text"] == "Tenant A's custom answer prompt." for v in tenant_a_versions)
+    assert all(v["text"] != "Tenant A's custom answer prompt." for v in tenant_b_versions)
+
+
 def test_implicit_default_matter_still_works_for_owner_role(client, repo):
     """
     matter_id == 0 (the implicit "Default" matter, no real row - see

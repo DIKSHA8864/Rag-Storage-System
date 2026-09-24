@@ -84,18 +84,18 @@ def _empty_report(comparison: ComparisonResult) -> dict:
     }
 
 
-def _generate_narrative(comparison: ComparisonResult) -> ReportNarrative:
+def _generate_narrative(comparison: ComparisonResult, tenant_id: int = 1) -> ReportNarrative:
     generator = get_narrative_generator()
 
     try:
-        return generator.generate(comparison)
+        return generator.generate(comparison, tenant_id=tenant_id)
     except Exception:
         # A hosted-LLM provider can fail (bad JSON, API/network error) -
         # degrade to the deterministic template rather than break the
         # report. See ClaudeNarrativeGenerator's docstring.
         from app.analysis.template_narrative import TemplateNarrativeGenerator
 
-        return TemplateNarrativeGenerator().generate(comparison)
+        return TemplateNarrativeGenerator().generate(comparison, tenant_id=tenant_id)
 
 
 def build_analysis_report(input_chunks: list[dict], category: Optional[str] = None, tenant_id: int = 1) -> dict:
@@ -111,7 +111,7 @@ def build_analysis_report(input_chunks: list[dict], category: Optional[str] = No
     if not comparison.has_any_evidence:
         return _empty_report(comparison)
 
-    narrative = _generate_narrative(comparison)
+    narrative = _generate_narrative(comparison, tenant_id=tenant_id)
 
     for item in comparison.items:
         item.narrative = (

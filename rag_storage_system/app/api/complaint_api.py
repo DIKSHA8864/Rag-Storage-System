@@ -53,16 +53,17 @@ def create_cause_of_action(request: CauseOfActionCreateRequest, owner: dict = De
     from app.api import storage_api
 
     row = storage_api.metadata_repository.create_cause_of_action(
-        request.category, request.name, request.elements, request.authority_citation
+        request.category, request.name, request.elements, request.authority_citation,
+        tenant_id=owner["tenant_id"],
     )
     return _cause_info(row)
 
 
 @router.get("/causes-of-action", response_model=CauseOfActionListResponse)
-def list_causes_of_action(category: str | None = None) -> CauseOfActionListResponse:
+def list_causes_of_action(category: str | None = None, owner: dict = Depends(require_admin_key)) -> CauseOfActionListResponse:
     from app.api import storage_api
 
-    rows = storage_api.metadata_repository.list_causes_of_action(category)
+    rows = storage_api.metadata_repository.list_causes_of_action(category, tenant_id=owner["tenant_id"])
     return CauseOfActionListResponse(causes_of_action=[_cause_info(r) for r in rows])
 
 

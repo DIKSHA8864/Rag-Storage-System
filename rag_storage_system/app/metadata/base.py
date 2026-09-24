@@ -86,6 +86,7 @@ class MetadataRepository(ABC):
         filename: str,
         status: str,
         status_detail: Optional[str] = None,
+        tenant_id: int = 1,
     ) -> bool:
         raise NotImplementedError
 
@@ -206,21 +207,23 @@ class MetadataRepository(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def get_active_prompt_version(self, name: str) -> Optional[dict]:
+    def get_active_prompt_version(self, name: str, tenant_id: int = 1) -> Optional[dict]:
         raise NotImplementedError
 
     @abstractmethod
-    def list_prompt_versions(self, name: str) -> list[dict]:
+    def list_prompt_versions(self, name: str, tenant_id: int = 1) -> list[dict]:
         raise NotImplementedError
 
     @abstractmethod
-    def create_prompt_version(self, name: str, text: str, created_by: Optional[str] = None) -> dict:
-        """Inserts the next version for `name`, deactivates the previous active one, activates this one."""
+    def create_prompt_version(
+        self, name: str, text: str, created_by: Optional[str] = None, tenant_id: int = 1
+    ) -> dict:
+        """Inserts the next version for `name` within `tenant_id`, deactivates the previous active one, activates this one."""
         raise NotImplementedError
 
     @abstractmethod
-    def activate_prompt_version(self, name: str, version: int) -> dict:
-        """Rollback/roll-forward: makes an existing version active again."""
+    def activate_prompt_version(self, name: str, version: int, tenant_id: int = 1) -> dict:
+        """Rollback/roll-forward: makes an existing version active again, within `tenant_id`."""
         raise NotImplementedError
 
     # ------------------------------------------------------------------
@@ -410,16 +413,16 @@ class MetadataRepository(ABC):
 
     @abstractmethod
     def create_cause_of_action(
-        self, category: str, name: str, elements: list[str], authority_citation: str
+        self, category: str, name: str, elements: list[str], authority_citation: str, tenant_id: int = 1
     ) -> dict:
         raise NotImplementedError
 
     @abstractmethod
-    def get_cause_of_action(self, cause_of_action_id: int) -> Optional[dict]:
+    def get_cause_of_action(self, cause_of_action_id: int, tenant_id: int = 1) -> Optional[dict]:
         raise NotImplementedError
 
     @abstractmethod
-    def list_causes_of_action(self, category: Optional[str] = None) -> list[dict]:
+    def list_causes_of_action(self, category: Optional[str] = None, tenant_id: int = 1) -> list[dict]:
         raise NotImplementedError
 
     # ------------------------------------------------------------------
@@ -452,5 +455,6 @@ class MetadataRepository(ABC):
         model: str, input_tokens: int, output_tokens: int, latency_ms: int,
         query_text: Optional[str] = None, retrieved_chunk_ids: Optional[list] = None,
         retrieved_chunk_scores: Optional[list] = None, citation_check_result: Optional[str] = None,
+        tenant_id: int = 1,
     ) -> dict:
         raise NotImplementedError

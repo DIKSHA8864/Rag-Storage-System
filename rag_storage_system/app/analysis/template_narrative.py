@@ -50,7 +50,7 @@ def _item_narrative(item: ComparisonItem) -> str:
 
 class TemplateNarrativeGenerator(NarrativeGenerator):
 
-    def generate(self, comparison: ComparisonResult) -> ReportNarrative:
+    def generate(self, comparison: ComparisonResult, tenant_id: int = 1) -> ReportNarrative:
         total = len(comparison.items)
         matched = sum(1 for item in comparison.items if item.classification == "match")
         partial = sum(1 for item in comparison.items if item.classification == "partial_match")

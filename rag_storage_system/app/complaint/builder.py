@@ -57,7 +57,7 @@ def build_complaint_draft(
 
     causes_of_action = []
     for cause_id in cause_of_action_ids:
-        curated = metadata_repository.get_cause_of_action(cause_id)
+        curated = metadata_repository.get_cause_of_action(cause_id, tenant_id=tenant_id)
         if curated is None:
             continue
 

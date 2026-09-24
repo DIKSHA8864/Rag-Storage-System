@@ -45,7 +45,7 @@ class NarrativeGenerator(ABC):
     """Abstract base class for all report-narrative providers."""
 
     @abstractmethod
-    def generate(self, comparison: ComparisonResult) -> ReportNarrative:
+    def generate(self, comparison: ComparisonResult, tenant_id: int = 1) -> ReportNarrative:
         """
         Only called when comparison.has_any_evidence is True - see
         report_builder.py's hallucination guard for what happens

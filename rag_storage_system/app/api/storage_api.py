@@ -739,16 +739,15 @@ def update_retrieval_settings(
 @app.get(
     "/admin/prompts/{name}",
     response_model=PromptVersionListResponse,
-    dependencies=[Depends(require_admin_key)],
 )
-def list_prompt_versions(name: str) -> PromptVersionListResponse:
+def list_prompt_versions(name: str, owner: dict = Depends(require_admin_key)) -> PromptVersionListResponse:
     """
     List every saved version of a system prompt, newest first - `name`
     is "narrative_system_prompt" (app/analysis/claude_narrative.py) or
     "answer_system_prompt" (app/analysis/answer_generation.py).
     """
 
-    versions = metadata_repository.list_prompt_versions(name)
+    versions = metadata_repository.list_prompt_versions(name, tenant_id=owner["tenant_id"])
 
     return PromptVersionListResponse(
         name=name,
@@ -778,7 +777,8 @@ def create_prompt_version(
     """Save and activate a new version of a system prompt - the previous version stays in history, rollback-able."""
 
     updated_by = owner.get("email") if owner else None
-    version = metadata_repository.create_prompt_version(name, request.text, created_by=updated_by)
+    tenant_id = owner["tenant_id"] if owner else 1
+    version = metadata_repository.create_prompt_version(name, request.text, created_by=updated_by, tenant_id=tenant_id)
 
     log_audit_event(
         "create_prompt_version", detail=f"{name} v{version['version']}", actor=updated_by or "admin"
@@ -806,7 +806,8 @@ def activate_prompt_version(
     """Roll back (or forward) to a previously saved version - makes it active again."""
 
     try:
-        activated = metadata_repository.activate_prompt_version(name, version)
+        tenant_id = owner["tenant_id"] if owner else 1
+        activated = metadata_repository.activate_prompt_version(name, version, tenant_id=tenant_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -965,7 +966,8 @@ def create_category(request: CategoryCreateRequest, owner: dict = Depends(requir
     """
 
     full_path = f"{request.parent}/{request.name}" if request.parent else request.name
-    safe_category = storage_backend.create_category(full_path)
+    stored_category = storage_backend.create_category(_tenant_storage_category(full_path, owner["tenant_id"]))
+    safe_category = _strip_tenant_prefix(stored_category, owner["tenant_id"])
     metadata_repository.create_folder(safe_category, tenant_id=owner["tenant_id"])
     return CategoryInfo(name=safe_category, document_count=0)
 
@@ -994,30 +996,59 @@ def list_categories(owner: dict = Depends(require_admin_key)) -> CategoryListRes
 # ----------------------------------------------------------------------
 
 
+def _tenant_storage_category(category: str, tenant_id: int) -> str:
+    """
+    Physically partitions on-disk storage per tenant, WITHOUT touching
+    StorageBackend itself (app/storage/base.py's category-as-folder-path
+    abstraction already supports this - same convention
+    app/matter_rag/ingestion.py's matter_namespace() already uses for
+    per-Matter vector namespaces). Every storage_backend.* call gets
+    this tenant-prefixed path; metadata_repository.* calls always keep
+    the original, human-readable `category` - see _strip_tenant_prefix().
+    """
+
+    prefix = f"tenant-{tenant_id}"
+    return f"{prefix}/{category}" if category else prefix
+
+
+def _strip_tenant_prefix(storage_category: str, tenant_id: int) -> str:
+    """Inverse of _tenant_storage_category() - recovers the clean category from what storage_backend returns."""
+
+    prefix = f"tenant-{tenant_id}"
+    if storage_category == prefix:
+        return ""
+    if storage_category.startswith(prefix + "/"):
+        return storage_category[len(prefix) + 1:]
+    return storage_category
+
+
 def _store_upload(upload_bytes: bytes, filename: str, category: str, tenant_id: int = 1) -> UploadedFileResult:
 
+    tenant_category = _tenant_storage_category(category, tenant_id)
     is_valid, reason = validate_file_object(filename, len(upload_bytes))
 
     if not is_valid:
-        result = storage_backend.quarantine(category, filename, io.BytesIO(upload_bytes))
+        result = storage_backend.quarantine(tenant_category, filename, io.BytesIO(upload_bytes))
+        clean_category = _strip_tenant_prefix(result["category"], tenant_id)
         log_audit_event(
             "upload",
-            category=result["category"],
+            category=clean_category,
             filename=result["stored_filename"],
             status="rejected",
             detail=reason,
         )
         return UploadedFileResult(
             filename=result["stored_filename"],
-            category=result["category"],
+            category=clean_category,
             status="rejected",
             reason=reason,
         )
 
-    result = storage_backend.save(category, filename, io.BytesIO(upload_bytes))
+    result = storage_backend.save(tenant_category, filename, io.BytesIO(upload_bytes))
+    clean_category = _strip_tenant_prefix(result["category"], tenant_id)
 
     metadata_repository.upsert_document(
-        category=result["category"],
+        category=clean_category,
         filename=result["stored_filename"],
         extension=Path(result["stored_filename"]).suffix.lower(),
         size=result["size"],
@@ -1028,14 +1059,14 @@ def _store_upload(upload_bytes: bytes, filename: str, category: str, tenant_id: 
 
     log_audit_event(
         "upload",
-        category=result["category"],
+        category=clean_category,
         filename=result["stored_filename"],
         status="success",
     )
 
     return UploadedFileResult(
         filename=result["stored_filename"],
-        category=result["category"],
+        category=clean_category,
         status="stored",
         reason="valid",
         size=result["size"],
@@ -1063,7 +1094,8 @@ async def upload_document(
     storage, and reported back with the rejection reason.
     """
 
-    safe_category = storage_backend.create_category(category)
+    stored_category = storage_backend.create_category(_tenant_storage_category(category, owner["tenant_id"]))
+    safe_category = _strip_tenant_prefix(stored_category, owner["tenant_id"])
     metadata_repository.create_folder(safe_category, tenant_id=owner["tenant_id"])
     data = await file.read()
     result = _store_upload(data, file.filename or "unnamed", category, tenant_id=owner["tenant_id"])
@@ -1102,7 +1134,8 @@ async def upload_documents_batch(
     GET /upload-test remains available as a plain-HTML alternative.
     """
 
-    safe_category = storage_backend.create_category(category)
+    stored_category = storage_backend.create_category(_tenant_storage_category(category, owner["tenant_id"]))
+    safe_category = _strip_tenant_prefix(stored_category, owner["tenant_id"])
     metadata_repository.create_folder(safe_category, tenant_id=owner["tenant_id"])
 
     results = []
@@ -1151,15 +1184,19 @@ async def replace_document(
         raise HTTPException(status_code=400, detail=f"Invalid replacement file: {reason}")
 
     try:
-        result = storage_backend.replace(category, filename, io.BytesIO(data))
+        result = storage_backend.replace(
+            _tenant_storage_category(category, owner["tenant_id"]), filename, io.BytesIO(data)
+        )
     except FileNotFoundError as exc:
         log_audit_event(
             "replace", category=category, filename=filename, status="not_found"
         )
         raise HTTPException(status_code=404, detail=str(exc))
 
+    clean_category = _strip_tenant_prefix(result["category"], owner["tenant_id"])
+
     metadata_repository.upsert_document(
-        category=result["category"],
+        category=clean_category,
         filename=result["stored_filename"],
         extension=Path(result["stored_filename"]).suffix.lower(),
         size=result["size"],
@@ -1169,12 +1206,12 @@ async def replace_document(
     )
 
     log_audit_event(
-        "replace", category=result["category"], filename=result["stored_filename"]
+        "replace", category=clean_category, filename=result["stored_filename"]
     )
 
     return UploadedFileResult(
         filename=result["stored_filename"],
-        category=result["category"],
+        category=clean_category,
         status="stored",
         reason="valid",
         size=result["size"],
@@ -1198,7 +1235,7 @@ def delete_document(category: str, filename: str, owner: dict = Depends(require_
         )
         raise HTTPException(status_code=404, detail=f"File not found: {category}/{filename}")
 
-    deleted = storage_backend.delete(category, filename)
+    deleted = storage_backend.delete(_tenant_storage_category(category, owner["tenant_id"]), filename)
 
     if not deleted:
         log_audit_event(
@@ -1257,7 +1294,10 @@ def rename_category(
     safe_old = sanitize_category_path(category)
 
     try:
-        new_name = storage_backend.rename_category(category, request.new_name)
+        stored_new_name = storage_backend.rename_category(
+            _tenant_storage_category(category, owner["tenant_id"]),
+            _tenant_storage_category(request.new_name, owner["tenant_id"]),
+        )
     except FileNotFoundError as exc:
         log_audit_event("rename_category", category=safe_old, status="not_found")
         raise HTTPException(status_code=404, detail=str(exc))
@@ -1267,6 +1307,7 @@ def rename_category(
         )
         raise HTTPException(status_code=409, detail=str(exc))
 
+    new_name = _strip_tenant_prefix(stored_new_name, owner["tenant_id"])
     metadata_repository.rename_folder(safe_old, new_name, tenant_id=owner["tenant_id"])
 
     log_audit_event(
@@ -1297,7 +1338,9 @@ def delete_category(category: str, force: bool = False, owner: dict = Depends(re
     safe_category = sanitize_category_path(category)
 
     try:
-        deleted = storage_backend.delete_category(category, force=force)
+        deleted = storage_backend.delete_category(
+            _tenant_storage_category(category, owner["tenant_id"]), force=force
+        )
     except ValueError as exc:
         log_audit_event(
             "delete_category", category=safe_category, status="conflict", detail=str(exc)
@@ -1463,7 +1506,7 @@ async def owner_research_ask(request: OwnerResearchRequest, owner: dict = Depend
     answer_pieces: list[str] = []
 
     async for event, payload in stream_grounded_answer(
-        request.query, results, settings.min_chunks, purpose="owner_research"
+        request.query, results, settings.min_chunks, purpose="owner_research", tenant_id=owner["tenant_id"]
     ):
         if event == "sources":
             sources_payload = payload["sources"]
@@ -1542,7 +1585,8 @@ async def matter_research_ask(
     answer_pieces: list[str] = []
 
     async for event, payload in stream_grounded_answer(
-        request.query, results, settings.min_chunks, purpose="matter_research", matter_id=matter_id
+        request.query, results, settings.min_chunks, purpose="matter_research", matter_id=matter_id,
+        tenant_id=owner["tenant_id"],
     ):
         if event == "sources":
             sources_payload = payload["sources"]

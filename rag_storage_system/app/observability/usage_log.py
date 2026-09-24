@@ -14,7 +14,7 @@ from typing import Optional
 def log_rag_query(
     purpose: str, query: str, results: list[dict], model: str,
     input_tokens: int, output_tokens: int, latency_ms: int, citation_check_result: str,
-    matter_id: Optional[int] = None, intake_session_id: Optional[int] = None,
+    matter_id: Optional[int] = None, intake_session_id: Optional[int] = None, tenant_id: int = 1,
 ) -> None:
     """
     Records one grounded-answer request - Owner research, Matter
@@ -39,13 +39,17 @@ def log_rag_query(
             retrieved_chunk_ids=[r.get("chunk_id") for r in results],
             retrieved_chunk_scores=[r.get("final_score") for r in results],
             citation_check_result=citation_check_result,
+            tenant_id=tenant_id,
         )
     except Exception:
         pass  # best-effort - never breaks the actual RAG answer it's describing
 
 
 @contextmanager
-def track_llm_call(purpose: str, model: str, matter_id: Optional[int] = None, intake_session_id: Optional[int] = None):
+def track_llm_call(
+    purpose: str, model: str, matter_id: Optional[int] = None, intake_session_id: Optional[int] = None,
+    tenant_id: int = 1,
+):
     """
     Usage:
         with track_llm_call("narrative_generation", model, matter_id=..., intake_session_id=...) as tracker:
@@ -70,7 +74,7 @@ def track_llm_call(purpose: str, model: str, matter_id: Optional[int] = None, in
             storage_api.metadata_repository.add_llm_usage_log(
                 matter_id=matter_id, intake_session_id=intake_session_id, purpose=purpose,
                 model=model, input_tokens=usage["input_tokens"], output_tokens=usage["output_tokens"],
-                latency_ms=latency_ms,
+                latency_ms=latency_ms, tenant_id=tenant_id,
             )
         except Exception:
             pass  # usage logging is best-effort - never breaks the actual LLM call it's wrapping

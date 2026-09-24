@@ -109,7 +109,9 @@ def _citations_are_grounded(text: str, allowed_filenames: set[str]) -> bool:
     return True
 
 
-async def _claude_full_answer(query: str, chunks: list[dict], usage_log: dict | None = None) -> str:
+async def _claude_full_answer(
+    query: str, chunks: list[dict], usage_log: dict | None = None, tenant_id: int = 1
+) -> str:
     """
     Runs the real Claude call and returns its full response text -
     buffered, not token-streamed, so generate_answer_stream() can
@@ -133,7 +135,7 @@ async def _claude_full_answer(query: str, chunks: list[dict], usage_log: dict | 
     context = "\n\n".join(f"[{_chunk_label(c)}]\n{c['chunk_text']}" for c in chunks)
 
     system_prompt = get_active_prompt(
-        storage_api.metadata_repository, "answer_system_prompt", _DEFAULT_ANSWER_SYSTEM_PROMPT
+        storage_api.metadata_repository, "answer_system_prompt", _DEFAULT_ANSWER_SYSTEM_PROMPT, tenant_id=tenant_id
     )
 
     response = await client.messages.create(
@@ -157,7 +159,9 @@ async def _claude_full_answer(query: str, chunks: list[dict], usage_log: dict | 
     return "".join(block.text for block in response.content if block.type == "text")
 
 
-async def generate_answer_stream(query: str, chunks: list[dict], usage_log: dict | None = None) -> AsyncIterator[str]:
+async def generate_answer_stream(
+    query: str, chunks: list[dict], usage_log: dict | None = None, tenant_id: int = 1
+) -> AsyncIterator[str]:
     """
     Yields the answer text in small pieces, gradually - a citation-
     checked Claude answer when NARRATIVE_PROVIDER=claude and
@@ -182,7 +186,7 @@ async def generate_answer_stream(query: str, chunks: list[dict], usage_log: dict
 
     if settings.narrative_provider == "claude" and settings.anthropic_api_key:
         try:
-            full_answer = await _claude_full_answer(query, chunks, usage_log=usage_log)
+            full_answer = await _claude_full_answer(query, chunks, usage_log=usage_log, tenant_id=tenant_id)
             allowed_filenames = {chunk["filename"] for chunk in chunks}
 
             if _citations_are_grounded(full_answer, allowed_filenames):
@@ -217,6 +221,7 @@ async def generate_answer_stream(query: str, chunks: list[dict], usage_log: dict
 async def stream_grounded_answer(
     query: str, results: list[dict], min_chunks: int,
     *, purpose: str = "grounded_answer", matter_id: int | None = None, intake_session_id: int | None = None,
+    tenant_id: int = 1,
 ) -> AsyncIterator[tuple[str, dict]]:
     """
     The one shared implementation of "honest-gap check -> lock sources
@@ -266,7 +271,7 @@ async def stream_grounded_answer(
             input_tokens=0, output_tokens=0,
             latency_ms=int((time.perf_counter() - start) * 1000),
             citation_check_result="insufficient_evidence",
-            matter_id=matter_id, intake_session_id=intake_session_id,
+            matter_id=matter_id, intake_session_id=intake_session_id, tenant_id=tenant_id,
         )
         return
 
@@ -288,7 +293,7 @@ async def stream_grounded_answer(
 
     usage_log: dict = {}
     try:
-        async for piece in generate_answer_stream(query, results, usage_log=usage_log):
+        async for piece in generate_answer_stream(query, results, usage_log=usage_log, tenant_id=tenant_id):
             yield "answer_chunk", {"text": piece}
     except Exception as exc:
         usage_log.setdefault("citation_check_result", "generation_error")
@@ -303,5 +308,5 @@ async def stream_grounded_answer(
         output_tokens=usage_log.get("output_tokens", 0),
         latency_ms=int((time.perf_counter() - start) * 1000),
         citation_check_result=usage_log.get("citation_check_result", "unknown"),
-        matter_id=matter_id, intake_session_id=intake_session_id,
+        matter_id=matter_id, intake_session_id=intake_session_id, tenant_id=tenant_id,
     )

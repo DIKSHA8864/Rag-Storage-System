@@ -267,7 +267,8 @@ async def _stream_query_answer(
     answer_pieces: list[str] = []
 
     async for event, payload in stream_grounded_answer(
-        query, results, settings.min_chunks, purpose="end_user_query", matter_id=matter["id"] or None
+        query, results, settings.min_chunks, purpose="end_user_query", matter_id=matter["id"] or None,
+        tenant_id=matter["tenant_id"],
     ):
         if event == "sources":
             sources_payload = payload["sources"]

@@ -267,6 +267,7 @@ class PostgresMetadataRepository(MetadataRepository):
         filename: str,
         status: str,
         status_detail: Optional[str] = None,
+        tenant_id: int = 1,
     ) -> bool:
         relative_path = _relative_path(category, filename)
 
@@ -275,9 +276,9 @@ class PostgresMetadataRepository(MetadataRepository):
                 """
                 UPDATE documents
                 SET status = %s, status_detail = %s, updated_at = now()
-                WHERE relative_path = %s
+                WHERE tenant_id = %s AND relative_path = %s
                 """,
-                (status, status_detail, relative_path),
+                (status, status_detail, tenant_id, relative_path),
             )
             return cursor.rowcount > 0
 
@@ -466,48 +467,60 @@ class PostgresMetadataRepository(MetadataRepository):
     # Prompt Versions
     # ------------------------------------------------------------------
 
-    def get_active_prompt_version(self, name: str) -> Optional[dict]:
+    def get_active_prompt_version(self, name: str, tenant_id: int = 1) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM prompt_versions WHERE name = %s AND is_active = TRUE", (name,)
+                "SELECT * FROM prompt_versions WHERE tenant_id = %s AND name = %s AND is_active = TRUE",
+                (tenant_id, name),
             ).fetchone()
         return dict(row) if row else None
 
-    def list_prompt_versions(self, name: str) -> list[dict]:
+    def list_prompt_versions(self, name: str, tenant_id: int = 1) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM prompt_versions WHERE name = %s ORDER BY version DESC", (name,)
+                "SELECT * FROM prompt_versions WHERE tenant_id = %s AND name = %s ORDER BY version DESC",
+                (tenant_id, name),
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def create_prompt_version(self, name: str, text: str, created_by: Optional[str] = None) -> dict:
+    def create_prompt_version(
+        self, name: str, text: str, created_by: Optional[str] = None, tenant_id: int = 1
+    ) -> dict:
         with self._connect() as conn:
             next_version = conn.execute(
-                "SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM prompt_versions WHERE name = %s",
-                (name,),
+                "SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM prompt_versions "
+                "WHERE tenant_id = %s AND name = %s",
+                (tenant_id, name),
             ).fetchone()["next_version"]
 
-            conn.execute("UPDATE prompt_versions SET is_active = FALSE WHERE name = %s", (name,))
+            conn.execute(
+                "UPDATE prompt_versions SET is_active = FALSE WHERE tenant_id = %s AND name = %s",
+                (tenant_id, name),
+            )
             row = conn.execute(
-                "INSERT INTO prompt_versions (name, version, text, is_active, created_by) "
-                "VALUES (%s, %s, %s, TRUE, %s) "
-                "RETURNING name, version, text, is_active, created_at, created_by",
-                (name, next_version, text, created_by),
+                "INSERT INTO prompt_versions (tenant_id, name, version, text, is_active, created_by) "
+                "VALUES (%s, %s, %s, %s, TRUE, %s) "
+                "RETURNING tenant_id, name, version, text, is_active, created_at, created_by",
+                (tenant_id, name, next_version, text, created_by),
             ).fetchone()
         return dict(row)
 
-    def activate_prompt_version(self, name: str, version: int) -> dict:
+    def activate_prompt_version(self, name: str, version: int, tenant_id: int = 1) -> dict:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM prompt_versions WHERE name = %s AND version = %s", (name, version)
+                "SELECT * FROM prompt_versions WHERE tenant_id = %s AND name = %s AND version = %s",
+                (tenant_id, name, version),
             ).fetchone()
             if row is None:
                 raise ValueError(f"No such prompt version: {name} v{version}")
 
-            conn.execute("UPDATE prompt_versions SET is_active = FALSE WHERE name = %s", (name,))
             conn.execute(
-                "UPDATE prompt_versions SET is_active = TRUE WHERE name = %s AND version = %s",
-                (name, version),
+                "UPDATE prompt_versions SET is_active = FALSE WHERE tenant_id = %s AND name = %s",
+                (tenant_id, name),
+            )
+            conn.execute(
+                "UPDATE prompt_versions SET is_active = TRUE WHERE tenant_id = %s AND name = %s AND version = %s",
+                (tenant_id, name, version),
             )
         return dict(row)
 
@@ -730,34 +743,38 @@ class PostgresMetadataRepository(MetadataRepository):
     # ------------------------------------------------------------------
 
     def create_cause_of_action(
-        self, category: str, name: str, elements: list[str], authority_citation: str
+        self, category: str, name: str, elements: list[str], authority_citation: str, tenant_id: int = 1
     ) -> dict:
         from psycopg.types.json import Jsonb
 
         with self._connect() as conn:
             row = conn.execute(
-                "INSERT INTO cause_of_action_library (category, name, elements, authority_citation) "
-                "VALUES (%s, %s, %s, %s) "
-                "RETURNING id, category, name, elements, authority_citation, created_at",
-                (category, name, Jsonb(elements), authority_citation),
+                "INSERT INTO cause_of_action_library (category, name, elements, authority_citation, tenant_id) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "RETURNING id, category, name, elements, authority_citation, created_at, tenant_id",
+                (category, name, Jsonb(elements), authority_citation, tenant_id),
             ).fetchone()
         return dict(row)
 
-    def get_cause_of_action(self, cause_of_action_id: int) -> Optional[dict]:
+    def get_cause_of_action(self, cause_of_action_id: int, tenant_id: int = 1) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM cause_of_action_library WHERE id = %s", (cause_of_action_id,)
+                "SELECT * FROM cause_of_action_library WHERE id = %s AND tenant_id = %s",
+                (cause_of_action_id, tenant_id),
             ).fetchone()
         return dict(row) if row else None
 
-    def list_causes_of_action(self, category: Optional[str] = None) -> list[dict]:
+    def list_causes_of_action(self, category: Optional[str] = None, tenant_id: int = 1) -> list[dict]:
         with self._connect() as conn:
             if category:
                 rows = conn.execute(
-                    "SELECT * FROM cause_of_action_library WHERE category = %s ORDER BY id", (category,)
+                    "SELECT * FROM cause_of_action_library WHERE category = %s AND tenant_id = %s ORDER BY id",
+                    (category, tenant_id),
                 ).fetchall()
             else:
-                rows = conn.execute("SELECT * FROM cause_of_action_library ORDER BY id").fetchall()
+                rows = conn.execute(
+                    "SELECT * FROM cause_of_action_library WHERE tenant_id = %s ORDER BY id", (tenant_id,)
+                ).fetchall()
         return [dict(row) for row in rows]
 
     # ------------------------------------------------------------------
@@ -893,6 +910,7 @@ class PostgresMetadataRepository(MetadataRepository):
     def add_llm_usage_log(
         self, matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms,
         query_text=None, retrieved_chunk_ids=None, retrieved_chunk_scores=None, citation_check_result=None,
+        tenant_id: int = 1,
     ) -> dict:
         import json
 
@@ -900,15 +918,15 @@ class PostgresMetadataRepository(MetadataRepository):
             row = conn.execute(
                 "INSERT INTO llm_usage_log (matter_id, intake_session_id, purpose, model, "
                 "input_tokens, output_tokens, latency_ms, query_text, retrieved_chunk_ids, "
-                "retrieved_chunk_scores, citation_check_result) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "retrieved_chunk_scores, citation_check_result, tenant_id) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "RETURNING *",
                 (
                     matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms,
                     query_text,
                     json.dumps(retrieved_chunk_ids) if retrieved_chunk_ids is not None else None,
                     json.dumps(retrieved_chunk_scores) if retrieved_chunk_scores is not None else None,
-                    citation_check_result,
+                    citation_check_result, tenant_id,
                 ),
             ).fetchone()
         return dict(row)

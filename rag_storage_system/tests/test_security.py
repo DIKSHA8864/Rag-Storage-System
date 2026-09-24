@@ -115,7 +115,7 @@ def test_upload_with_traversal_filename_is_sanitized(client):
     assert response.status_code == 200
     stored_filename = response.json()["results"][0]["filename"]
     assert "/" not in stored_filename
-    assert (backend.originals_dir / "Docs" / stored_filename).exists()
+    assert (backend.originals_dir / "tenant-1" / "Docs" / stored_filename).exists()
 
 
 def test_upload_rejects_disallowed_extension_to_quarantine(client):
@@ -128,5 +128,5 @@ def test_upload_rejects_disallowed_extension_to_quarantine(client):
 
     body = response.json()
     assert body["results"][0]["status"] == "rejected"
-    assert (backend.quarantine_dir / "Docs" / "payload.exe").exists()
-    assert not (backend.originals_dir / "Docs" / "payload.exe").exists()
+    assert (backend.quarantine_dir / "tenant-1" / "Docs" / "payload.exe").exists()
+    assert not (backend.originals_dir / "tenant-1" / "Docs" / "payload.exe").exists()

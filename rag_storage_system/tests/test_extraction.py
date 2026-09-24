@@ -195,6 +195,58 @@ def test_extract_all_documents_mirrors_category_structure(tmp_path, monkeypatch)
     assert data["file_type"] == "txt"
 
 
+def test_extract_all_documents_parses_the_tenant_prefix_and_strips_it_from_category(tmp_path, monkeypatch):
+    """
+    Owner-vault uploads physically live under storage/originals/tenant-<id>/...
+    (Step 24/25's tenant-partitioned storage - see
+    app/api/storage_api.py's _tenant_storage_category()). The category
+    extract_all_documents() reports must be the clean, tenant-prefix-
+    stripped value (what documents.category / every API response
+    actually shows), with tenant_id reported separately so
+    app/jobs/processing.py can attribute status updates and chunk
+    embeddings to the right tenant.
+    """
+
+    originals = tmp_path / "originals"
+    processed = tmp_path / "processed"
+
+    monkeypatch.setattr(extractor_manager, "ORIGINALS_DIR", originals)
+    monkeypatch.setattr(extractor_manager, "PROCESSED_DIR", processed)
+
+    tenant_2_dir = originals / "tenant-2" / "Contracts"
+    tenant_2_dir.mkdir(parents=True)
+    (tenant_2_dir / "note.txt").write_text("Tenant 2's content.", encoding="utf-8")
+
+    results = extract_all_documents()
+
+    assert len(results) == 1
+    assert results[0]["category"] == "Contracts"
+    assert results[0]["tenant_id"] == 2
+
+    # storage/processed mirrors the full physical path, tenant segment included.
+    assert (processed / "tenant-2" / "Contracts" / "note" / "extracted.json").exists()
+
+
+def test_extract_all_documents_defaults_to_tenant_1_with_no_tenant_prefix(tmp_path, monkeypatch):
+    """A file with no tenant-<id> top-level segment predates Step 24 and belongs to the seeded Default Organization."""
+
+    originals = tmp_path / "originals"
+    processed = tmp_path / "processed"
+
+    monkeypatch.setattr(extractor_manager, "ORIGINALS_DIR", originals)
+    monkeypatch.setattr(extractor_manager, "PROCESSED_DIR", processed)
+
+    category_dir = originals / "Contracts"
+    category_dir.mkdir(parents=True)
+    (category_dir / "legacy.txt").write_text("Pre-existing content.", encoding="utf-8")
+
+    results = extract_all_documents()
+
+    assert len(results) == 1
+    assert results[0]["category"] == "Contracts"
+    assert results[0]["tenant_id"] == 1
+
+
 def test_extract_all_documents_records_failures(tmp_path, monkeypatch):
     originals = tmp_path / "originals"
     processed = tmp_path / "processed"

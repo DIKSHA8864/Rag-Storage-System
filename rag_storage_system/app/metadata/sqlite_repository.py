@@ -504,6 +504,7 @@ class SQLiteMetadataRepository(MetadataRepository):
         filename: str,
         status: str,
         status_detail: Optional[str] = None,
+        tenant_id: int = 1,
     ) -> bool:
         relative_path = _relative_path(category, filename)
         now = _now()
@@ -513,9 +514,9 @@ class SQLiteMetadataRepository(MetadataRepository):
                 """
                 UPDATE documents
                 SET status = ?, status_detail = ?, updated_at = ?
-                WHERE relative_path = ?
+                WHERE tenant_id = ? AND relative_path = ?
                 """,
-                (status, status_detail, now, relative_path),
+                (status, status_detail, now, tenant_id, relative_path),
             )
             return cursor.rowcount > 0
 
@@ -726,49 +727,60 @@ class SQLiteMetadataRepository(MetadataRepository):
     # Prompt Versions
     # ------------------------------------------------------------------
 
-    def get_active_prompt_version(self, name: str) -> Optional[dict]:
+    def get_active_prompt_version(self, name: str, tenant_id: int = 1) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM prompt_versions WHERE name = ? AND is_active = 1", (name,)
+                "SELECT * FROM prompt_versions WHERE tenant_id = ? AND name = ? AND is_active = 1",
+                (tenant_id, name),
             ).fetchone()
             return dict(row) if row else None
 
-    def list_prompt_versions(self, name: str) -> list[dict]:
+    def list_prompt_versions(self, name: str, tenant_id: int = 1) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM prompt_versions WHERE name = ? ORDER BY version DESC", (name,)
+                "SELECT * FROM prompt_versions WHERE tenant_id = ? AND name = ? ORDER BY version DESC",
+                (tenant_id, name),
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def create_prompt_version(self, name: str, text: str, created_by: Optional[str] = None) -> dict:
+    def create_prompt_version(
+        self, name: str, text: str, created_by: Optional[str] = None, tenant_id: int = 1
+    ) -> dict:
         now = _now()
         with self._connect() as conn:
             next_version = conn.execute(
-                "SELECT COALESCE(MAX(version), 0) + 1 FROM prompt_versions WHERE name = ?", (name,)
+                "SELECT COALESCE(MAX(version), 0) + 1 FROM prompt_versions WHERE tenant_id = ? AND name = ?",
+                (tenant_id, name),
             ).fetchone()[0]
 
-            conn.execute("UPDATE prompt_versions SET is_active = 0 WHERE name = ?", (name,))
             conn.execute(
-                "INSERT INTO prompt_versions (name, version, text, is_active, created_at, created_by) "
-                "VALUES (?, ?, ?, 1, ?, ?)",
-                (name, next_version, text, now, created_by),
+                "UPDATE prompt_versions SET is_active = 0 WHERE tenant_id = ? AND name = ?", (tenant_id, name)
+            )
+            conn.execute(
+                "INSERT INTO prompt_versions (tenant_id, name, version, text, is_active, created_at, created_by) "
+                "VALUES (?, ?, ?, ?, 1, ?, ?)",
+                (tenant_id, name, next_version, text, now, created_by),
             )
             return {
-                "name": name, "version": next_version, "text": text, "is_active": True,
+                "tenant_id": tenant_id, "name": name, "version": next_version, "text": text, "is_active": True,
                 "created_at": now, "created_by": created_by,
             }
 
-    def activate_prompt_version(self, name: str, version: int) -> dict:
+    def activate_prompt_version(self, name: str, version: int, tenant_id: int = 1) -> dict:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM prompt_versions WHERE name = ? AND version = ?", (name, version)
+                "SELECT * FROM prompt_versions WHERE tenant_id = ? AND name = ? AND version = ?",
+                (tenant_id, name, version),
             ).fetchone()
             if row is None:
                 raise ValueError(f"No such prompt version: {name} v{version}")
 
-            conn.execute("UPDATE prompt_versions SET is_active = 0 WHERE name = ?", (name,))
             conn.execute(
-                "UPDATE prompt_versions SET is_active = 1 WHERE name = ? AND version = ?", (name, version)
+                "UPDATE prompt_versions SET is_active = 0 WHERE tenant_id = ? AND name = ?", (tenant_id, name)
+            )
+            conn.execute(
+                "UPDATE prompt_versions SET is_active = 1 WHERE tenant_id = ? AND name = ? AND version = ?",
+                (tenant_id, name, version),
             )
             return dict(row)
 
@@ -1112,26 +1124,27 @@ class SQLiteMetadataRepository(MetadataRepository):
     # ------------------------------------------------------------------
 
     def create_cause_of_action(
-        self, category: str, name: str, elements: list[str], authority_citation: str
+        self, category: str, name: str, elements: list[str], authority_citation: str, tenant_id: int = 1
     ) -> dict:
         import json
 
         now = _now()
         with self._connect() as conn:
             cursor = conn.execute(
-                "INSERT INTO cause_of_action_library (category, name, elements, authority_citation, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (category, name, json.dumps(elements), authority_citation, now),
+                "INSERT INTO cause_of_action_library (category, name, elements, authority_citation, created_at, tenant_id) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (category, name, json.dumps(elements), authority_citation, now, tenant_id),
             )
             new_id = cursor.lastrowid
-        return self.get_cause_of_action(new_id)
+        return self.get_cause_of_action(new_id, tenant_id=tenant_id)
 
-    def get_cause_of_action(self, cause_of_action_id: int) -> Optional[dict]:
+    def get_cause_of_action(self, cause_of_action_id: int, tenant_id: int = 1) -> Optional[dict]:
         import json
 
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM cause_of_action_library WHERE id = ?", (cause_of_action_id,)
+                "SELECT * FROM cause_of_action_library WHERE id = ? AND tenant_id = ?",
+                (cause_of_action_id, tenant_id),
             ).fetchone()
         if row is None:
             return None
@@ -1139,16 +1152,19 @@ class SQLiteMetadataRepository(MetadataRepository):
         result["elements"] = json.loads(result["elements"])
         return result
 
-    def list_causes_of_action(self, category: Optional[str] = None) -> list[dict]:
+    def list_causes_of_action(self, category: Optional[str] = None, tenant_id: int = 1) -> list[dict]:
         import json
 
         with self._connect() as conn:
             if category:
                 rows = conn.execute(
-                    "SELECT * FROM cause_of_action_library WHERE category = ? ORDER BY id", (category,)
+                    "SELECT * FROM cause_of_action_library WHERE category = ? AND tenant_id = ? ORDER BY id",
+                    (category, tenant_id),
                 ).fetchall()
             else:
-                rows = conn.execute("SELECT * FROM cause_of_action_library ORDER BY id").fetchall()
+                rows = conn.execute(
+                    "SELECT * FROM cause_of_action_library WHERE tenant_id = ? ORDER BY id", (tenant_id,)
+                ).fetchall()
 
         results = []
         for row in rows:
@@ -1210,6 +1226,7 @@ class SQLiteMetadataRepository(MetadataRepository):
     def add_llm_usage_log(
         self, matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms,
         query_text=None, retrieved_chunk_ids=None, retrieved_chunk_scores=None, citation_check_result=None,
+        tenant_id: int = 1,
     ) -> dict:
         import json
 
@@ -1218,14 +1235,14 @@ class SQLiteMetadataRepository(MetadataRepository):
             cursor = conn.execute(
                 "INSERT INTO llm_usage_log (matter_id, intake_session_id, purpose, model, "
                 "input_tokens, output_tokens, latency_ms, query_text, retrieved_chunk_ids, "
-                "retrieved_chunk_scores, citation_check_result, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "retrieved_chunk_scores, citation_check_result, created_at, tenant_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     matter_id, intake_session_id, purpose, model, input_tokens, output_tokens, latency_ms,
                     query_text,
                     json.dumps(retrieved_chunk_ids) if retrieved_chunk_ids is not None else None,
                     json.dumps(retrieved_chunk_scores) if retrieved_chunk_scores is not None else None,
-                    citation_check_result, now,
+                    citation_check_result, now, tenant_id,
                 ),
             )
             new_id = cursor.lastrowid
