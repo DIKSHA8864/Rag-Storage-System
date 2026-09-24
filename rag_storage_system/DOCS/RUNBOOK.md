@@ -53,6 +53,11 @@ placeholder, never fabricated text) until turned on:
   terminal for local testing. For real email set `EMAIL_PROVIDER=smtp` - see
   `.env.example` for Gmail App Password setup. Console mode is refused when
   `ENVIRONMENT=production`.
+- **Codes not arriving?** The sign-up page answers the same way whether or not
+  an email was sent, so check directly: `python scripts/check_email.py you@example.com`
+  shows the active settings, sends a test email and explains the exact failure
+  (wrong App Password, blocked port 587, still in console mode). Restart the API
+  after any `.env` change, and make sure the email is **invited** on the Users page.
 - Matter access codes (Matters page) still work for API integrations only; the
   web portal uses accounts.
 
