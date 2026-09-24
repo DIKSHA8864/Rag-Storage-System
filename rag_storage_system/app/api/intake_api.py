@@ -45,6 +45,7 @@ from app.api.schemas import (
     ReportInfo,
     TimelineEventInfo,
     UploadedInputDetailResponse,
+    IntakeUploadListResponse,
     UploadedInputInfo,
     UploadedInputQueuedResponse,
 )
@@ -57,6 +58,7 @@ from app.report.docx_renderer import DocxReportRenderer
 from app.report.image_renderer import ImageReportRenderer
 from app.report.pdf_renderer import PdfReportRenderer
 from app.security.auth import current_matter, require_end_user_key
+from config.settings import get_settings
 from app.api.intake_common import get_owned_intake_session as _get_owned_session
 router = APIRouter(
     prefix="/end-user/intake",
@@ -102,6 +104,40 @@ def _uploaded_input_info(row: dict) -> UploadedInputInfo:
         created_at=str(row["created_at"]),
     )
 
+
+
+def _uploaded_input_detail(repo, uploaded_input: dict) -> UploadedInputDetailResponse:
+    return UploadedInputDetailResponse(
+        uploaded_input=_uploaded_input_info(uploaded_input),
+        extracted_information=[
+            ExtractedInformationInfo(
+                id=row["id"],
+                content_type=row["content_type"],
+                text=row["text"],
+                provider=row["provider"],
+                is_mock=bool(row["is_mock"]),
+                archive_member_filename=row.get("archive_member_filename"),
+                created_at=str(row["created_at"]),
+            )
+            for row in repo.list_extracted_information(uploaded_input["id"])
+        ],
+    )
+
+
+def _friendly_upload_error(reason: str) -> str:
+    """validate_intake_file()'s machine-readable reason -> a message a client can act on."""
+
+    if reason.startswith("unsupported_extension"):
+        extension = reason.split(":", 1)[1] if ":" in reason else ""
+        return (
+            f"This file type ({extension or 'unknown'}) isn't supported. Upload a photo (PNG/JPG/TIFF/BMP), "
+            "audio (MP3/WAV/M4A), video (MP4/MOV/AVI), document (PDF/DOCX/TXT), or a ZIP of these."
+        )
+    if reason == "empty_file":
+        return "This file is empty."
+    if reason == "file_too_large":
+        return f"This file is too large. The limit is {get_settings().intake_max_file_size_mb} MB."
+    return f"Invalid upload: {reason}"
 
 
 @router.post("/sessions", response_model=IntakeSessionInfo)
@@ -163,7 +199,7 @@ async def upload_intake_input(
 
     is_valid, reason = validate_intake_file(filename, len(data))
     if not is_valid:
-        raise HTTPException(status_code=400, detail=f"Invalid upload: {reason}")
+        raise HTTPException(status_code=400, detail=_friendly_upload_error(reason))
 
     media_type = media_type_for_extension(Path(filename).suffix.lower())
     if media_type is None:
@@ -212,22 +248,20 @@ def get_uploaded_input_detail(upload_id: int, matter: dict = Depends(current_mat
     if uploaded_input is None or repo.get_intake_session(uploaded_input["intake_session_id"], matter["id"]) is None:
         raise HTTPException(status_code=404, detail="Uploaded input not found.")
 
-    extracted = repo.list_extracted_information(upload_id)
+    return _uploaded_input_detail(repo, uploaded_input)
 
-    return UploadedInputDetailResponse(
-        uploaded_input=_uploaded_input_info(uploaded_input),
-        extracted_information=[
-            ExtractedInformationInfo(
-                id=row["id"],
-                content_type=row["content_type"],
-                text=row["text"],
-                provider=row["provider"],
-                is_mock=bool(row["is_mock"]),
-                archive_member_filename=row.get("archive_member_filename"),
-                created_at=str(row["created_at"]),
-            )
-            for row in extracted
-        ],
+
+@router.get("/sessions/{session_id}/uploads", response_model=IntakeUploadListResponse)
+def list_intake_uploads(session_id: int, matter: dict = Depends(current_matter)) -> IntakeUploadListResponse:
+    """Every file uploaded to this session (only the caller's own session - another Matter's 404s), each with its extracted content so far."""
+
+    from app.api import storage_api
+
+    repo = storage_api.metadata_repository
+    _get_owned_session(repo, session_id, matter)
+
+    return IntakeUploadListResponse(
+        uploads=[_uploaded_input_detail(repo, row) for row in repo.list_uploaded_inputs(session_id)]
     )
 
 

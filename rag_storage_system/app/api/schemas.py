@@ -571,6 +571,12 @@ class UploadedInputDetailResponse(BaseModel):
     extracted_information: list[ExtractedInformationInfo]
 
 
+class IntakeUploadListResponse(BaseModel):
+    """Body for GET /end-user/intake/sessions/{id}/uploads - every upload in the session, each with whatever has been extracted from it so far."""
+
+    uploads: list[UploadedInputDetailResponse]
+
+
 class TimelineEventInfo(BaseModel):
     id: int
     event_type: str

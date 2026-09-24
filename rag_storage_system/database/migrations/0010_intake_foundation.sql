@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS extracted_information (
     uploaded_input_id INTEGER NOT NULL REFERENCES uploaded_inputs(id) ON DELETE CASCADE,
     archive_member_filename VARCHAR(500),
     content_type VARCHAR(20) NOT NULL
-        CHECK (content_type IN ('text', 'ocr_text', 'transcript', 'caption')),
+        CHECK (content_type IN ('text', 'ocr_text', 'transcript', 'caption', 'frame_caption')),
     text TEXT NOT NULL,
     provider VARCHAR(50) NOT NULL,
     is_mock BOOLEAN NOT NULL DEFAULT FALSE,

@@ -249,6 +249,31 @@ export interface UploadedInputInfo {
   created_at: string;
 }
 
+export interface ExtractedInformationInfo {
+  id: number;
+  content_type: "text" | "ocr_text" | "transcript" | "caption" | "frame_caption" | string;
+  text: string;
+  provider: string;
+  is_mock: boolean;
+  archive_member_filename: string | null;
+  created_at: string;
+}
+
+export interface UploadedInputDetailResponse {
+  uploaded_input: UploadedInputInfo;
+  extracted_information: ExtractedInformationInfo[];
+}
+
+export interface IntakeUploadListResponse {
+  uploads: UploadedInputDetailResponse[];
+}
+
+export interface UploadedInputQueuedResponse {
+  uploaded_input: UploadedInputInfo;
+  job_id: string;
+  status: string;
+}
+
 export interface InterviewFactInfo {
   id: number;
   category: string;

@@ -156,3 +156,95 @@ def test_generate_report_rejects_an_unknown_format(client):
 def test_downloading_a_foreign_report_404s(client):
     response = client.get("/end-user/intake/reports/999/download")
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------
+# GET /end-user/intake/sessions/{id}/uploads - what the intake page's
+# upload panel lists (image/audio/video/documents), each with its
+# extracted content so far.
+# ---------------------------------------------------------------------
+
+
+def _png_bytes() -> bytes:
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (40, 20), color="white").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_listing_uploads_returns_each_file_with_its_extracted_content(client):
+    session_id = client.post("/end-user/intake/sessions", json={"title": "Intake"}).json()["id"]
+
+    client.post(
+        f"/end-user/intake/sessions/{session_id}/uploads",
+        files={"file": ("statement.txt", io.BytesIO(b"I was fired after complaining."), "text/plain")},
+    )
+    client.post(
+        f"/end-user/intake/sessions/{session_id}/uploads",
+        files={"file": ("damage.png", io.BytesIO(_png_bytes()), "image/png")},
+    )
+    client.post(
+        f"/end-user/intake/sessions/{session_id}/uploads",
+        files={"file": ("voicemail.mp3", io.BytesIO(b"fake audio bytes"), "audio/mpeg")},
+    )
+
+    response = client.get(f"/end-user/intake/sessions/{session_id}/uploads")
+    assert response.status_code == 200
+    uploads = {u["uploaded_input"]["original_filename"]: u for u in response.json()["uploads"]}
+
+    assert set(uploads) == {"statement.txt", "damage.png", "voicemail.mp3"}
+    assert all(u["uploaded_input"]["processing_status"] == "completed" for u in uploads.values())
+
+    assert uploads["statement.txt"]["uploaded_input"]["media_type"] == "document"
+    assert "I was fired" in uploads["statement.txt"]["extracted_information"][0]["text"]
+
+    image_types = {e["content_type"] for e in uploads["damage.png"]["extracted_information"]}
+    assert image_types == {"ocr_text", "caption"}
+
+    audio = uploads["voicemail.mp3"]["extracted_information"]
+    assert [e["content_type"] for e in audio] == ["transcript"]
+    # Default providers are "mock" - the UI must be able to tell the client this isn't a real transcript.
+    assert audio[0]["is_mock"] is True
+
+
+def test_listing_uploads_of_a_foreign_session_404s(client, repo):
+    foreign_session = repo.create_intake_session(matter_id=999, title="Not yours")
+
+    response = client.get(f"/end-user/intake/sessions/{foreign_session['id']}/uploads")
+    assert response.status_code == 404
+
+
+def test_unsupported_upload_gets_a_message_a_client_can_act_on(client):
+    session_id = client.post("/end-user/intake/sessions", json={"title": "Intake"}).json()["id"]
+
+    response = client.post(
+        f"/end-user/intake/sessions/{session_id}/uploads",
+        files={"file": ("photo.heic", io.BytesIO(b"bytes"), "image/heic")},
+    )
+
+    assert response.status_code == 400
+    assert "isn't supported" in response.json()["detail"]
+    assert ".heic" in response.json()["detail"]
+
+
+def test_a_crash_during_processing_marks_the_upload_failed_instead_of_processing_forever(client, monkeypatch):
+    """Without this the client's upload panel would poll a "processing" status that never changes."""
+
+    def _crash(filename, data):
+        raise RuntimeError("database constraint violated")
+
+    monkeypatch.setattr("app.jobs.intake_processing.process_uploaded_input", _crash)
+    session_id = client.post("/end-user/intake/sessions", json={"title": "Intake"}).json()["id"]
+
+    upload = client.post(
+        f"/end-user/intake/sessions/{session_id}/uploads",
+        files={"file": ("clip.mp4", io.BytesIO(b"video bytes"), "video/mp4")},
+    )
+    assert upload.status_code == 200
+
+    detail = client.get(f"/end-user/intake/uploads/{upload.json()['uploaded_input']['id']}").json()
+    assert detail["uploaded_input"]["processing_status"] == "failed"
+    assert detail["uploaded_input"]["status_detail"] == "An unexpected error occurred while processing this file."
+    # The internal error text never reaches the client.
+    assert "constraint" not in detail["uploaded_input"]["status_detail"]

@@ -185,3 +185,34 @@ def test_repository_sees_data_written_by_another_instance(repo, tmp_path):
         other = PostgresMetadataRepository(repo.dsn)
 
     assert other.get_document("Docs", "report.txt") is not None
+
+
+# ---------------------------------------------------------------------
+# Intake extracted content
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("content_type", ["text", "ocr_text", "transcript", "caption", "frame_caption"])
+def test_every_extracted_content_type_the_pipeline_produces_can_be_stored(repo, content_type):
+    """
+    Regression: Postgres' CHECK constraint on extracted_information
+    once omitted "frame_caption" (video frame analysis), so every video
+    upload failed there while SQLite-only tests stayed green. Runs on
+    both backends for exactly that reason.
+    """
+
+    import uuid
+
+    matter = repo.create_matter("Intake Matter", f"hash-{uuid.uuid4().hex}")
+    session = repo.create_intake_session(matter["id"], "Intake")
+    uploaded = repo.create_uploaded_input(
+        intake_session_id=session["id"], matter_id=matter["id"], original_filename="clip.mp4",
+        stored_category="c", stored_filename="clip.mp4", media_type="video", size=1, sha256=None,
+    )
+
+    repo.add_extracted_information(
+        uploaded_input_id=uploaded["id"], content_type=content_type, text="[1.5s] A person at a desk.",
+        provider="mock", is_mock=True,
+    )
+
+    assert [row["content_type"] for row in repo.list_extracted_information(uploaded["id"])] == [content_type]

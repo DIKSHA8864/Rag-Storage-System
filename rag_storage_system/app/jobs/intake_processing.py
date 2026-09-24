@@ -5,6 +5,7 @@ run_processing_job) - runs one uploaded_input through
 app/multimodal/pipeline.py and records the result.
 """
 
+import logging
 from typing import Optional
 
 from app.metadata import get_metadata_repository
@@ -12,6 +13,10 @@ from app.metadata.base import MetadataRepository
 from app.multimodal.pipeline import process_uploaded_input
 from app.storage import get_intake_storage_backend
 from app.storage.base import StorageBackend
+
+logger = logging.getLogger(__name__)
+
+_UNEXPECTED_FAILURE_DETAIL = "An unexpected error occurred while processing this file."
 
 
 def run_intake_processing_job(
@@ -37,20 +42,37 @@ def run_intake_processing_job(
 
     metadata_repository.update_uploaded_input_status(uploaded_input_id, "processing")
 
-    with storage_backend.open_file(uploaded_input["stored_category"], uploaded_input["stored_filename"]) as f:
-        data = f.read()
+    try:
+        with storage_backend.open_file(uploaded_input["stored_category"], uploaded_input["stored_filename"]) as f:
+            data = f.read()
 
-    result = process_uploaded_input(uploaded_input["original_filename"], data)
+        result = process_uploaded_input(uploaded_input["original_filename"], data)
 
-    for item in result.extracted:
-        metadata_repository.add_extracted_information(
-            uploaded_input_id=uploaded_input_id,
-            content_type=item.content_type,
-            text=item.text,
-            provider=item.provider,
-            is_mock=item.is_mock,
-            archive_member_filename=item.archive_member_filename,
+        for item in result.extracted:
+            metadata_repository.add_extracted_information(
+                uploaded_input_id=uploaded_input_id,
+                content_type=item.content_type,
+                text=item.text,
+                provider=item.provider,
+                is_mock=item.is_mock,
+                archive_member_filename=item.archive_member_filename,
+            )
+    except Exception:
+        # Without this, an unexpected crash (storage, database, a provider
+        # bug) leaves the upload at "processing" forever and the client's
+        # upload panel waits on it indefinitely. The detail shown to the
+        # client stays generic; the real error goes to the worker log,
+        # and re-raising keeps the RQ job itself marked as failed.
+        logger.exception("Intake processing failed for uploaded_input %s", uploaded_input_id)
+        metadata_repository.update_uploaded_input_status(
+            uploaded_input_id, "failed", status_detail=_UNEXPECTED_FAILURE_DETAIL
         )
+        metadata_repository.add_timeline_event(
+            uploaded_input["intake_session_id"],
+            "input_processed",
+            f"'{uploaded_input['original_filename']}' processing finished: failed ({_UNEXPECTED_FAILURE_DETAIL})",
+        )
+        raise
 
     metadata_repository.update_uploaded_input_status(
         uploaded_input_id, result.status.value, status_detail=result.status_detail

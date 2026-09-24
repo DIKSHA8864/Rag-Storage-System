@@ -8,6 +8,7 @@ import { ApiError } from "@/lib/api/client";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { ReportPanel } from "./ReportPanel";
+import { UploadPanel } from "./UploadPanel";
 
 interface InterviewChatProps {
   sessionId: number;
@@ -171,6 +172,16 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
 
   const isComplete = state.current_state === "complete";
   const stageIndex = STAGE_ORDER.indexOf(state.current_state);
+  // Evidence can only be attached once the client has accepted the terms.
+  const canUpload = stageIndex > STAGE_ORDER.indexOf("terms_acceptance");
+  const uploadPanel = canUpload ? (
+    <UploadPanel
+      sessionId={sessionId}
+      endUserToken={endUserToken}
+      language={state.language}
+      onUnauthorized={onUnauthorized}
+    />
+  ) : null;
 
   return (
     <div style={{ maxWidth: 560, margin: "2rem auto", padding: "0 1rem" }}>
@@ -257,6 +268,7 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
           <p style={{ marginTop: "1rem", color: "#2e7d32", fontWeight: 600 }}>
             {state.language === "es" ? "Su entrevista ha finalizado. Gracias." : "Your interview is complete. Thank you."}
           </p>
+          {uploadPanel}
           <ReportPanel sessionId={sessionId} endUserToken={endUserToken} language={state.language} />
         </>
       ) : (
@@ -292,6 +304,7 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
               {isSending ? "..." : state.language === "es" ? "Enviar" : "Send"}
             </button>
           </form>
+          {uploadPanel}
         </div>
       )}
     </div>
