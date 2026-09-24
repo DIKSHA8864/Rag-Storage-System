@@ -12,21 +12,21 @@ from app.embeddings.embedding_manager import embed_texts
 from app.vector_store import get_vector_store
 
 
-def vector_search(query: str, top_k: int = 10, category: Optional[str] = None) -> list[dict]:
-    """Embed `query` and return the top_k chunks nearest it by cosine similarity."""
+def vector_search(query: str, top_k: int = 10, category: Optional[str] = None, tenant_id: int = 1) -> list[dict]:
+    """Embed `query` and return the top_k chunks nearest it by cosine similarity, scoped to `tenant_id`."""
 
     query_embedding = embed_texts([query])[0]
 
     return get_vector_store().similarity_search(
-        query_embedding, top_k=top_k, category=category
+        query_embedding, top_k=top_k, category=category, tenant_id=tenant_id
     )
 
 
-def keyword_search(query: str, top_k: int = 10, category: Optional[str] = None) -> list[dict]:
+def keyword_search(query: str, top_k: int = 10, category: Optional[str] = None, tenant_id: int = 1) -> list[dict]:
     """
     Return the top_k chunks whose text best matches `query` by plain
     keyword search (Postgres full-text search - see
-    PgVectorRepository.keyword_search()).
+    PgVectorRepository.keyword_search()), scoped to `tenant_id`.
 
     Catches queries vector search alone tends to miss - an exact
     product code, a proper noun, a number - where a chunk's wording
@@ -39,4 +39,4 @@ def keyword_search(query: str, top_k: int = 10, category: Optional[str] = None) 
     if not hasattr(vector_store, "keyword_search"):
         return []
 
-    return vector_store.keyword_search(query, top_k=top_k, category=category)
+    return vector_store.keyword_search(query, top_k=top_k, category=category, tenant_id=tenant_id)

@@ -87,7 +87,7 @@ def generate_complaint(
     matter = repo.get_matter(session["matter_id"])
     draft = build_complaint_draft(
         session_id, session["matter_id"], matter["name"] if matter else "Unknown Matter",
-        request.cause_of_action_ids, repo,
+        request.cause_of_action_ids, repo, tenant_id=owner["tenant_id"],
     )
 
     renderer = renderer_cls()

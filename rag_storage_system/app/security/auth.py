@@ -57,8 +57,14 @@ def verify_password(password: str, hashed_password: str) -> bool:
 # JWT helpers
 # ----------------------------------------------------------------------
 
-def create_access_token(owner_id: int, email: str, role: str = "owner") -> str:
-    """Create a signed JWT access token for the Owner or firm staff (attorney/paralegal)."""
+def create_access_token(owner_id: int, email: str, tenant_id: int = 1, role: str = "owner") -> str:
+    """
+    Create a signed JWT access token for the Owner or firm staff
+    (attorney/paralegal). `tenant_id` identifies which firm/organization
+    this account belongs to (app/security/tenant_repository.py) - every
+    Matter, document, and other tenant-owned resource this token can
+    ever reach is checked against it (see ensure_matter_access() below).
+    """
 
     settings = get_settings()
 
@@ -71,6 +77,7 @@ def create_access_token(owner_id: int, email: str, role: str = "owner") -> str:
         "sub": str(owner_id),
         "email": email,
         "role": role,
+        "tenant_id": tenant_id,
         "iat": now,
         "exp": expires_at,
     }
@@ -117,6 +124,14 @@ def decode_access_token(token: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid access token.",
         )
+
+    tenant_id = payload.get("tenant_id")
+    if tenant_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token missing tenant context.",
+        )
+    payload["tenant_id"] = int(tenant_id)
 
     return payload
 
@@ -207,11 +222,11 @@ def require_end_user_key(
 
     matter = storage_api.metadata_repository.get_matter_by_key_hash(hash_api_key(provided_key))
     if matter is not None:
-        return {"id": matter["id"], "name": matter["name"]}
+        return {"id": matter["id"], "name": matter["name"], "tenant_id": matter.get("tenant_id", 1)}
 
     expected_key = get_settings().end_user_api_key
     if secrets.compare_digest(provided_key, expected_key):
-        return {"id": 0, "name": "Default"}
+        return {"id": 0, "name": "Default", "tenant_id": 1}
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -229,7 +244,7 @@ def current_matter(matter: dict | None = Depends(require_end_user_key)) -> dict:
     replaces require_end_user_key with a lambda returning None).
     """
 
-    return matter if matter is not None else {"id": 0, "name": "Default"}
+    return matter if matter is not None else {"id": 0, "name": "Default", "tenant_id": 1}
 
 # ----------------------------------------------------------------------
 # Matter Workspace: role-based access to a Matter's data
@@ -238,18 +253,43 @@ def current_matter(matter: dict | None = Depends(require_end_user_key)) -> dict:
 def ensure_matter_access(owner: dict, matter_id: int, metadata_repository) -> None:
     """
     Raise 403/404 unless `owner` (the decoded JWT payload) may act on
-    `matter_id`. role == "owner" is the firm's superuser and always
-    passes; "attorney"/"paralegal" need a matter_assignments row (see
+    `matter_id`.
+
+    matter_id == 0 (or otherwise falsy) is the implicit "Default"
+    matter (see app/security/auth.py's require_end_user_key() and
+    app/report/rag_analysis.py's docstring) - it has no real row in
+    `matters`, so there is no tenant to check it against. Owner-role
+    passes immediately, same as always; no other role could ever have
+    a matter_assignments row for a nonexistent Matter id, so this still
+    404s for them exactly as it always has.
+
+    For a real Matter id: tenant isolation is checked FIRST, for every
+    role including "owner" - an Owner is the full admin of their OWN
+    tenant/firm only, never a global superuser across every firm in
+    the install. A Matter belonging to a different tenant 404s exactly
+    like a nonexistent one, so this never even confirms another
+    tenant's Matter exists.
+
+    Within the same tenant: role == "owner" always passes;
+    "attorney"/"paralegal" need a matter_assignments row (see
     database/migrations/0013_matter_workspace.sql) - assigned via
     POST /admin/matters/{matter_id}/assignments.
     """
 
-    if owner.get("role") == "owner":
-        return
+    if not matter_id:
+        if owner.get("role") == "owner":
+            return
+        raise HTTPException(status_code=404, detail="Matter not found.")
 
     matter = metadata_repository.get_matter(matter_id)
     if matter is None:
         raise HTTPException(status_code=404, detail="Matter not found.")
+
+    if int(matter.get("tenant_id", 1)) != int(owner.get("tenant_id", 1)):
+        raise HTTPException(status_code=404, detail="Matter not found.")
+
+    if owner.get("role") == "owner":
+        return
 
     assignment = metadata_repository.get_matter_assignment(int(owner["sub"]), matter_id)
     if assignment is None:

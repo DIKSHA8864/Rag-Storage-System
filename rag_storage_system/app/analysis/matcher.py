@@ -106,6 +106,7 @@ def _to_source_evidence(hit: dict) -> SourceEvidence:
 def compare_input_to_knowledge_base(
     input_chunks: list[dict],
     category: Optional[str] = None,
+    tenant_id: int = 1,
 ) -> ComparisonResult:
     """
     Compare every one of an End User's submitted chunks against the
@@ -113,13 +114,15 @@ def compare_input_to_knowledge_base(
 
     `input_chunks` is app/analysis/ingestion.py's output (each a dict
     with at least "text"); `category` optionally restricts retrieval
-    to one knowledge-base category, same as POST /search.
+    to one knowledge-base category, same as POST /search. `tenant_id`
+    scopes retrieval to the caller's own tenant, same as everywhere
+    else in app/retrieval/.
     """
 
     items: list[ComparisonItem] = []
 
     for index, chunk in enumerate(input_chunks):
-        hits = retrieve(chunk["text"], top_k=_SOURCES_PER_ITEM, category=category)
+        hits = retrieve(chunk["text"], top_k=_SOURCES_PER_ITEM, category=category, tenant_id=tenant_id)
 
         top_score = hits[0]["final_score"] if hits else 0.0
         classification = classify_score(top_score)

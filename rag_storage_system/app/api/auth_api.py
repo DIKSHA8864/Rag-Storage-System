@@ -67,6 +67,7 @@ def login(request: Request, body: LoginRequest) -> LoginResponse:
     token = create_access_token(
         owner_id=owner["id"],
         email=owner["email"],
+        tenant_id=owner.get("tenant_id", 1),
         role=owner["role"],
     )
 

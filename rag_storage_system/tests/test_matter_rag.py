@@ -22,7 +22,7 @@ class _FakeVectorStore:
             "section": None, "start_page": None, "end_page": None,
         }
 
-    def similarity_search(self, query_embedding, top_k=5, category=None):
+    def similarity_search(self, query_embedding, top_k=5, category=None, tenant_id=1):
         if category is None:
             rows = [r for r in self.rows.values() if not r["category"].startswith("matter-")]
         else:

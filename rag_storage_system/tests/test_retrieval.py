@@ -73,11 +73,11 @@ def test_rerank_chunk_only_in_keyword_hits_still_included():
 def test_retrieve_calls_vector_and_keyword_search_with_wider_candidate_pool(monkeypatch):
     calls = {}
 
-    def fake_vector_search(query, top_k, category=None):
+    def fake_vector_search(query, top_k, category=None, tenant_id=1):
         calls["vector"] = (query, top_k, category)
         return [_hit("v1", 0.8)]
 
-    def fake_keyword_search(query, top_k, category=None):
+    def fake_keyword_search(query, top_k, category=None, tenant_id=1):
         calls["keyword"] = (query, top_k, category)
         return [_hit("k1", 5.0)]
 
@@ -94,10 +94,10 @@ def test_retrieve_calls_vector_and_keyword_search_with_wider_candidate_pool(monk
 def test_retrieve_returns_at_most_top_k(monkeypatch):
     monkeypatch.setattr(
         "app.retrieval.retriever.vector_search",
-        lambda query, top_k, category=None: [_hit(f"v{i}", float(i)) for i in range(20)],
+        lambda query, top_k, category=None, tenant_id=1: [_hit(f"v{i}", float(i)) for i in range(20)],
     )
     monkeypatch.setattr(
-        "app.retrieval.retriever.keyword_search", lambda query, top_k, category=None: []
+        "app.retrieval.retriever.keyword_search", lambda query, top_k, category=None, tenant_id=1: []
     )
 
     results = retrieve("query", top_k=3)
@@ -112,10 +112,10 @@ def test_retrieve_drops_chunks_below_a_nonzero_score_threshold(monkeypatch):
     # "v-weak" (raw vector score 0.2) scores 0.12, well under it.
     monkeypatch.setattr(
         "app.retrieval.retriever.vector_search",
-        lambda query, top_k, category=None: [_hit("v-strong", 0.9), _hit("v-weak", 0.2)],
+        lambda query, top_k, category=None, tenant_id=1: [_hit("v-strong", 0.9), _hit("v-weak", 0.2)],
     )
     monkeypatch.setattr(
-        "app.retrieval.retriever.keyword_search", lambda query, top_k, category=None: []
+        "app.retrieval.retriever.keyword_search", lambda query, top_k, category=None, tenant_id=1: []
     )
 
     results = retrieve("query", top_k=5, score_threshold=0.5)
@@ -132,10 +132,10 @@ def test_retrieve_default_score_threshold_keeps_every_ranked_chunk(monkeypatch):
 
     monkeypatch.setattr(
         "app.retrieval.retriever.vector_search",
-        lambda query, top_k, category=None: [_hit("v-weak", 0.01)],
+        lambda query, top_k, category=None, tenant_id=1: [_hit("v-weak", 0.01)],
     )
     monkeypatch.setattr(
-        "app.retrieval.retriever.keyword_search", lambda query, top_k, category=None: []
+        "app.retrieval.retriever.keyword_search", lambda query, top_k, category=None, tenant_id=1: []
     )
 
     results = retrieve("query", top_k=5)

@@ -23,26 +23,27 @@ class MetadataRepository(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def create_folder(self, path: str) -> None:
-        """Ensure `path` and every ancestor folder has a row."""
+    def create_folder(self, path: str, tenant_id: int = 1) -> None:
+        """Ensure `path` and every ancestor folder has a row, owned by `tenant_id`."""
         raise NotImplementedError
 
     @abstractmethod
-    def rename_folder(self, old_path: str, new_path: str) -> None:
+    def rename_folder(self, old_path: str, new_path: str, tenant_id: int = 1) -> None:
         """
         Rename/move a folder, cascading to every descendant folder and
-        document whose path/category starts with `old_path`.
+        document whose path/category starts with `old_path` - scoped to
+        `tenant_id` only, never touching another tenant's folder tree.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def delete_folder(self, path: str) -> None:
-        """Delete a folder, its descendant folders, and their documents."""
+    def delete_folder(self, path: str, tenant_id: int = 1) -> None:
+        """Delete a folder, its descendant folders, and their documents - scoped to `tenant_id`."""
         raise NotImplementedError
 
     @abstractmethod
-    def list_folders(self) -> list[dict]:
-        """Returns a list of {"name": str, "document_count": int}."""
+    def list_folders(self, tenant_id: int = 1) -> list[dict]:
+        """Returns `tenant_id`'s folders as a list of {"name": str, "document_count": int}."""
         raise NotImplementedError
 
     # ------------------------------------------------------------------
@@ -59,22 +60,23 @@ class MetadataRepository(ABC):
         sha256: Optional[str],
         status: str = "Uploaded",
         status_detail: Optional[str] = None,
+        tenant_id: int = 1,
     ) -> None:
-        """Insert a document row, or update it in place if it already exists."""
+        """Insert a document row (owned by `tenant_id`), or update it in place if it already exists."""
         raise NotImplementedError
 
     @abstractmethod
-    def delete_document(self, category: str, filename: str) -> bool:
-        """Returns True if a row existed and was deleted, False otherwise."""
+    def delete_document(self, category: str, filename: str, tenant_id: int = 1) -> bool:
+        """Returns True if a row existed for `tenant_id` and was deleted, False otherwise."""
         raise NotImplementedError
 
     @abstractmethod
-    def get_document(self, category: str, filename: str) -> Optional[dict]:
+    def get_document(self, category: str, filename: str, tenant_id: int = 1) -> Optional[dict]:
         raise NotImplementedError
 
     @abstractmethod
-    def list_documents(self, category: Optional[str] = None) -> list[dict]:
-        """List documents, optionally filtered to one category (including its subfolders)."""
+    def list_documents(self, category: Optional[str] = None, tenant_id: int = 1) -> list[dict]:
+        """List `tenant_id`'s documents, optionally filtered to one category (including its subfolders)."""
         raise NotImplementedError
 
     @abstractmethod
@@ -171,11 +173,11 @@ class MetadataRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def create_matter(self, name: str, api_key_hash: str) -> dict:
+    def create_matter(self, name: str, api_key_hash: str, tenant_id: int = 1) -> dict:
         raise NotImplementedError
 
     @abstractmethod
-    def list_matters(self) -> list[dict]:
+    def list_matters(self, tenant_id: int = 1) -> list[dict]:
         raise NotImplementedError
 
     @abstractmethod

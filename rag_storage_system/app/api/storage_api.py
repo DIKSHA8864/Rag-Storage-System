@@ -468,15 +468,17 @@ def update_disclaimer(
     response_model=MatterListResponse,
     dependencies=[Depends(require_admin_key)],
 )
-def list_matters() -> MatterListResponse:
+def list_matters(owner: dict = Depends(require_admin_key)) -> MatterListResponse:
     """
-    List every Matter (an isolated End User identity - its own
-    X-End-User-Key, its own threads at POST /end-user/threads,
-    invisible to every other Matter). Never returns API keys, only
-    their existence - a key can only ever be seen once, at creation.
+    List every Matter belonging to the caller's own tenant (an
+    isolated End User identity - its own X-End-User-Key, its own
+    threads at POST /end-user/threads, invisible to every other
+    Matter, AND invisible to every other tenant). Never returns API
+    keys, only their existence - a key can only ever be seen once, at
+    creation.
     """
 
-    matters = metadata_repository.list_matters()
+    matters = metadata_repository.list_matters(tenant_id=owner["tenant_id"])
 
     return MatterListResponse(
         matters=[
@@ -508,7 +510,8 @@ def create_matter(
     """
 
     api_key = secrets.token_urlsafe(32)
-    matter = metadata_repository.create_matter(request.name, hash_api_key(api_key))
+    tenant_id = owner["tenant_id"] if owner else 1
+    matter = metadata_repository.create_matter(request.name, hash_api_key(api_key), tenant_id=tenant_id)
 
     log_audit_event(
         "create_matter",
@@ -542,8 +545,11 @@ def assign_matter(matter_id: int, request: MatterAssignmentCreateRequest, owner:
     if request.role not in ("attorney", "paralegal"):
         raise HTTPException(status_code=400, detail="`role` must be 'attorney' or 'paralegal'.")
 
-    if metadata_repository.get_matter(matter_id) is None:
-        raise HTTPException(status_code=404, detail="Matter not found.")
+    # Tenant isolation + existence check (404s exactly the same way for
+    # "no such Matter" and "that Matter belongs to a different tenant" -
+    # an Owner must never be able to grant, or even probe for, access to
+    # another firm's Matter).
+    ensure_matter_access(owner, matter_id, metadata_repository)
 
     assignment = metadata_repository.create_matter_assignment(request.owner_id, matter_id, request.role)
     return MatterAssignmentInfo(
@@ -948,10 +954,10 @@ def end_user_page() -> str:
     response_model=CategoryInfo,
     dependencies=[Depends(require_admin_key)],
 )
-def create_category(request: CategoryCreateRequest) -> CategoryInfo:
+def create_category(request: CategoryCreateRequest, owner: dict = Depends(require_admin_key)) -> CategoryInfo:
     """
     Create a category (a folder that uploaded documents get grouped
-    into).
+    into), owned by the caller's tenant.
 
     Pass `parent` to create it as a subfolder of an existing
     category, e.g. {"name": "2024", "parent": "Contracts"} creates
@@ -960,7 +966,7 @@ def create_category(request: CategoryCreateRequest) -> CategoryInfo:
 
     full_path = f"{request.parent}/{request.name}" if request.parent else request.name
     safe_category = storage_backend.create_category(full_path)
-    metadata_repository.create_folder(safe_category)
+    metadata_repository.create_folder(safe_category, tenant_id=owner["tenant_id"])
     return CategoryInfo(name=safe_category, document_count=0)
 
 
@@ -969,8 +975,8 @@ def create_category(request: CategoryCreateRequest) -> CategoryInfo:
     response_model=CategoryListResponse,
     dependencies=[Depends(require_admin_key)],
 )
-def list_categories() -> CategoryListResponse:
-    categories = [CategoryInfo(**c) for c in metadata_repository.list_folders()]
+def list_categories(owner: dict = Depends(require_admin_key)) -> CategoryListResponse:
+    categories = [CategoryInfo(**c) for c in metadata_repository.list_folders(tenant_id=owner["tenant_id"])]
     return CategoryListResponse(categories=categories)
 
 
@@ -988,7 +994,7 @@ def list_categories() -> CategoryListResponse:
 # ----------------------------------------------------------------------
 
 
-def _store_upload(upload_bytes: bytes, filename: str, category: str) -> UploadedFileResult:
+def _store_upload(upload_bytes: bytes, filename: str, category: str, tenant_id: int = 1) -> UploadedFileResult:
 
     is_valid, reason = validate_file_object(filename, len(upload_bytes))
 
@@ -1017,6 +1023,7 @@ def _store_upload(upload_bytes: bytes, filename: str, category: str) -> Uploaded
         size=result["size"],
         sha256=result["sha256"],
         status=DocumentStatus.UPLOADED.value,
+        tenant_id=tenant_id,
     )
 
     log_audit_event(
@@ -1044,9 +1051,11 @@ def _store_upload(upload_bytes: bytes, filename: str, category: str) -> Uploaded
 async def upload_document(
     category: str,
     file: UploadFile = File(...),
+    owner: dict = Depends(require_admin_key),
 ) -> UploadResponse:
     """
-    Upload one PDF/DOCX/TXT file into a category.
+    Upload one PDF/DOCX/TXT file into a category, owned by the
+    caller's tenant.
 
     The file is validated the same way the CLI ingestion path
     validates files (extension, non-empty, size limit). A file that
@@ -1055,9 +1064,9 @@ async def upload_document(
     """
 
     safe_category = storage_backend.create_category(category)
-    metadata_repository.create_folder(safe_category)
+    metadata_repository.create_folder(safe_category, tenant_id=owner["tenant_id"])
     data = await file.read()
-    result = _store_upload(data, file.filename or "unnamed", category)
+    result = _store_upload(data, file.filename or "unnamed", category, tenant_id=owner["tenant_id"])
     await file.close()
 
     return UploadResponse(
@@ -1077,9 +1086,11 @@ async def upload_document(
 async def upload_documents_batch(
     category: str,
     files: list[UploadFile] = File(...),
+    owner: dict = Depends(require_admin_key),
 ) -> UploadResponse:
     """
-    Upload several PDF/DOCX/TXT files in one request.
+    Upload several PDF/DOCX/TXT files in one request, owned by the
+    caller's tenant.
 
     Swagger UI's array-of-files widget needs the classic OpenAPI 3.0
     `format: binary` keyword to render a real file picker per item -
@@ -1092,12 +1103,12 @@ async def upload_documents_batch(
     """
 
     safe_category = storage_backend.create_category(category)
-    metadata_repository.create_folder(safe_category)
+    metadata_repository.create_folder(safe_category, tenant_id=owner["tenant_id"])
 
     results = []
     for upload in files:
         data = await upload.read()
-        results.append(_store_upload(data, upload.filename or "unnamed", category))
+        results.append(_store_upload(data, upload.filename or "unnamed", category, tenant_id=owner["tenant_id"]))
         await upload.close()
 
     total_stored = sum(1 for r in results if r.status == "stored")
@@ -1123,8 +1134,14 @@ async def replace_document(
     category: str,
     filename: str,
     file: UploadFile = File(...),
+    owner: dict = Depends(require_admin_key),
 ) -> UploadedFileResult:
-    """Replace/update an existing file's contents, keeping its name."""
+    """Replace/update an existing file's contents, keeping its name - only if it belongs to the caller's tenant."""
+
+    safe_category = sanitize_category_path(category)
+    safe_filename = sanitize_path_segment(Path(filename).name)
+    if metadata_repository.get_document(safe_category, safe_filename, tenant_id=owner["tenant_id"]) is None:
+        raise HTTPException(status_code=404, detail=f"File not found: {category}/{filename}")
 
     data = await file.read()
     await file.close()
@@ -1148,6 +1165,7 @@ async def replace_document(
         size=result["size"],
         sha256=result["sha256"],
         status=DocumentStatus.UPLOADED.value,
+        tenant_id=owner["tenant_id"],
     )
 
     log_audit_event(
@@ -1169,8 +1187,16 @@ async def replace_document(
     response_model=MessageResponse,
     dependencies=[Depends(require_admin_key)],
 )
-def delete_document(category: str, filename: str) -> MessageResponse:
-    """Delete one file from protected storage."""
+def delete_document(category: str, filename: str, owner: dict = Depends(require_admin_key)) -> MessageResponse:
+    """Delete one file from protected storage - only if it belongs to the caller's tenant."""
+
+    safe_category = sanitize_category_path(category)
+    safe_filename = sanitize_path_segment(Path(filename).name)
+    if metadata_repository.get_document(safe_category, safe_filename, tenant_id=owner["tenant_id"]) is None:
+        log_audit_event(
+            "delete_document", category=category, filename=filename, status="not_found"
+        )
+        raise HTTPException(status_code=404, detail=f"File not found: {category}/{filename}")
 
     deleted = storage_backend.delete(category, filename)
 
@@ -1180,9 +1206,7 @@ def delete_document(category: str, filename: str) -> MessageResponse:
         )
         raise HTTPException(status_code=404, detail=f"File not found: {category}/{filename}")
 
-    safe_category = sanitize_category_path(category)
-    safe_filename = sanitize_path_segment(Path(filename).name)
-    metadata_repository.delete_document(safe_category, safe_filename)
+    metadata_repository.delete_document(safe_category, safe_filename, tenant_id=owner["tenant_id"])
 
     log_audit_event("delete_document", category=safe_category, filename=safe_filename)
 
@@ -1194,7 +1218,7 @@ def delete_document(category: str, filename: str) -> MessageResponse:
     response_model=DocumentListResponse,
     dependencies=[Depends(require_admin_key)],
 )
-def list_documents(category: str | None = None) -> DocumentListResponse:
+def list_documents(category: str | None = None, owner: dict = Depends(require_admin_key)) -> DocumentListResponse:
     documents = [
         DocumentInfo(
             filename=d["filename"],
@@ -1206,7 +1230,7 @@ def list_documents(category: str | None = None) -> DocumentListResponse:
             status_detail=d.get("status_detail"),
             created_at=str(d["created_at"]),
         )
-        for d in metadata_repository.list_documents(category)
+        for d in metadata_repository.list_documents(category, tenant_id=owner["tenant_id"])
     ]
     return DocumentListResponse(documents=documents, total=len(documents))
 
@@ -1225,8 +1249,10 @@ def list_documents(category: str | None = None) -> DocumentListResponse:
     response_model=CategoryInfo,
     dependencies=[Depends(require_admin_key)],
 )
-def rename_category(category: str, request: CategoryRenameRequest) -> CategoryInfo:
-    """Rename/move a category (and everything stored under it)."""
+def rename_category(
+    category: str, request: CategoryRenameRequest, owner: dict = Depends(require_admin_key)
+) -> CategoryInfo:
+    """Rename/move a category (and everything stored under it) within the caller's tenant."""
 
     safe_old = sanitize_category_path(category)
 
@@ -1241,14 +1267,14 @@ def rename_category(category: str, request: CategoryRenameRequest) -> CategoryIn
         )
         raise HTTPException(status_code=409, detail=str(exc))
 
-    metadata_repository.rename_folder(safe_old, new_name)
+    metadata_repository.rename_folder(safe_old, new_name, tenant_id=owner["tenant_id"])
 
     log_audit_event(
         "rename_category", category=safe_old, detail=f"renamed to '{new_name}'"
     )
 
     updated = next(
-        (c for c in metadata_repository.list_folders() if c["name"] == new_name),
+        (c for c in metadata_repository.list_folders(tenant_id=owner["tenant_id"]) if c["name"] == new_name),
         {"name": new_name, "document_count": 0},
     )
     return CategoryInfo(**updated)
@@ -1259,9 +1285,9 @@ def rename_category(category: str, request: CategoryRenameRequest) -> CategoryIn
     response_model=MessageResponse,
     dependencies=[Depends(require_admin_key)],
 )
-def delete_category(category: str, force: bool = False) -> MessageResponse:
+def delete_category(category: str, force: bool = False, owner: dict = Depends(require_admin_key)) -> MessageResponse:
     """
-    Delete a category.
+    Delete a category within the caller's tenant.
 
     By default this refuses to delete a category that still has
     files in it - pass ?force=true to delete it and everything
@@ -1282,7 +1308,7 @@ def delete_category(category: str, force: bool = False) -> MessageResponse:
         log_audit_event("delete_category", category=safe_category, status="not_found")
         raise HTTPException(status_code=404, detail=f"Category not found: {category}")
 
-    metadata_repository.delete_folder(safe_category)
+    metadata_repository.delete_folder(safe_category, tenant_id=owner["tenant_id"])
 
     log_audit_event(
         "delete_category", category=safe_category, detail=f"force={force}"
@@ -1368,17 +1394,20 @@ def process_status(job_id: str) -> ProcessStatusResponse:
     response_model=SearchResponse,
     dependencies=[Depends(require_admin_key)],
 )
-def search_chunks(request: SearchRequest) -> SearchResponse:
+def search_chunks(request: SearchRequest, owner: dict = Depends(require_admin_key)) -> SearchResponse:
     """
     Run the hybrid retrieval pipeline (app/retrieval/retriever.py) for
-    `query` and return its top `top_k` chunks, most relevant first.
+    `query` and return its top `top_k` chunks, most relevant first,
+    scoped to the caller's tenant.
 
     Only searches chunks that have made it to pgvector - i.e. from
     documents already `Indexed` (see GET /documents). Pass `category`
     to restrict the search to one category (including its subfolders).
     """
 
-    results = retrieve(request.query, top_k=request.top_k, category=request.category)
+    results = retrieve(
+        request.query, top_k=request.top_k, category=request.category, tenant_id=owner["tenant_id"]
+    )
 
     return SearchResponse(
         query=request.query,
@@ -1427,6 +1456,7 @@ async def owner_research_ask(request: OwnerResearchRequest, owner: dict = Depend
         top_k=resolved_top_k,
         category=request.category,
         score_threshold=settings.score_threshold,
+        tenant_id=owner["tenant_id"],
     )
 
     sources_payload: list[dict] = []
@@ -1504,7 +1534,8 @@ async def matter_research_ask(
     resolved_top_k = request.top_k if request.top_k is not None else settings.top_k
 
     results = retrieve_for_matter(
-        request.query, matter_id, top_k=resolved_top_k, score_threshold=settings.score_threshold
+        request.query, matter_id, top_k=resolved_top_k, score_threshold=settings.score_threshold,
+        tenant_id=owner["tenant_id"],
     )
 
     sources_payload: list[dict] = []
@@ -1566,7 +1597,10 @@ def matter_research_suggestions(
         if fact["fact_value"].strip():
             fact_texts.append(f"{fact['fact_key']}: {fact['fact_value']}")
 
-    fact_supports = gather_fact_support(fact_texts, metadata_repository, matter_id=matter_id) if fact_texts else []
+    fact_supports = (
+        gather_fact_support(fact_texts, metadata_repository, matter_id=matter_id, tenant_id=owner["tenant_id"])
+        if fact_texts else []
+    )
 
     suggestions = [
         MatterResearchSuggestion(

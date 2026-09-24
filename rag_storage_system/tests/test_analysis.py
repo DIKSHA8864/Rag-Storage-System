@@ -63,7 +63,7 @@ def test_classify_score_uses_configured_thresholds():
 
 
 def test_compare_classifies_each_chunk_and_scores_overall(monkeypatch):
-    def fake_retrieve(query, top_k, category=None):
+    def fake_retrieve(query, top_k, category=None, tenant_id=1):
         if "covered" in query:
             return [_hit(score=0.9)]
         return []
@@ -191,7 +191,7 @@ def test_report_with_no_evidence_returns_fixed_message(monkeypatch):
 
 
 def test_report_gap_item_narrative_is_fixed_even_with_other_evidence(monkeypatch):
-    def fake_retrieve(query, top_k, category=None):
+    def fake_retrieve(query, top_k, category=None, tenant_id=1):
         if "supported" in query:
             return [_hit(score=0.95)]
         return []

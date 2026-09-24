@@ -66,8 +66,9 @@ def test_attorney_assigned_to_the_matter_can_approve_its_report(client, repo):
 
 
 def test_owner_role_can_act_on_any_matter_without_an_assignment(client, repo):
-    session = repo.create_intake_session(matter_id=1, title="Intake")
-    report = repo.create_report(session["id"], 1, "docx", "c/reports", "r.docx")
+    matter = repo.create_matter("Acme Corp", "hash-3")
+    session = repo.create_intake_session(matter_id=matter["id"], title="Intake")
+    report = repo.create_report(session["id"], matter["id"], "docx", "c/reports", "r.docx")
     repo.create_report_review(report["id"])
 
     response = client.post(f"/admin/reports/{report['id']}/approve", headers=_owner_header(owner_id=1, role="owner"))

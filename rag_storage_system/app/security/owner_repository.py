@@ -25,6 +25,7 @@ def create_owner_table() -> None:
                     email VARCHAR(255) UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
                     role VARCHAR(50) NOT NULL DEFAULT 'owner',
+                    tenant_id INTEGER NOT NULL DEFAULT 1,
                     is_active BOOLEAN NOT NULL DEFAULT TRUE,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 );
@@ -46,6 +47,7 @@ def get_owner_by_email(email: str):
                     email,
                     password_hash,
                     role,
+                    tenant_id,
                     is_active,
                     created_at
                 FROM owners
@@ -64,25 +66,26 @@ def get_owner_by_email(email: str):
         "email": row[1],
         "password_hash": row[2],
         "role": row[3],
-        "is_active": row[4],
-        "created_at": row[5],
+        "tenant_id": row[4],
+        "is_active": row[5],
+        "created_at": row[6],
     }
 
 
-def create_owner(email: str, password_hash: str):
-    """Create the initial Owner account."""
+def create_owner(email: str, password_hash: str, tenant_id: int = 1):
+    """Create an Owner account under `tenant_id` (defaults to the seeded Default Organization)."""
 
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO owners
-                    (email, password_hash, role, is_active)
+                    (email, password_hash, role, tenant_id, is_active)
                 VALUES
-                    (%s, %s, 'owner', TRUE)
-                RETURNING id, email, role, is_active, created_at
+                    (%s, %s, 'owner', %s, TRUE)
+                RETURNING id, email, role, tenant_id, is_active, created_at
                 """,
-                (email.lower().strip(), password_hash),
+                (email.lower().strip(), password_hash, tenant_id),
             )
 
             row = cur.fetchone()
@@ -93,6 +96,7 @@ def create_owner(email: str, password_hash: str):
         "id": row[0],
         "email": row[1],
         "role": row[2],
-        "is_active": row[3],
-        "created_at": row[4],
+        "tenant_id": row[3],
+        "is_active": row[4],
+        "created_at": row[5],
     }

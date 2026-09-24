@@ -42,6 +42,8 @@ def build_structured_report(
 ) -> StructuredReport:
     session = metadata_repository.get_intake_session_by_id(intake_session_id)
     matter_id = session["matter_id"] if session else None
+    matter = metadata_repository.get_matter(matter_id) if matter_id else None
+    tenant_id = matter.get("tenant_id", 1) if matter else 1
 
     timeline_rows = metadata_repository.list_timeline_events(intake_session_id)
     uploaded_inputs = metadata_repository.list_uploaded_inputs(intake_session_id)
@@ -75,7 +77,10 @@ def build_structured_report(
         for fact in intake_facts
         if fact["fact_value"].strip()
     ]
-    fact_supports = gather_fact_support(fact_texts, metadata_repository, matter_id=matter_id) if fact_texts else []
+    fact_supports = (
+        gather_fact_support(fact_texts, metadata_repository, matter_id=matter_id, tenant_id=tenant_id)
+        if fact_texts else []
+    )
     rag_sections = build_rag_sections(fact_supports)
 
     return StructuredReport(

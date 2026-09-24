@@ -58,9 +58,20 @@ def _bypass_admin_auth():
     endpoint tests exercise business logic, not authentication. Auth
     itself, for both scopes, is verified separately in
     tests/test_auth.py, which clears these overrides.
+
+    require_admin_key resolves to a real-shaped Owner payload (role
+    "owner", tenant_id 1 - the seeded Default Organization) rather than
+    None, since Step 24's tenant isolation means ordinary business-logic
+    endpoints now read owner["tenant_id"] unconditionally, the same way
+    they already read owner["role"]/owner["sub"] before this fixture
+    existed. Individual tests (e.g. tests/test_matter_workspace.py's
+    role-based access tests) still override this further with their own
+    dependency_overrides, which take precedence over this default.
     """
 
-    storage_api.app.dependency_overrides[require_admin_key] = lambda: None
+    storage_api.app.dependency_overrides[require_admin_key] = lambda: {
+        "sub": "1", "email": "test-owner@example.com", "role": "owner", "tenant_id": 1,
+    }
     storage_api.app.dependency_overrides[require_end_user_key] = lambda: None
     yield
     storage_api.app.dependency_overrides.pop(require_admin_key, None)
@@ -149,6 +160,7 @@ class _FakeVectorStore:
         self, chunk_id, document_id, category, filename, chunk_text,
         embedding, model_name, metadata=None,
         chapter=None, section=None, start_page=None, end_page=None,
+        tenant_id=1,
     ) -> None:
         self._rows[chunk_id] = {
             "chunk_id": chunk_id,
@@ -165,7 +177,7 @@ class _FakeVectorStore:
             "end_page": end_page,
         }
 
-    def similarity_search(self, query_embedding, top_k=5, category=None):
+    def similarity_search(self, query_embedding, top_k=5, category=None, tenant_id=1):
         return list(self._rows.values())[:top_k]
 
     def count(self) -> int:

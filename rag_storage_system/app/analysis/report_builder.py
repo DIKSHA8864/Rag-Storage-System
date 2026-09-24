@@ -98,7 +98,7 @@ def _generate_narrative(comparison: ComparisonResult) -> ReportNarrative:
         return TemplateNarrativeGenerator().generate(comparison)
 
 
-def build_analysis_report(input_chunks: list[dict], category: Optional[str] = None) -> dict:
+def build_analysis_report(input_chunks: list[dict], category: Optional[str] = None, tenant_id: int = 1) -> dict:
     """
     Run the full comparison + narrative + hallucination-guard pipeline
     for an End User's already-embedded submission (see
@@ -106,7 +106,7 @@ def build_analysis_report(input_chunks: list[dict], category: Optional[str] = No
     app/api/end_user_api.py serializes as the AnalysisReport response.
     """
 
-    comparison = compare_input_to_knowledge_base(input_chunks, category=category)
+    comparison = compare_input_to_knowledge_base(input_chunks, category=category, tenant_id=tenant_id)
 
     if not comparison.has_any_evidence:
         return _empty_report(comparison)

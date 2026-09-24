@@ -60,7 +60,11 @@ def run_intake_processing_job(
         from app.matter_rag.ingestion import ingest_matter_document
 
         try:
-            ingest_matter_document(uploaded_input["matter_id"], uploaded_input_id, uploaded_input["original_filename"], data)
+            matter = metadata_repository.get_matter(uploaded_input["matter_id"])
+            ingest_matter_document(
+                uploaded_input["matter_id"], uploaded_input_id, uploaded_input["original_filename"], data,
+                tenant_id=matter.get("tenant_id", 1) if matter else 1,
+            )
         except Exception:
             # Matter-namespace RAG ingestion is best-effort - a client's
             # document still gets extracted/reported even if this

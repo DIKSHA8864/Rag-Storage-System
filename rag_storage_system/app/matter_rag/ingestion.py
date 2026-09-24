@@ -27,8 +27,16 @@ def ingest_matter_document(
     filename: str,
     data: bytes,
     vector_store: Optional[VectorStore] = None,
+    tenant_id: int = 1,
 ) -> int:
-    """Chunk, embed, and store `data` under this Matter's namespace. Returns the number of chunks written."""
+    """
+    Chunk, embed, and store `data` under this Matter's namespace,
+    tagged with `tenant_id` (the Matter's own tenant - see
+    app/jobs/intake_processing.py's caller, which looks it up from
+    metadata_repository.get_matter() before calling this) so the
+    resulting chunks are invisible to every other tenant's retrieval,
+    not just every other Matter's. Returns the number of chunks written.
+    """
 
     from app.vector_store import get_vector_store
 
@@ -50,6 +58,7 @@ def ingest_matter_document(
             section=chunk.get("section"),
             start_page=chunk.get("start_page"),
             end_page=chunk.get("end_page"),
+            tenant_id=tenant_id,
         )
 
     return len(chunks)

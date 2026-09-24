@@ -31,7 +31,7 @@ def _hit(filename: str, category: str, score: float) -> dict:
 
 
 def test_well_supported_fact_is_classified_as_match_with_a_library_only_citation(monkeypatch, repo):
-    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k: [_hit("policy.pdf", "HR", 0.9)])
+    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k, tenant_id=1: [_hit("policy.pdf", "HR", 0.9)])
 
     results = gather_fact_support(["I was fired after reporting a safety issue."], repo)
 
@@ -43,7 +43,7 @@ def test_well_supported_fact_is_classified_as_match_with_a_library_only_citation
 
 
 def test_weakly_supported_fact_is_classified_as_partial_match(monkeypatch, repo):
-    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k: [_hit("policy.pdf", "HR", 0.35)])
+    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k, tenant_id=1: [_hit("policy.pdf", "HR", 0.35)])
 
     results = gather_fact_support(["Some vague fact."], repo)
 
@@ -51,7 +51,7 @@ def test_weakly_supported_fact_is_classified_as_partial_match(monkeypatch, repo)
 
 
 def test_fact_with_no_hits_is_classified_as_gap(monkeypatch, repo):
-    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k: [])
+    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k, tenant_id=1: [])
 
     results = gather_fact_support(["Totally unrelated fact."], repo)
 
@@ -60,7 +60,7 @@ def test_fact_with_no_hits_is_classified_as_gap(monkeypatch, repo):
 
 
 def test_retrieval_failure_degrades_to_unavailable_instead_of_raising(monkeypatch, repo):
-    def _boom(query, top_k):
+    def _boom(query, top_k, tenant_id=1):
         raise ConnectionError("no pgvector reachable")
 
     monkeypatch.setattr(rag_analysis, "retrieve", _boom)
@@ -76,7 +76,7 @@ def test_citations_never_include_a_filename_outside_the_retrieved_set(monkeypatc
 
     monkeypatch.setattr(
         rag_analysis, "retrieve",
-        lambda query, top_k: [_hit("a.pdf", "HR", 0.9), _hit("b.pdf", "Safety", 0.9)],
+        lambda query, top_k, tenant_id=1: [_hit("a.pdf", "HR", 0.9), _hit("b.pdf", "Safety", 0.9)],
     )
 
     results = gather_fact_support(["fact one"], repo)
@@ -119,7 +119,7 @@ def test_potential_causes_of_action_are_deduplicated_by_category():
 
 
 def test_build_structured_report_includes_rag_backed_sections(monkeypatch, repo):
-    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k: [_hit("policy.pdf", "HR", 0.9)])
+    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k, tenant_id=1: [_hit("policy.pdf", "HR", 0.9)])
 
     session = repo.create_intake_session(matter_id=0, title="Intake")
     uploaded_input = repo.create_uploaded_input(
@@ -138,7 +138,7 @@ def test_build_structured_report_includes_rag_backed_sections(monkeypatch, repo)
 
 
 def test_docx_report_renders_the_rag_backed_sections(monkeypatch, repo):
-    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k: [_hit("policy.pdf", "HR", 0.9)])
+    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k, tenant_id=1: [_hit("policy.pdf", "HR", 0.9)])
 
     session = repo.create_intake_session(matter_id=0, title="Intake")
     uploaded_input = repo.create_uploaded_input(

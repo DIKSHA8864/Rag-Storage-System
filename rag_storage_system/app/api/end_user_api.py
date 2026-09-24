@@ -90,9 +90,11 @@ def end_user_query(request: Request, body: EndUserQueryRequest, matter: dict = D
         resolved_top_k = _current_retrieval_settings().top_k
 
     if body.category is not None:
-        results = retrieve(body.query, top_k=resolved_top_k, category=body.category)
+        results = retrieve(body.query, top_k=resolved_top_k, category=body.category, tenant_id=matter["tenant_id"])
     else:
-        results = retrieve_for_matter(body.query, matter["id"], top_k=resolved_top_k)
+        results = retrieve_for_matter(
+            body.query, matter["id"], top_k=resolved_top_k, tenant_id=matter["tenant_id"]
+        )
 
     return EndUserQueryResponse(
         query=body.query,
@@ -250,6 +252,7 @@ async def _stream_query_answer(
         top_k=resolved_top_k,
         category=category,
         score_threshold=settings.score_threshold,
+        tenant_id=matter["tenant_id"],
     )
 
     if thread_id is not None:
@@ -331,13 +334,15 @@ async def end_user_compare(
     query: Optional[str] = Form(None, description="Pasted text to compare, instead of a file."),
     file: Optional[UploadFile] = File(None, description="A PDF/DOCX/TXT file to compare."),
     category: Optional[str] = Form(None, description="Restrict comparison to one knowledge-base category."),
+    matter: dict = Depends(_current_matter),
 ) -> AnalysisReport:
     """
     Compare submitted text or a document against the knowledge base
     and return a full structured analysis report: executive summary,
     overall match score, detailed matching (similarities/differences/
     gaps/conflicts), recommendations, and cited sources for every
-    claim (see app/analysis/report_builder.py).
+    claim (see app/analysis/report_builder.py). Scoped to the caller's
+    tenant, same as every other retrieval path.
     """
 
     input_chunks = await _resolve_input_chunks(query, file)
@@ -347,7 +352,7 @@ async def end_user_compare(
             status_code=400, detail="No extractable text found in the submission."
         )
 
-    report = build_analysis_report(input_chunks, category=category)
+    report = build_analysis_report(input_chunks, category=category, tenant_id=matter["tenant_id"])
 
     return AnalysisReport(**report)
 
@@ -358,6 +363,7 @@ async def end_user_compare_export(
     query: Optional[str] = Form(None, description="Pasted text to compare, instead of a file."),
     file: Optional[UploadFile] = File(None, description="A PDF/DOCX/TXT file to compare."),
     category: Optional[str] = Form(None, description="Restrict comparison to one knowledge-base category."),
+    matter: dict = Depends(_current_matter),
 ) -> Response:
     """
     Same comparison as POST /compare, returned as a downloadable
@@ -377,7 +383,7 @@ async def end_user_compare_export(
             status_code=400, detail="No extractable text found in the submission."
         )
 
-    report = build_analysis_report(input_chunks, category=category)
+    report = build_analysis_report(input_chunks, category=category, tenant_id=matter["tenant_id"])
     disclaimer_text = _current_disclaimer_text()
 
     if format == "docx":

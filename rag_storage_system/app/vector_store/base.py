@@ -35,6 +35,7 @@ class VectorStore(ABC):
         section: Optional[str] = None,
         start_page: Optional[int] = None,
         end_page: Optional[int] = None,
+        tenant_id: int = 1,
     ) -> None:
         """
         Insert one chunk's embedding, or replace it in place if
@@ -45,6 +46,9 @@ class VectorStore(ABC):
         app/segmentation/chunker.py) - stored so a caller can cite
         exact evidence (file name, page, section) later, not just the
         chunk's raw text (see app/analysis/).
+
+        `tenant_id` is the actual cross-tenant RAG-leak boundary - see
+        similarity_search() below.
         """
         raise NotImplementedError
 
@@ -54,11 +58,16 @@ class VectorStore(ABC):
         query_embedding: list[float],
         top_k: int = 5,
         category: Optional[str] = None,
+        tenant_id: int = 1,
     ) -> list[dict]:
         """
         Return the `top_k` chunks whose embedding is nearest
-        `query_embedding` (nearest first), optionally restricted to
-        one category.
+        `query_embedding` (nearest first), always restricted to
+        `tenant_id` and optionally further narrowed to one category.
+
+        tenant_id filtering is unconditional (never optional/None) -
+        this is what stops one firm's confidential documents from ever
+        surfacing in another firm's research answer.
 
         Each result is a dict with at least:
             chunk_id, document_id, category, filename, chunk_text,

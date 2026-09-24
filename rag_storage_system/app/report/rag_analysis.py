@@ -62,7 +62,8 @@ def _citation_dict(chunk: dict) -> dict:
 
 
 def gather_fact_support(
-    facts: list[str], metadata_repository: MetadataRepository, matter_id: Optional[int] = None
+    facts: list[str], metadata_repository: MetadataRepository, matter_id: Optional[int] = None,
+    tenant_id: int = 1,
 ) -> list[FactSupport]:
     """
     Run retrieval for each fact INDEPENDENTLY (never one blended query
@@ -86,9 +87,9 @@ def gather_fact_support(
     for fact_text in facts:
         try:
             if matter_id:
-                chunks = retrieve_for_matter(fact_text, matter_id, top_k=settings.top_k)
+                chunks = retrieve_for_matter(fact_text, matter_id, top_k=settings.top_k, tenant_id=tenant_id)
             else:
-                chunks = retrieve(fact_text, top_k=settings.top_k)
+                chunks = retrieve(fact_text, top_k=settings.top_k, tenant_id=tenant_id)
         except Exception:
             logger.warning(
                 "Knowledge-base retrieval unavailable while grounding fact %r - "

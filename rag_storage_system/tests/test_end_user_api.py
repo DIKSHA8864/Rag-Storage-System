@@ -49,8 +49,11 @@ def _hit(chunk_id="c-1", score=0.9, filename="policy.pdf", section="1.1"):
 
 
 def test_query_returns_results_from_retrieve(client, monkeypatch):
-    monkeypatch.setattr(end_user_api, "retrieve", lambda query, top_k, category=None: [_hit()])
-    monkeypatch.setattr(end_user_api, "retrieve_for_matter", lambda query, matter_id, top_k=5, score_threshold=0.0: [_hit()])
+    monkeypatch.setattr(end_user_api, "retrieve", lambda query, top_k, category=None, tenant_id=1: [_hit()])
+    monkeypatch.setattr(
+        end_user_api, "retrieve_for_matter",
+        lambda query, matter_id, top_k=5, score_threshold=0.0, tenant_id=1: [_hit()],
+    )
 
     response = client.post("/end-user/query", json={"query": "vendor contract review"})
 

@@ -395,7 +395,7 @@ def test_retrieval_settings_top_k_is_passed_through_when_request_omits_it(client
 
     captured = {}
 
-    def _capture_retrieve(query, top_k=None, category=None, score_threshold=0.0):
+    def _capture_retrieve(query, top_k=None, category=None, score_threshold=0.0, tenant_id=1):
         captured["top_k"] = top_k
         return [_hit()]
 

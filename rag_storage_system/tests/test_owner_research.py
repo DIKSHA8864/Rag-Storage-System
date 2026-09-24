@@ -95,7 +95,7 @@ def _fake_async_anthropic(response_text: str):
 def test_authenticated_owner_can_ask_a_real_library_question_and_gets_grounded_citations(client, monkeypatch):
     monkeypatch.setattr(
         storage_api, "retrieve",
-        lambda query, top_k, category=None, score_threshold=0.0: [_hit("overtime_policy.pdf", "Wage & Hour", 0.9)],
+        lambda query, top_k, category=None, score_threshold=0.0, tenant_id=1: [_hit("overtime_policy.pdf", "Wage & Hour", 0.9)],
     )
 
     response = client.post(
@@ -124,7 +124,7 @@ def test_authenticated_owner_can_ask_a_real_library_question_and_gets_grounded_c
 def test_owner_receives_a_real_llm_generated_answer_via_the_existing_claude_path(client, monkeypatch):
     monkeypatch.setattr(
         storage_api, "retrieve",
-        lambda query, top_k, category=None, score_threshold=0.0: [_hit("overtime_policy.pdf", "Wage & Hour", 0.9)],
+        lambda query, top_k, category=None, score_threshold=0.0, tenant_id=1: [_hit("overtime_policy.pdf", "Wage & Hour", 0.9)],
     )
     monkeypatch.setattr("app.analysis.answer_generation.get_settings", lambda: _FakeClaudeSettings())
 
@@ -149,7 +149,7 @@ def test_owner_receives_a_real_llm_generated_answer_via_the_existing_claude_path
 
 
 def test_unsupported_question_triggers_honest_gap_behavior(client, monkeypatch):
-    monkeypatch.setattr(storage_api, "retrieve", lambda query, top_k, category=None, score_threshold=0.0: [])
+    monkeypatch.setattr(storage_api, "retrieve", lambda query, top_k, category=None, score_threshold=0.0, tenant_id=1: [])
 
     response = client.post(
         "/research/ask", json={"query": "What is the capital of France?"}, headers=_owner_header()
@@ -169,7 +169,7 @@ def test_unsupported_question_triggers_honest_gap_behavior(client, monkeypatch):
 def test_fabricated_citation_is_rejected_and_falls_back_to_the_grounded_template_answer(client, monkeypatch):
     monkeypatch.setattr(
         storage_api, "retrieve",
-        lambda query, top_k, category=None, score_threshold=0.0: [_hit("overtime_policy.pdf", "Wage & Hour", 0.9)],
+        lambda query, top_k, category=None, score_threshold=0.0, tenant_id=1: [_hit("overtime_policy.pdf", "Wage & Hour", 0.9)],
     )
     monkeypatch.setattr("app.analysis.answer_generation.get_settings", lambda: _FakeClaudeSettings())
 
@@ -228,7 +228,7 @@ def test_attorney_and_paralegal_roles_can_access_owner_research(client, monkeypa
 
     monkeypatch.setattr(
         storage_api, "retrieve",
-        lambda query, top_k, category=None, score_threshold=0.0: [_hit("policy.pdf", "HR", 0.9)],
+        lambda query, top_k, category=None, score_threshold=0.0, tenant_id=1: [_hit("policy.pdf", "HR", 0.9)],
     )
 
     for role in ("attorney", "paralegal"):
@@ -255,7 +255,7 @@ def test_matter_scoped_documents_do_not_leak_into_owner_research(client, monkeyp
 
     captured_calls = []
 
-    def _fake_retrieve(query, top_k, category=None, score_threshold=0.0):
+    def _fake_retrieve(query, top_k, category=None, score_threshold=0.0, tenant_id=1):
         captured_calls.append(category)
         return [_hit("library_policy.pdf", "HR", 0.9)]
 
@@ -294,7 +294,7 @@ def test_search_endpoint_still_works_unchanged(client, monkeypatch):
 
     monkeypatch.setattr(
         storage_api, "retrieve",
-        lambda query, top_k, category=None: [
+        lambda query, top_k, category=None, tenant_id=1: [
             {
                 "chunk_id": "c-1", "document_id": "doc", "category": "HR", "filename": "policy.pdf",
                 "chunk_text": "text", "vector_score": 0.8, "keyword_score": 0.5, "final_score": 0.9,

@@ -44,6 +44,7 @@ def build_complaint_draft(
     matter_name: str,
     cause_of_action_ids: list[int],
     metadata_repository: MetadataRepository,
+    tenant_id: int = 1,
 ) -> ComplaintDraft:
     intake_facts = metadata_repository.list_intake_facts(intake_session_id)
     fact_pool = [f"{f['fact_key']}: {f['fact_value']}" for f in intake_facts if f["fact_value"].strip()]
@@ -72,7 +73,7 @@ def build_complaint_draft(
             )
 
         try:
-            research_hits = retrieve_for_matter(curated["name"], matter_id, top_k=3)
+            research_hits = retrieve_for_matter(curated["name"], matter_id, top_k=3, tenant_id=tenant_id)
         except Exception:
             research_hits = []
 

@@ -318,7 +318,7 @@ def test_search_returns_reranked_chunks(client, monkeypatch):
 
     from app.retrieval import search as retrieval_search
 
-    def fake_vector_search(query, top_k, category=None):
+    def fake_vector_search(query, top_k, category=None, tenant_id=1):
         return [
             {
                 "chunk_id": "c-1",
@@ -331,7 +331,7 @@ def test_search_returns_reranked_chunks(client, monkeypatch):
             }
         ]
 
-    def fake_keyword_search(query, top_k, category=None):
+    def fake_keyword_search(query, top_k, category=None, tenant_id=1):
         return []
 
     monkeypatch.setattr(retrieval_search, "vector_search", fake_vector_search)

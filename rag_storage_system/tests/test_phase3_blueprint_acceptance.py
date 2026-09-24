@@ -115,7 +115,7 @@ def test_citation_lock(monkeypatch, repo):
 
     monkeypatch.setattr(
         rag_analysis, "retrieve",
-        lambda query, top_k: [_hit("wage_policy.pdf", "Wage & Hour", 0.9), _hit("leave_policy.pdf", "Leave", 0.85)],
+        lambda query, top_k, tenant_id=1: [_hit("wage_policy.pdf", "Wage & Hour", 0.9), _hit("leave_policy.pdf", "Leave", 0.85)],
     )
 
     session = repo.create_intake_session(matter_id=0, title="Intake")
@@ -139,7 +139,7 @@ def test_honest_gap(monkeypatch, repo):
     never claimed as supported.
     """
 
-    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k: [])
+    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k, tenant_id=1: [])
 
     session = repo.create_intake_session(matter_id=0, title="Intake")
     uploaded_input = repo.create_uploaded_input(
@@ -162,7 +162,7 @@ def test_fabrication_probe(monkeypatch, repo):
     score to fill the gap - it stays empty/honest instead.
     """
 
-    def _boom(query, top_k):
+    def _boom(query, top_k, tenant_id=1):
         raise ConnectionError("retrieval backend unreachable")
 
     monkeypatch.setattr(rag_analysis, "retrieve", _boom)
@@ -194,7 +194,7 @@ def test_ancillary_sweep_covers_every_required_topic_and_feeds_the_report(monkey
     something else.
     """
 
-    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k: [_hit("wage_policy.pdf", "Wage & Hour", 0.9)])
+    monkeypatch.setattr(rag_analysis, "retrieve", lambda query, top_k, tenant_id=1: [_hit("wage_policy.pdf", "Wage & Hour", 0.9)])
 
     session_id = _new_session(client)
     _walk_full_interview(client, session_id)

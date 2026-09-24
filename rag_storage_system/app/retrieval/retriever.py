@@ -33,6 +33,7 @@ def retrieve(
     top_k: int = 5,
     category: Optional[str] = None,
     score_threshold: float = 0.0,
+    tenant_id: int = 1,
 ) -> list[dict]:
     """
     Run the full hybrid retrieval pipeline for `query` and return its
@@ -41,6 +42,10 @@ def retrieve(
     0.0 keeps every existing caller's behavior unchanged - see
     app/retrieval_settings.py for where a non-zero threshold comes
     from).
+
+    `tenant_id` is passed straight through to both vector_search() and
+    keyword_search() - never optional there, always the real isolation
+    boundary between one firm's library and another's.
 
     Each result includes chunk_id, document_id, category, filename,
     chunk_text, metadata, vector_score, keyword_score, and
@@ -51,8 +56,8 @@ def retrieve(
 
     candidate_count = top_k * _CANDIDATE_MULTIPLIER
 
-    vector_hits = vector_search(query, top_k=candidate_count, category=category)
-    keyword_hits = keyword_search(query, top_k=candidate_count, category=category)
+    vector_hits = vector_search(query, top_k=candidate_count, category=category, tenant_id=tenant_id)
+    keyword_hits = keyword_search(query, top_k=candidate_count, category=category, tenant_id=tenant_id)
 
     ranked = rerank(vector_hits, keyword_hits, top_k=top_k)
 
@@ -64,20 +69,25 @@ def retrieve_for_matter(
     matter_id: int,
     top_k: int = 5,
     score_threshold: float = 0.0,
+    tenant_id: int = 1,
 ) -> list[dict]:
     """
     A Matter's own question retrieval: the Owner's library (category=None,
     which already excludes every Matter's namespace - see
     app/vector_store/vector_repository.py) UNION this one Matter's own
     ingested documents (category=f"matter-{matter_id}") - never any
-    other Matter's namespace. Results from both are merged and re-sorted
-    by final_score, then capped to top_k overall.
+    other Matter's namespace, and never another tenant's library or
+    Matter documents either, via `tenant_id`. Results from both are
+    merged and re-sorted by final_score, then capped to top_k overall.
     """
 
     from app.matter_rag.ingestion import matter_namespace
 
-    library_hits = retrieve(query, top_k=top_k, score_threshold=score_threshold)
-    matter_hits = retrieve(query, top_k=top_k, category=matter_namespace(matter_id), score_threshold=score_threshold)
+    library_hits = retrieve(query, top_k=top_k, score_threshold=score_threshold, tenant_id=tenant_id)
+    matter_hits = retrieve(
+        query, top_k=top_k, category=matter_namespace(matter_id),
+        score_threshold=score_threshold, tenant_id=tenant_id,
+    )
 
     merged = sorted(library_hits + matter_hits, key=lambda chunk: chunk["final_score"], reverse=True)
     return merged[:top_k]

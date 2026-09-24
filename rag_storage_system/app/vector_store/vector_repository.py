@@ -79,6 +79,7 @@ class PgVectorRepository(VectorStore):
         section: Optional[str] = None,
         start_page: Optional[int] = None,
         end_page: Optional[int] = None,
+        tenant_id: int = 1,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -86,9 +87,9 @@ class PgVectorRepository(VectorStore):
                 INSERT INTO chunk_embeddings (
                     chunk_id, document_id, category, filename,
                     chunk_text, embedding, model_name, metadata,
-                    chapter, section, start_page, end_page
+                    chapter, section, start_page, end_page, tenant_id
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                     document_id = excluded.document_id,
                     category = excluded.category,
@@ -101,6 +102,7 @@ class PgVectorRepository(VectorStore):
                     section = excluded.section,
                     start_page = excluded.start_page,
                     end_page = excluded.end_page,
+                    tenant_id = excluded.tenant_id,
                     updated_at = now()
                 """,
                 (
@@ -116,6 +118,7 @@ class PgVectorRepository(VectorStore):
                     section,
                     start_page,
                     end_page,
+                    tenant_id,
                 ),
             )
 
@@ -124,6 +127,7 @@ class PgVectorRepository(VectorStore):
         query_embedding: list[float],
         top_k: int = 5,
         category: Optional[str] = None,
+        tenant_id: int = 1,
     ) -> list[dict]:
         # pgvector's <=> operator is cosine *distance* (0 = identical,
         # 2 = opposite) - converting to similarity (1 = identical, -1 =
@@ -145,11 +149,11 @@ class PgVectorRepository(VectorStore):
                     SELECT chunk_id, document_id, category, filename, chunk_text, chapter, section, start_page, end_page, metadata,
                            1 - (embedding <=> %s) AS score
                     FROM chunk_embeddings
-                    WHERE category = %s OR category LIKE %s
+                    WHERE tenant_id = %s AND (category = %s OR category LIKE %s)
                     ORDER BY embedding <=> %s
                     LIMIT %s
                     """,
-                    (query_vector, category, f"{category}/%", query_vector, top_k),
+                    (query_vector, tenant_id, category, f"{category}/%", query_vector, top_k),
                 ).fetchall()
             else:
                 rows = conn.execute(
@@ -157,11 +161,11 @@ class PgVectorRepository(VectorStore):
                     SELECT chunk_id, document_id, category, filename, chunk_text, chapter, section, start_page, end_page, metadata,
                            1 - (embedding <=> %s) AS score
                     FROM chunk_embeddings
-                    WHERE category NOT LIKE 'matter-%%'
+                    WHERE tenant_id = %s AND category NOT LIKE 'matter-%%'
                     ORDER BY embedding <=> %s
                     LIMIT %s
                     """,
-                    (query_vector, query_vector, top_k),
+                    (query_vector, tenant_id, query_vector, top_k),
                 ).fetchall()
 
             return [dict(row) for row in rows]
@@ -180,6 +184,7 @@ class PgVectorRepository(VectorStore):
         query: str,
         top_k: int = 5,
         category: Optional[str] = None,
+        tenant_id: int = 1,
     ) -> list[dict]:
         """
         Full-text keyword search over chunk_text using Postgres's
@@ -195,6 +200,9 @@ class PgVectorRepository(VectorStore):
         in a chunk would return nothing for most of them. A chunk
         matching more of the query's words still ranks higher via
         ts_rank, so this is strictly looser, not lower quality.
+
+        `tenant_id` filtering is unconditional, same as
+        similarity_search() - never a cross-tenant leak surface.
         """
 
         or_query = " or ".join(query.split()) or query
@@ -206,12 +214,12 @@ class PgVectorRepository(VectorStore):
                     SELECT chunk_id, document_id, category, filename, chunk_text, chapter, section, start_page, end_page, metadata,
                            ts_rank(to_tsvector('english', chunk_text), websearch_to_tsquery('english', %s)) AS score
                     FROM chunk_embeddings
-                    WHERE (category = %s OR category LIKE %s)
+                    WHERE tenant_id = %s AND (category = %s OR category LIKE %s)
                       AND to_tsvector('english', chunk_text) @@ websearch_to_tsquery('english', %s)
                     ORDER BY score DESC
                     LIMIT %s
                     """,
-                    (or_query, category, f"{category}/%", or_query, top_k),
+                    (or_query, tenant_id, category, f"{category}/%", or_query, top_k),
                 ).fetchall()
             else:
                 rows = conn.execute(
@@ -219,12 +227,12 @@ class PgVectorRepository(VectorStore):
                     SELECT chunk_id, document_id, category, filename, chunk_text, chapter, section, start_page, end_page, metadata,
                            ts_rank(to_tsvector('english', chunk_text), websearch_to_tsquery('english', %s)) AS score
                     FROM chunk_embeddings
-                    WHERE category NOT LIKE 'matter-%%'
+                    WHERE tenant_id = %s AND category NOT LIKE 'matter-%%'
                       AND to_tsvector('english', chunk_text) @@ websearch_to_tsquery('english', %s)
                     ORDER BY score DESC
                     LIMIT %s
                     """,
-                    (or_query, or_query, top_k),
+                    (or_query, tenant_id, or_query, top_k),
                 ).fetchall()
 
             return [dict(row) for row in rows]

@@ -84,19 +84,21 @@ class PostgresMetadataRepository(MetadataRepository):
     # Folders
     # ------------------------------------------------------------------
 
-    def create_folder(self, path: str) -> None:
+    def create_folder(self, path: str, tenant_id: int = 1) -> None:
         """Ensure `path` and every ancestor folder has a row."""
 
         with self._connect() as conn:
-            self.create_folder_conn(conn, path)
+            self.create_folder_conn(conn, path, tenant_id)
 
-    def rename_folder(self, old_path: str, new_path: str) -> None:
+    def rename_folder(self, old_path: str, new_path: str, tenant_id: int = 1) -> None:
         with self._connect() as conn:
-            self.create_folder_conn(conn, new_path.rsplit("/", 1)[0] if "/" in new_path else "")
+            self.create_folder_conn(
+                conn, new_path.rsplit("/", 1)[0] if "/" in new_path else "", tenant_id
+            )
 
             rows = conn.execute(
-                "SELECT path FROM folders WHERE path = %s OR path LIKE %s",
-                (old_path, f"{old_path}/%"),
+                "SELECT path FROM folders WHERE tenant_id = %s AND (path = %s OR path LIKE %s)",
+                (tenant_id, old_path, f"{old_path}/%"),
             ).fetchall()
 
             for row in rows:
@@ -107,21 +109,23 @@ class PostgresMetadataRepository(MetadataRepository):
                 )
                 conn.execute(
                     """
-                    INSERT INTO folders (path, name, parent_path)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (path) DO UPDATE SET
+                    INSERT INTO folders (tenant_id, path, name, parent_path)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (tenant_id, path) DO UPDATE SET
                         name = excluded.name,
                         parent_path = excluded.parent_path,
                         updated_at = now()
                     """,
-                    (new_folder_path, name, parent_path),
+                    (tenant_id, new_folder_path, name, parent_path),
                 )
-                conn.execute("DELETE FROM folders WHERE path = %s", (row["path"],))
+                conn.execute(
+                    "DELETE FROM folders WHERE tenant_id = %s AND path = %s", (tenant_id, row["path"])
+                )
 
             doc_rows = conn.execute(
                 "SELECT relative_path, category, filename FROM documents "
-                "WHERE category = %s OR category LIKE %s",
-                (old_path, f"{old_path}/%"),
+                "WHERE tenant_id = %s AND (category = %s OR category LIKE %s)",
+                (tenant_id, old_path, f"{old_path}/%"),
             ).fetchall()
 
             for row in doc_rows:
@@ -131,12 +135,12 @@ class PostgresMetadataRepository(MetadataRepository):
                     """
                     UPDATE documents
                     SET category = %s, relative_path = %s, updated_at = now()
-                    WHERE relative_path = %s
+                    WHERE tenant_id = %s AND relative_path = %s
                     """,
-                    (new_category, new_relative_path, row["relative_path"]),
+                    (new_category, new_relative_path, tenant_id, row["relative_path"]),
                 )
 
-    def create_folder_conn(self, conn: psycopg.Connection, path: str) -> None:
+    def create_folder_conn(self, conn: psycopg.Connection, path: str, tenant_id: int = 1) -> None:
         if not path:
             return
 
@@ -146,28 +150,28 @@ class PostgresMetadataRepository(MetadataRepository):
 
             conn.execute(
                 """
-                INSERT INTO folders (path, name, parent_path)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (path) DO NOTHING
+                INSERT INTO folders (tenant_id, path, name, parent_path)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (tenant_id, path) DO NOTHING
                 """,
-                (ancestor, name, parent_path),
+                (tenant_id, ancestor, name, parent_path),
             )
 
-    def delete_folder(self, path: str) -> None:
+    def delete_folder(self, path: str, tenant_id: int = 1) -> None:
         with self._connect() as conn:
             conn.execute(
-                "DELETE FROM documents WHERE category = %s OR category LIKE %s",
-                (path, f"{path}/%"),
+                "DELETE FROM documents WHERE tenant_id = %s AND (category = %s OR category LIKE %s)",
+                (tenant_id, path, f"{path}/%"),
             )
             conn.execute(
-                "DELETE FROM folders WHERE path = %s OR path LIKE %s",
-                (path, f"{path}/%"),
+                "DELETE FROM folders WHERE tenant_id = %s AND (path = %s OR path LIKE %s)",
+                (tenant_id, path, f"{path}/%"),
             )
 
-    def list_folders(self) -> list[dict]:
+    def list_folders(self, tenant_id: int = 1) -> list[dict]:
         with self._connect() as conn:
             folder_rows = conn.execute(
-                "SELECT path FROM folders ORDER BY path"
+                "SELECT path FROM folders WHERE tenant_id = %s ORDER BY path", (tenant_id,)
             ).fetchall()
 
             folders = []
@@ -175,8 +179,8 @@ class PostgresMetadataRepository(MetadataRepository):
             for row in folder_rows:
                 path = row["path"]
                 count_row = conn.execute(
-                    "SELECT COUNT(*) AS count FROM documents WHERE category = %s OR category LIKE %s",
-                    (path, f"{path}/%"),
+                    "SELECT COUNT(*) AS count FROM documents WHERE tenant_id = %s AND (category = %s OR category LIKE %s)",
+                    (tenant_id, path, f"{path}/%"),
                 ).fetchone()
 
                 folders.append({"name": path, "document_count": count_row["count"]})
@@ -196,20 +200,21 @@ class PostgresMetadataRepository(MetadataRepository):
         sha256: Optional[str],
         status: str = DocumentStatus.UPLOADED.value,
         status_detail: Optional[str] = None,
+        tenant_id: int = 1,
     ) -> None:
         relative_path = _relative_path(category, filename)
 
         with self._connect() as conn:
-            self.create_folder_conn(conn, category)
+            self.create_folder_conn(conn, category, tenant_id)
 
             conn.execute(
                 """
                 INSERT INTO documents (
-                    category, filename, relative_path, extension, size,
+                    tenant_id, category, filename, relative_path, extension, size,
                     sha256, status, status_detail
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (relative_path) DO UPDATE SET
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, relative_path) DO UPDATE SET
                     category = excluded.category,
                     filename = excluded.filename,
                     extension = excluded.extension,
@@ -219,39 +224,39 @@ class PostgresMetadataRepository(MetadataRepository):
                     status_detail = excluded.status_detail,
                     updated_at = now()
                 """,
-                (category, filename, relative_path, extension, size, sha256, status, status_detail),
+                (tenant_id, category, filename, relative_path, extension, size, sha256, status, status_detail),
             )
 
-    def delete_document(self, category: str, filename: str) -> bool:
+    def delete_document(self, category: str, filename: str, tenant_id: int = 1) -> bool:
         relative_path = _relative_path(category, filename)
 
         with self._connect() as conn:
             cursor = conn.execute(
-                "DELETE FROM documents WHERE relative_path = %s", (relative_path,)
+                "DELETE FROM documents WHERE tenant_id = %s AND relative_path = %s", (tenant_id, relative_path)
             )
             return cursor.rowcount > 0
 
-    def get_document(self, category: str, filename: str) -> Optional[dict]:
+    def get_document(self, category: str, filename: str, tenant_id: int = 1) -> Optional[dict]:
         relative_path = _relative_path(category, filename)
 
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM documents WHERE relative_path = %s", (relative_path,)
+                "SELECT * FROM documents WHERE tenant_id = %s AND relative_path = %s", (tenant_id, relative_path)
             ).fetchone()
 
             return dict(row) if row else None
 
-    def list_documents(self, category: Optional[str] = None) -> list[dict]:
+    def list_documents(self, category: Optional[str] = None, tenant_id: int = 1) -> list[dict]:
         with self._connect() as conn:
             if category:
                 rows = conn.execute(
-                    "SELECT * FROM documents WHERE category = %s OR category LIKE %s "
+                    "SELECT * FROM documents WHERE tenant_id = %s AND (category = %s OR category LIKE %s) "
                     "ORDER BY relative_path",
-                    (category, f"{category}/%"),
+                    (tenant_id, category, f"{category}/%"),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT * FROM documents ORDER BY relative_path"
+                    "SELECT * FROM documents WHERE tenant_id = %s ORDER BY relative_path", (tenant_id,)
                 ).fetchall()
 
             return [dict(row) for row in rows]
@@ -411,18 +416,20 @@ class PostgresMetadataRepository(MetadataRepository):
             ).fetchone()
         return dict(row) if row else None
 
-    def create_matter(self, name: str, api_key_hash: str) -> dict:
+    def create_matter(self, name: str, api_key_hash: str, tenant_id: int = 1) -> dict:
         with self._connect() as conn:
             row = conn.execute(
-                "INSERT INTO matters (name, api_key_hash) VALUES (%s, %s) "
-                "RETURNING id, name, api_key_hash, is_active, created_at",
-                (name, api_key_hash),
+                "INSERT INTO matters (tenant_id, name, api_key_hash) VALUES (%s, %s, %s) "
+                "RETURNING id, tenant_id, name, api_key_hash, is_active, created_at",
+                (tenant_id, name, api_key_hash),
             ).fetchone()
         return dict(row)
 
-    def list_matters(self) -> list[dict]:
+    def list_matters(self, tenant_id: int = 1) -> list[dict]:
         with self._connect() as conn:
-            rows = conn.execute("SELECT * FROM matters ORDER BY name").fetchall()
+            rows = conn.execute(
+                "SELECT * FROM matters WHERE tenant_id = %s ORDER BY name", (tenant_id,)
+            ).fetchall()
         return [dict(row) for row in rows]
 
     def get_matter(self, matter_id: int) -> Optional[dict]:
