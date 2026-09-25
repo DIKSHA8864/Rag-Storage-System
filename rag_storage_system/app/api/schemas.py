@@ -75,6 +75,8 @@ class ProcessResult(BaseModel):
     segments_created: int
     chunks_created: int
     embeddings_created: int
+    # Chunks of deleted/replaced/moved files removed from the search index by this run.
+    stale_chunks_removed: int = 0
 
 
 class ProcessQueuedResponse(BaseModel):

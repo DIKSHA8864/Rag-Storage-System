@@ -170,6 +170,53 @@ class PgVectorRepository(VectorStore):
 
             return [dict(row) for row in rows]
 
+    # Library chunks only: a Matter's namespace is category "matter-<id>"
+    # (app/matter_rag/) - the same predicate library search uses.
+    # Folder prefixes use starts_with(), not LIKE: "_" in a folder name
+    # (e.g. "Employment_law") is a LIKE wildcard.
+    _LIBRARY_ONLY = "category NOT LIKE 'matter-%%'"
+
+    def delete_document_chunks(self, category: str, filename: str, tenant_id: int) -> int:
+        with self._connect() as conn:
+            return conn.execute(
+                f"""
+                DELETE FROM chunk_embeddings
+                WHERE tenant_id = %s AND category = %s AND filename = %s AND {self._LIBRARY_ONLY}
+                """,
+                (tenant_id, category, filename),
+            ).rowcount
+
+    def delete_category_chunks(self, category: str, tenant_id: int) -> int:
+        with self._connect() as conn:
+            return conn.execute(
+                f"""
+                DELETE FROM chunk_embeddings
+                WHERE tenant_id = %s AND (category = %s OR starts_with(category, %s)) AND {self._LIBRARY_ONLY}
+                """,
+                (tenant_id, category, f"{category}/"),
+            ).rowcount
+
+    def rename_category_chunks(self, old_category: str, new_category: str, tenant_id: int) -> int:
+        with self._connect() as conn:
+            return conn.execute(
+                f"""
+                UPDATE chunk_embeddings
+                SET category = %s || substr(category, length(%s) + 1), updated_at = now()
+                WHERE tenant_id = %s AND (category = %s OR starts_with(category, %s)) AND {self._LIBRARY_ONLY}
+                """,
+                (new_category, old_category, tenant_id, old_category, f"{old_category}/"),
+            ).rowcount
+
+    def delete_library_chunks_except(self, keep_chunk_ids: set[str]) -> int:
+        with self._connect() as conn:
+            return conn.execute(
+                f"""
+                DELETE FROM chunk_embeddings
+                WHERE {self._LIBRARY_ONLY} AND NOT (chunk_id = ANY(%s))
+                """,
+                (list(keep_chunk_ids),),
+            ).rowcount
+
     def count(self) -> int:
         with self._connect() as conn:
             row = conn.execute("SELECT COUNT(*) AS count FROM chunk_embeddings").fetchone()

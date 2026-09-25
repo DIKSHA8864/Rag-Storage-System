@@ -97,9 +97,10 @@ def process_extracted_document(
 
     output_dir = (
         SEGMENTS_DIR
-        / Path(
-            document["filename"]
-        ).stem
+        / (
+            document.get("document_id")
+            or Path(document["filename"]).stem
+        )
     )
 
     output_dir.mkdir(

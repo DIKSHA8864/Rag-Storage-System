@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -22,6 +23,19 @@ SUPPORTED_EXTENSIONS = _settings.allowed_extensions_set
 # (the seeded Default Organization), the same "everything defaults to
 # tenant 1" convention used everywhere else in the multi-tenancy retrofit.
 _TENANT_DIR_RE = re.compile(r"^tenant-(\d+)$")
+
+
+def library_document_id(relative_path: Path) -> str:
+    """
+    One library file's identity everywhere downstream (segments, chunks,
+    chunk_embeddings.document_id / chunk_id prefix): its name plus a hash
+    of its full storage path (tenant-<id>/<category>/<filename>). The bare
+    filename stem used before let two same-named files - in different
+    folders or different organizations - overwrite each other's chunks.
+    """
+
+    digest = hashlib.sha1(relative_path.as_posix().encode("utf-8")).hexdigest()[:12]
+    return f"{relative_path.stem}-{digest}"
 
 
 def extract_document(file_path: str | Path) -> dict:
@@ -120,8 +134,11 @@ def extract_all_documents() -> list[dict]:
 
         output_path = output_directory / "extracted.json"
 
+        document_id = library_document_id(relative_path)
+
         try:
             extracted = extract_document(file_path)
+            extracted["document_id"] = document_id
 
             output_directory.mkdir(parents=True, exist_ok=True)
 
@@ -133,6 +150,7 @@ def extract_all_documents() -> list[dict]:
             results.append(
                 {
                     "filename": file_path.name,
+                    "document_id": document_id,
                     "category": category,
                     "tenant_id": tenant_id,
                     "status": "extracted",

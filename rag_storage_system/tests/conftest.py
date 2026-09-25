@@ -175,10 +175,46 @@ class _FakeVectorStore:
             "section": section,
             "start_page": start_page,
             "end_page": end_page,
+            "tenant_id": tenant_id,
         }
 
     def similarity_search(self, query_embedding, top_k=5, category=None, tenant_id=1):
         return list(self._rows.values())[:top_k]
+
+    # Same semantics as PgVectorRepository's: library chunks only (never a
+    # "matter-<id>" namespace), one tenant, folder prefixes matched literally.
+    @staticmethod
+    def _is_library(row) -> bool:
+        return not row["category"].startswith("matter-")
+
+    @staticmethod
+    def _in_folder(row, category) -> bool:
+        return row["category"] == category or row["category"].startswith(f"{category}/")
+
+    def _delete_where(self, predicate) -> int:
+        doomed = [chunk_id for chunk_id, row in self._rows.items() if self._is_library(row) and predicate(row)]
+        for chunk_id in doomed:
+            del self._rows[chunk_id]
+        return len(doomed)
+
+    def delete_document_chunks(self, category, filename, tenant_id) -> int:
+        return self._delete_where(
+            lambda r: r["tenant_id"] == tenant_id and r["category"] == category and r["filename"] == filename
+        )
+
+    def delete_category_chunks(self, category, tenant_id) -> int:
+        return self._delete_where(lambda r: r["tenant_id"] == tenant_id and self._in_folder(r, category))
+
+    def rename_category_chunks(self, old_category, new_category, tenant_id) -> int:
+        updated = 0
+        for row in self._rows.values():
+            if self._is_library(row) and row["tenant_id"] == tenant_id and self._in_folder(row, old_category):
+                row["category"] = new_category + row["category"][len(old_category):]
+                updated += 1
+        return updated
+
+    def delete_library_chunks_except(self, keep_chunk_ids) -> int:
+        return self._delete_where(lambda r: r["chunk_id"] not in keep_chunk_ids)
 
     def count(self) -> int:
         return len(self._rows)

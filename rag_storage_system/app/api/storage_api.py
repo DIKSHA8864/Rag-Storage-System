@@ -1212,6 +1212,24 @@ async def upload_documents_batch(
     )
 
 
+def _remove_from_search_index(action: str, remove) -> int:
+    """
+    Take a file's (or folder's) chunks out of the library search index -
+    done BEFORE the file itself is deleted/replaced, so a failure here
+    stops the request with nothing changed rather than leaving a deleted
+    file's text answerable. Returns how many chunks were removed.
+    """
+
+    try:
+        return remove(get_vector_store())
+    except Exception as exc:
+        logger.exception("Could not update the search index for %s", action)
+        raise HTTPException(
+            status_code=503,
+            detail="The search index is unavailable right now, so nothing was changed. Please try again shortly.",
+        ) from exc
+
+
 @app.put(
     "/categories/{category:path}/documents/{filename}",
     response_model=UploadedFileResult,
@@ -1236,6 +1254,13 @@ async def replace_document(
     is_valid, reason = validate_file_object(filename, len(data))
     if not is_valid:
         raise HTTPException(status_code=400, detail=f"Invalid replacement file: {reason}")
+
+    # The old version's text must stop being citable now - the new one
+    # is searchable once processed (its status goes back to Uploaded).
+    _remove_from_search_index(
+        "replace",
+        lambda store: store.delete_document_chunks(safe_category, safe_filename, owner["tenant_id"]),
+    )
 
     try:
         result = storage_backend.replace(
@@ -1289,6 +1314,11 @@ def delete_document(category: str, filename: str, owner: dict = Depends(require_
         )
         raise HTTPException(status_code=404, detail=f"File not found: {category}/{filename}")
 
+    removed_chunks = _remove_from_search_index(
+        "delete_document",
+        lambda store: store.delete_document_chunks(safe_category, safe_filename, owner["tenant_id"]),
+    )
+
     deleted = storage_backend.delete(_tenant_storage_category(category, owner["tenant_id"]), filename)
 
     if not deleted:
@@ -1299,7 +1329,10 @@ def delete_document(category: str, filename: str, owner: dict = Depends(require_
 
     metadata_repository.delete_document(safe_category, safe_filename, tenant_id=owner["tenant_id"])
 
-    log_audit_event("delete_document", category=safe_category, filename=safe_filename)
+    log_audit_event(
+        "delete_document", category=safe_category, filename=safe_filename,
+        detail=f"{removed_chunks} chunk(s) removed from the search index",
+    )
 
     return MessageResponse(message=f"'{filename}' deleted from '{category}'.")
 
@@ -1364,6 +1397,15 @@ def rename_category(
     new_name = _strip_tenant_prefix(stored_new_name, owner["tenant_id"])
     metadata_repository.rename_folder(safe_old, new_name, tenant_id=owner["tenant_id"])
 
+    # Same text, new folder name - relabel the indexed chunks so folder
+    # filters and citations show where the file lives now. If the index
+    # is unreachable the old label only lasts until the next processing
+    # run, which rebuilds every chunk from the files' new location.
+    try:
+        get_vector_store().rename_category_chunks(safe_old, new_name, owner["tenant_id"])
+    except Exception:
+        logger.exception("Could not relabel indexed chunks for renamed folder %r", safe_old)
+
     log_audit_event(
         "rename_category", category=safe_old, detail=f"renamed to '{new_name}'"
     )
@@ -1406,6 +1448,20 @@ def delete_category(category: str, force: bool = False, owner: dict = Depends(re
         raise HTTPException(status_code=404, detail=f"Category not found: {category}")
 
     metadata_repository.delete_folder(safe_category, tenant_id=owner["tenant_id"])
+
+    # After the storage delete on purpose: without ?force it refuses a
+    # non-empty folder, and those files must stay searchable then.
+    try:
+        get_vector_store().delete_category_chunks(safe_category, owner["tenant_id"])
+    except Exception as exc:
+        logger.exception("Could not remove indexed chunks for deleted folder %r", safe_category)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Category '{category}' was deleted, but its text could not be removed from the search "
+                "index right now. Run processing (Re-index) to finish removing it."
+            ),
+        ) from exc
 
     log_audit_event(
         "delete_category", category=safe_category, detail=f"force={force}"

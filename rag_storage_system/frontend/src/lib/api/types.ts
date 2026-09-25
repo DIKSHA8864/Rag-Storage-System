@@ -101,6 +101,7 @@ export interface ProcessResult {
   segments_created: number;
   chunks_created: number;
   embeddings_created: number;
+  stale_chunks_removed: number;
 }
 
 export interface ProcessStatusResponse {

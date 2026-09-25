@@ -76,6 +76,38 @@ class VectorStore(ABC):
         """
         raise NotImplementedError
 
+    # ------------------------------------------------------------------
+    # Keeping the library index in step with the library itself. Every
+    # method below touches library chunks only - never a Matter's own
+    # namespace (category "matter-<id>", see app/matter_rag/) - and is
+    # always scoped to one tenant unless it says otherwise.
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def delete_document_chunks(self, category: str, filename: str, tenant_id: int) -> int:
+        """Remove every chunk of one library file (deleted or replaced). Returns how many were removed."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_category_chunks(self, category: str, tenant_id: int) -> int:
+        """Remove every chunk under a library folder and its subfolders. Returns how many were removed."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def rename_category_chunks(self, old_category: str, new_category: str, tenant_id: int) -> int:
+        """Re-label chunks after a folder rename/move (subfolders follow). Returns how many were updated."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_library_chunks_except(self, keep_chunk_ids: set[str]) -> int:
+        """
+        Remove every library chunk (all tenants) NOT in `keep_chunk_ids` -
+        run by app/jobs/processing.py after a full re-index, whose chunk
+        set is the complete, current library. Clears what a deleted file,
+        a shrunken re-upload, or a renamed/moved file left behind.
+        """
+        raise NotImplementedError
+
     @abstractmethod
     def count(self) -> int:
         """Total number of chunk embeddings currently stored."""

@@ -14,6 +14,21 @@
 - **Stale test failures after a pull** — clear __pycache__:
   `Get-ChildItem -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force`
 
+## Library index stays in step with the library
+- **Delete / Replace a file** (Vault): its text leaves search immediately. A
+  replaced file is searchable again once processing (Re-index) has run.
+- **Rename / move a folder**: indexed chunks are relabeled immediately.
+- **Every processing run** rebuilds from `storage/originals` and removes any
+  indexed library chunk it didn't produce (deleted, replaced, moved, or failed
+  to extract) - the job result reports `stale_chunks_removed`. A Matter's own
+  documents (`matter-<id>`) are never touched.
+- `storage/processed|segments|chunks|embeddings` are build output: each run
+  clears and rebuilds them (it refuses to run if one of them overlaps
+  `storage/originals`), and git ignores them.
+- **After upgrading to this version, run Re-index once**: document IDs now include
+  the folder path, so the first run replaces every old chunk (expect a large
+  `stale_chunks_removed`), including ones left by files deleted long ago.
+
 ## "No authority on this point was found" for a question the library covers
 Run `python scripts/diagnose_ask.py "the exact question"` (add `--as person@firm.com`
 to use an end user's organization). It prints each step of the Ask pipeline:

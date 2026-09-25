@@ -89,7 +89,9 @@ def segment_document(document: dict) -> list[LogicalSegment]:
     """
 
     filename = document["filename"]
-    document_id = _get_document_id(filename)
+    # Set by app/extraction/extractor_manager.py (unique per storage path);
+    # the bare stem only for an extracted.json written before that existed.
+    document_id = document.get("document_id") or _get_document_id(filename)
 
     pages = document.get("pages", [])
 
