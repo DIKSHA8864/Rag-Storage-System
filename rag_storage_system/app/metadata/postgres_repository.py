@@ -69,7 +69,13 @@ class PostgresMetadataRepository(MetadataRepository):
 
         with self._connect() as conn:
             for migration_path in sorted(_MIGRATIONS_DIR.glob("*.sql")):
-                conn.execute(migration_path.read_text(encoding="utf-8"))
+                try:
+                    conn.execute(migration_path.read_text(encoding="utf-8"))
+                except psycopg.Error as exc:
+                    raise RuntimeError(
+                        f"Database migration {migration_path.name} failed: {exc}. Nothing was changed. "
+                        "Run `python scripts/check_migrations.py` for the exact line and the table's current columns."
+                    ) from exc
 
     @contextmanager
     def _connect(self) -> Iterator[psycopg.Connection]:
