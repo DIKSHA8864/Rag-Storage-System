@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     # (app/intake_engine/follow_ups.py). "" = no follow-ups.
     intake_framework_category: str = "Question Frameworks"
 
-    # Analytics cost estimate: '{"claude-opus-5": [15, 75]}' = USD per million
+    # Analytics cost estimate: '{"<model>": [<input>, <output>]}' = USD per million
     # input / output tokens per model (copy from your Anthropic pricing page).
     # Empty = token counts only; cost is never guessed.
     llm_prices: str = ""
@@ -196,7 +196,12 @@ class Settings(BaseSettings):
     # overall_match_score above never does.
     narrative_provider: str = "template"
     anthropic_api_key: str = ""
-    analysis_model: str = "claude-opus-5"
+    # Blueprint Work Plan "Model usage": the mid-tier model everywhere
+    # (answers, relevance check, intake follow-ups, image captions), the
+    # top-tier model only where quality measurably requires it - the
+    # intake report's reasoning and complaint drafting (DRAFTING_MODEL).
+    analysis_model: str = "claude-sonnet-5"
+    drafting_model: str = "claude-opus-5-5"
 
     # ------------------------------------------------------------------
     # Audit log - one JSON line per upload/replace/delete/rename, see

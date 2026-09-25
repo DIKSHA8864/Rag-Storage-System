@@ -114,6 +114,25 @@ the old order.
 - Research suggestions never go in the pleading itself. They're on a
   final "ATTORNEY NOTES - REMOVE BEFORE FILING" page.
 
+## Claude-written report analysis and complaint allegations
+
+- With `ANTHROPIC_API_KEY` set (and credit on the account), the intake
+  report's analysis (fact summary, causes of action, strengths,
+  weaknesses, missing information, research questions) and the
+  complaint's allegations are written by `DRAFTING_MODEL`. Everything
+  else Claude does uses `ANALYSIS_MODEL`.
+- Claude only sees the intake and the passages retrieval found. Any
+  statute/case/regulation it names that isn't in a library passage is
+  replaced by "[citation removed - not in the firm's library]"; a
+  complaint authority is kept only if it appears in the library passage
+  it cites, and is printed with that file and section. Case documents
+  are facts, never authority.
+- Each report/complaint says how it was prepared ("Analysis method" /
+  "Drafting method"). No key, no credit or a failed call -> the template
+  version (element-by-element) is produced, and the note says why.
+- The system prompts are on Prompts -> "Intake Report Analysis" and
+  "Complaint Allegations"; the checks above apply whatever they say.
+
 ## Analytics
 
 Admin -> Analytics (owner only, your organization only; 7/30/90 days):

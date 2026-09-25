@@ -24,7 +24,8 @@ from datetime import datetime, timezone
 from app.disclaimer import get_current_disclaimer_text
 from app.intake_engine.timeline import TIMELINE_QUESTIONS
 from app.metadata.base import MetadataRepository
-from app.report.rag_analysis import build_rag_sections, gather_fact_support
+from app.report.claude_analysis import ClaudeUnavailable, analyze_intake
+from app.report.rag_analysis import _citation_dict, build_rag_sections, gather_fact_support
 from app.report.schema import ExtractedInputSummary, ReportCitation, StructuredReport, TimelineEntry
 
 # Labels for app/intake_engine categories (see engine.py's
@@ -88,6 +89,41 @@ def build_structured_report(
     )
     rag_sections = build_rag_sections(fact_supports)
 
+    # Blueprint Phase 3: Claude writes the analysis from the intake + the
+    # library passages found for it; the citation lock is enforced in code
+    # (app/report/claude_analysis.py). Without a key, or if the call fails,
+    # the template analysis above stands and the report says so.
+    research_suggestions: list[str] = []
+    try:
+        if not fact_texts:
+            raise ClaudeUnavailable("nothing has been recorded for this intake yet")
+        analysis = analyze_intake(
+            fact_texts, fact_supports, matter_name, metadata_repository, tenant_id=tenant_id,
+            intake_session_id=intake_session_id, matter_id=matter_id,
+        )
+    except ClaudeUnavailable as exc:
+        analysis_note = (
+            "Analysis method: template (automated library matching; not written by Claude - "
+            f"{exc})"
+        )
+    else:
+        summary = analysis.summary
+        rag_sections = {
+            **rag_sections,
+            "potential_causes_of_action": analysis.potential_causes_of_action,
+            "strengths": analysis.strengths,
+            "weaknesses": analysis.weaknesses,
+            "missing_information": analysis.missing_information,
+            "citations": [_citation_dict(c) for c in analysis.cited_chunks],
+        }
+        research_suggestions = analysis.research_suggestions
+        analysis_note = (
+            f"Analysis method: written by Claude ({analysis.model}) from the intake and the firm's library "
+            "passages listed under Citations. Legal authority comes only from those passages."
+            + (f" {len(analysis.removed_citations)} citation(s) not found in the library were removed."
+               if analysis.removed_citations else "")
+        )
+
     return StructuredReport(
         intake_session_id=intake_session_id,
         matter_name=matter_name,
@@ -117,5 +153,7 @@ def build_structured_report(
         strengths=rag_sections["strengths"],
         weaknesses=rag_sections["weaknesses"],
         missing_information=rag_sections["missing_information"],
+        research_suggestions=research_suggestions,
+        analysis_note=analysis_note,
         disclaimer_text=get_current_disclaimer_text(metadata_repository, tenant_id=tenant_id),
     )

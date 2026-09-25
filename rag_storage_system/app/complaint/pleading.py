@@ -6,7 +6,9 @@ a ComplaintDraft and rendered either on California pleading paper
 (template_fill.py).
 
 Same rules as the rest of app/complaint/: nothing is invented. Facts come
-from the intake, authority from the curated cause-of-action library;
+from the intake (as Claude-drafted allegations when claude_drafting.py
+ran, otherwise element by element), authority from the curated
+cause-of-action library plus library citations verified in code;
 anything unknown (defendant, case number, relief, dates) stays a bracketed
 placeholder for the attorney. Research suggestions are never part of the
 pleading - they go on a separate "remove before filing" attorney page.
@@ -112,6 +114,10 @@ def build_pleading_content(
            "this complaint when they are ascertained. [ATTORNEY TO CONFIRM]")
     body.append(PleadingBlock("heading", "JURISDICTION AND VENUE"))
     allege(draft.jurisdiction_placeholder)
+    if draft.general_allegations:
+        body.append(PleadingBlock("heading", "GENERAL ALLEGATIONS"))
+        for allegation in draft.general_allegations:
+            allege(allegation)
     last_general = number
 
     for index, cause in enumerate(causes, start=1):
@@ -119,12 +125,16 @@ def build_pleading_content(
         body.append(PleadingBlock("subheading", f"({cause.name})"))
         body.append(PleadingBlock("subheading", f"(Against {defendant} and DOES 1 through 20)"))
         allege(f"Plaintiff incorporates by reference paragraphs 1 through {last_general} as though fully set forth here.")
-        for element in cause.elements:
-            if element.satisfied_by:
-                allege(f"{element.description}: {element.satisfied_by}")
-            else:
-                allege(f"{element.description}: {element.placeholder}")
-        allege(f"Authority: {cause.authority_citation}")
+        if cause.allegations:
+            for allegation in cause.allegations:
+                allege(allegation)
+        else:
+            for element in cause.elements:
+                if element.satisfied_by:
+                    allege(f"{element.description}: {element.satisfied_by}")
+                else:
+                    allege(f"{element.description}: {element.placeholder}")
+        allege("Authority: " + "; ".join(dict.fromkeys([cause.authority_citation, *cause.verified_authorities])))
 
     body.append(PleadingBlock("heading", "PRAYER FOR RELIEF"))
     body.append(PleadingBlock("text", "WHEREFORE, Plaintiff prays for judgment against Defendants, and each of them, as follows:"))
@@ -138,6 +148,10 @@ def build_pleading_content(
     body.append(PleadingBlock("signature", attorney_lines[-1]))
 
     notes: list[tuple[str, list[str]]] = [("Attorney review", [draft.attorney_review_notice])]
+    if draft.drafting_note:
+        notes.append(("How this draft was prepared", [draft.drafting_note]))
+    if draft.ai_research_suggestions:
+        notes.append(("Research questions (NOT cited authority - attorney must verify)", draft.ai_research_suggestions))
     for cause in causes:
         if cause.research_suggestions:
             notes.append((

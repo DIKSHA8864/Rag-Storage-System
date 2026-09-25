@@ -18,6 +18,8 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 const PROMPT_SLOTS = [
   { name: "narrative_system_prompt", label: "Client Report Narrative (Claude)" },
   { name: "answer_system_prompt", label: "Research Answer Generation (Claude)" },
+  { name: "intake_report_system_prompt", label: "Intake Report Analysis (Claude)" },
+  { name: "complaint_drafting_system_prompt", label: "Complaint Allegations (Claude)" },
 ];
 
 export function PromptManager() {

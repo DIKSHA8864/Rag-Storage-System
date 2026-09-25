@@ -31,6 +31,7 @@ from app.api.schemas import (
 )
 from app.api.pleading_api import load_template_bytes
 from app.complaint.builder import build_complaint_draft
+from app.complaint.claude_drafting import apply_claude_drafting
 from app.complaint.pleading import build_pleading_content
 from app.complaint.pleading_paper import render_pleading_paper
 from app.complaint.template_fill import TemplateError, fill_template
@@ -101,6 +102,10 @@ def generate_complaint(
     draft = build_complaint_draft(
         session_id, session["matter_id"], matter["name"] if matter else "Unknown Matter",
         request.cause_of_action_ids, repo, tenant_id=owner["tenant_id"],
+    )
+    apply_claude_drafting(
+        draft, session["matter_id"], repo, tenant_id=owner["tenant_id"],
+        plaintiff_name=request.plaintiff_name, defendant_name=request.defendant_name,
     )
 
     renderer = renderer_cls()

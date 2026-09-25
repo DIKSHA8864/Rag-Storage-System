@@ -75,6 +75,13 @@ class StructuredReport(BaseModel):
 
     citations: list[ReportCitation] = Field(default_factory=list)
 
+    # Blueprint "suggestion channel": questions the attorney may research
+    # beyond the library - never legal authority, always rendered apart from it.
+    research_suggestions: list[str] = Field(default_factory=list)
+    # How the analysis was produced (Claude from library passages, or the
+    # template fallback) and what the citation lock removed - for the reviewer.
+    analysis_note: str | None = None
+
     attorney_review_notice: str = (
         "This report summarizes information submitted by the Client and any "
         "automated extraction performed on it. It has not been reviewed by an "

@@ -48,6 +48,9 @@ class FactSupport:
     fact_text: str
     classification: str  # "match" | "partial_match" | "gap" | "unavailable"
     citations: list[dict] = field(default_factory=list)
+    # The retrieved chunks behind `citations` (text included) - what the
+    # Claude-written analysis (app/report/claude_analysis.py) reasons over.
+    passages: list[dict] = field(default_factory=list)
 
 
 def _citation_dict(chunk: dict) -> dict:
@@ -100,9 +103,10 @@ def gather_fact_support(
             continue
 
         classification = classify_score(chunks[0]["final_score"]) if chunks else "gap"
-        citations = [_citation_dict(c) for c in chunks if classify_score(c["final_score"]) != "gap"]
+        kept = [c for c in chunks if classify_score(c["final_score"]) != "gap"]
+        citations = [_citation_dict(c) for c in kept]
 
-        results.append(FactSupport(fact_text=fact_text, classification=classification, citations=citations))
+        results.append(FactSupport(fact_text=fact_text, classification=classification, citations=citations, passages=kept))
 
     return results
 

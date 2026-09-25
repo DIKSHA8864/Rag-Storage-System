@@ -38,6 +38,19 @@ def _find_supporting_fact(element_description: str, fact_pool: list[str]) -> str
     return best_fact if best_overlap >= 2 else None
 
 
+def intake_fact_pool(intake_session_id: int, metadata_repository: MetadataRepository) -> list[str]:
+    """The intake's recorded answers plus the text extracted from the Client's uploads."""
+
+    intake_facts = metadata_repository.list_intake_facts(intake_session_id)
+    fact_pool = [f"{f['fact_key']}: {f['fact_value']}" for f in intake_facts if f["fact_value"].strip()]
+
+    for uploaded_input in metadata_repository.list_uploaded_inputs(intake_session_id):
+        for info in metadata_repository.list_extracted_information(uploaded_input["id"]):
+            if info["text"].strip():
+                fact_pool.append(info["text"])
+    return fact_pool
+
+
 def build_complaint_draft(
     intake_session_id: int,
     matter_id: int,
@@ -46,14 +59,7 @@ def build_complaint_draft(
     metadata_repository: MetadataRepository,
     tenant_id: int = 1,
 ) -> ComplaintDraft:
-    intake_facts = metadata_repository.list_intake_facts(intake_session_id)
-    fact_pool = [f"{f['fact_key']}: {f['fact_value']}" for f in intake_facts if f["fact_value"].strip()]
-
-    uploaded_inputs = metadata_repository.list_uploaded_inputs(intake_session_id)
-    for uploaded_input in uploaded_inputs:
-        for info in metadata_repository.list_extracted_information(uploaded_input["id"]):
-            if info["text"].strip():
-                fact_pool.append(info["text"])
+    fact_pool = intake_fact_pool(intake_session_id, metadata_repository)
 
     causes_of_action = []
     for cause_id in cause_of_action_ids:

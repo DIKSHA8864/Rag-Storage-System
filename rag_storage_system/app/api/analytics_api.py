@@ -32,7 +32,7 @@ _TOP_SOURCES = 10
 
 
 def _prices() -> dict[str, tuple[float, float]]:
-    """LLM_PRICES='{"claude-opus-5": [15, 75]}' - USD per million input / output tokens, per model."""
+    """LLM_PRICES='{"<model>": [<input>, <output>]}' - USD per million input / output tokens, per model."""
 
     raw = get_settings().llm_prices.strip()
     if not raw:

@@ -11,7 +11,7 @@ from app.report.schema import StructuredReport
 
 def report_sections(report: StructuredReport) -> list[tuple[str, list[str]]]:
     sections: list[tuple[str, list[str]]] = [
-        ("Summary", [report.summary]),
+        ("Summary", [report.summary] + ([report.analysis_note] if report.analysis_note else [])),
     ]
 
     if report.timeline:
@@ -59,6 +59,12 @@ def report_sections(report: StructuredReport) -> list[tuple[str, list[str]]]:
                 ],
             )
         )
+
+    if report.research_suggestions:
+        sections.append((
+            "Research Suggestions (NOT cited authority - attorney must verify)",
+            report.research_suggestions,
+        ))
 
     sections.append(("Attorney Review Notice", [report.attorney_review_notice]))
     sections.append(("Disclaimer", [report.disclaimer_text]))

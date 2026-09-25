@@ -43,6 +43,11 @@ class ComplaintCauseOfAction(BaseModel):
     authority_citation: str = Field(..., description="Curated, library-only - never generated.")
     elements: list[ComplaintElement]
     research_suggestions: list[ResearchSuggestion] = Field(default_factory=list)
+    # Written by Claude (app/complaint/claude_drafting.py) when available -
+    # otherwise empty and the element list above is pleaded instead.
+    allegations: list[str] = Field(default_factory=list)
+    # Authority Claude cited, each verified in code against the library passage it came from.
+    verified_authorities: list[str] = Field(default_factory=list)
 
 
 class ComplaintDraft(BaseModel):
@@ -55,6 +60,12 @@ class ComplaintDraft(BaseModel):
     jurisdiction_placeholder: str = "[JURISDICTION/VENUE TO BE PROVIDED BY ATTORNEY]"
 
     causes_of_action: list[ComplaintCauseOfAction]
+
+    # Facts common to every cause of action (employment, timeline) - Claude-drafted when available.
+    general_allegations: list[str] = Field(default_factory=list)
+    # Questions to research beyond the library - never cited authority.
+    ai_research_suggestions: list[str] = Field(default_factory=list)
+    drafting_note: str | None = None
 
     attorney_review_notice: str = (
         "This is a DRAFT pleading assembled from Client intake data and the firm's curated legal-elements "
