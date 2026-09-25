@@ -30,6 +30,7 @@ from app.api.schemas import (
     InterviewStateInfo,
 )
 from app.intake_engine.engine import resume_interview, start_interview, submit_message
+from app.intake_engine.state_machine import TOTAL_QUESTIONS, question_number
 from app.security.auth import current_matter, require_end_user_key
 
 router = APIRouter(
@@ -48,6 +49,8 @@ def _state_info(row: dict) -> InterviewStateInfo:
         current_state=row["current_state"],
         current_step_index=row["current_step_index"],
         mandatory_sweep_completed=bool(row["mandatory_sweep_completed"]),
+        question_number=question_number(row["current_state"], row["current_step_index"]),
+        total_questions=TOTAL_QUESTIONS,
     )
 
 

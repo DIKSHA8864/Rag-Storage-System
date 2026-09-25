@@ -21,6 +21,27 @@ def first_prompt() -> str:
     return prompt_text(InterviewState.LANGUAGE_SELECTION, language=None)
 
 
+TOTAL_QUESTIONS = len(MANDATORY_SWEEP_QUESTIONS) + len(PROTECTED_ACTIVITY_QUESTIONS) + 1  # + the closing narrative
+
+
+def question_number(current_state: str, current_step_index: int) -> int | None:
+    """
+    1-based position of the question currently being asked, out of
+    TOTAL_QUESTIONS - so the client always sees how far along a
+    fixed-length interview they are. None before the questions start
+    (language/terms) and once it's complete.
+    """
+
+    state = InterviewState(current_state)
+    if state == InterviewState.MANDATORY_SWEEP:
+        return current_step_index + 1
+    if state == InterviewState.PROTECTED_ACTIVITY:
+        return len(MANDATORY_SWEEP_QUESTIONS) + current_step_index + 1
+    if state == InterviewState.GENERAL_NARRATIVE:
+        return TOTAL_QUESTIONS
+    return None
+
+
 def advance(context: InterviewContext, user_input: str) -> StateMachineResult:
     """Apply one user turn to `context` and return the result. Never mutates `context` - always returns a new one."""
 

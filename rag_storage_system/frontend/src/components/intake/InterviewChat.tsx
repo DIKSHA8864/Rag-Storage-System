@@ -50,6 +50,23 @@ const LANGUAGE_QUICK_REPLIES = [
   { label: "Espanol", value: "espanol" },
 ];
 
+// Every screening / protected-activity question is a yes-or-no question
+// (app/intake_engine/mandatory_sweep.py, protected_activity.py) - one tap
+// answers it; the text box stays available for anything more to add.
+function yesNoQuickReplies(language: string | null): { label: string; value: string }[] {
+  return language === "es"
+    ? [
+        { label: "Si", value: "Si" },
+        { label: "No", value: "No" },
+        { label: "No estoy seguro/a", value: "No estoy seguro/a" },
+      ]
+    : [
+        { label: "Yes", value: "Yes" },
+        { label: "No", value: "No" },
+        { label: "Not sure", value: "Not sure" },
+      ];
+}
+
 function termsQuickReply(language: string | null): { label: string; value: string } {
   return language === "es" ? { label: "Acepto", value: "acepto" } : { label: "I agree", value: "i agree" };
 }
@@ -215,10 +232,30 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
         })}
       </div>
 
-      {(state.current_state === "mandatory_sweep" || state.current_state === "protected_activity") && (
-        <p style={{ fontSize: "0.8rem", color: "#999" }}>
-          {state.language === "es" ? "Pregunta" : "Question"} {state.current_step_index + 1}
-        </p>
+      {state.question_number !== null && (
+        <div style={{ margin: "0 0 0.75rem 0" }}>
+          <p style={{ fontSize: "0.85rem", color: "#555", margin: "0 0 0.3rem 0" }}>
+            {state.language === "es"
+              ? `Pregunta ${state.question_number} de ${state.total_questions}`
+              : `Question ${state.question_number} of ${state.total_questions}`}
+            {state.question_number === 1 &&
+              (state.language === "es"
+                ? " - preguntas cortas, casi todas de si o no (unos 5 minutos)."
+                : " - short questions, mostly yes or no (about 5 minutes).")}
+            {state.question_number === state.total_questions &&
+              (state.language === "es" ? " - la ultima pregunta." : " - the last question.")}
+          </p>
+          <div style={{ height: 6, background: "#eee", borderRadius: 3 }}>
+            <div
+              style={{
+                width: `${Math.round(((state.question_number - 1) / state.total_questions) * 100)}%`,
+                height: "100%",
+                background: "#1a5fb4",
+                borderRadius: 3,
+              }}
+            />
+          </div>
+        </div>
       )}
 
       <div
@@ -291,15 +328,48 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
             </div>
           )}
 
-          <form onSubmit={handleSubmit} style={{ display: "flex", gap: "0.5rem" }}>
-            <input
-              type="text"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              disabled={isSending}
-              placeholder={state.language === "es" ? "Escriba su respuesta..." : "Type your answer..."}
-              style={{ flex: 1 }}
-            />
+          {(state.current_state === "mandatory_sweep" || state.current_state === "protected_activity") && (
+            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
+              {yesNoQuickReplies(state.language).map((option) => (
+                <button key={option.value} type="button" onClick={() => handleSend(option.value)} disabled={isSending}>
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
+            {state.current_state === "general_narrative" ? (
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                disabled={isSending}
+                rows={6}
+                placeholder={
+                  state.language === "es"
+                    ? "Cuente lo que paso, con sus propias palabras..."
+                    : "Tell us what happened, in your own words..."
+                }
+                style={{ flex: 1, resize: "vertical" }}
+              />
+            ) : (
+              <input
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                disabled={isSending}
+                placeholder={
+                  state.current_state === "mandatory_sweep" || state.current_state === "protected_activity"
+                    ? state.language === "es"
+                      ? "O escriba mas detalles..."
+                      : "Or type more detail..."
+                    : state.language === "es"
+                      ? "Escriba su respuesta..."
+                      : "Type your answer..."
+                }
+                style={{ flex: 1 }}
+              />
+            )}
             <button type="submit" disabled={isSending || draft.trim() === ""} aria-busy={isSending}>
               {isSending ? "..." : state.language === "es" ? "Enviar" : "Send"}
             </button>

@@ -167,3 +167,28 @@ def test_getting_a_foreign_session_facts_404s(client, repo):
 
     response = client.get(f"/end-user/intake/sessions/{foreign_session['id']}/facts")
     assert response.status_code == 404
+
+def test_every_question_shows_its_number_out_of_a_fixed_total(client):
+    """The interview is a fixed length - the client always sees 'Question X of Y', ending at Y."""
+
+    from app.intake_engine.state_machine import TOTAL_QUESTIONS
+
+    assert TOTAL_QUESTIONS == len(MANDATORY_SWEEP_QUESTIONS) + len(PROTECTED_ACTIVITY_QUESTIONS) + 1
+
+    session_id = _new_session(client)
+    start = client.post(f"/end-user/intake/sessions/{session_id}/interview/start").json()
+    assert start["state"]["question_number"] is None
+    assert start["state"]["total_questions"] == TOTAL_QUESTIONS
+
+    client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "english"})
+    step = client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "I agree"}).json()
+
+    seen = []
+    while step["state"]["current_state"] != "complete":
+        seen.append(step["state"]["question_number"])
+        step = client.post(
+            f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "No"}
+        ).json()
+
+    assert seen == list(range(1, TOTAL_QUESTIONS + 1))
+    assert step["state"]["question_number"] is None

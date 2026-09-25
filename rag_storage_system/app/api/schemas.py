@@ -628,6 +628,11 @@ class InterviewStateInfo(BaseModel):
     current_state: str
     current_step_index: int
     mandatory_sweep_completed: bool
+    # "Question X of Y" - the interview is a fixed number of questions (see
+    # app/intake_engine/state_machine.py's TOTAL_QUESTIONS). question_number
+    # is None before the questions start and after the interview completes.
+    question_number: int | None = None
+    total_questions: int
 
 
 class InterviewStartResponse(BaseModel):

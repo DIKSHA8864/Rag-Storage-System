@@ -152,6 +152,9 @@ export interface InterviewStateInfo {
   current_state: string;
   current_step_index: number;
   mandatory_sweep_completed: boolean;
+  // "Question X of Y" - null before the questions start and once complete.
+  question_number: number | null;
+  total_questions: number;
 }
 
 export interface InterviewStartResponse {
