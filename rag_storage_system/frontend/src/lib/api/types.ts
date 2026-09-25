@@ -665,3 +665,37 @@ export interface DocumentTemplateListResponse {
   templates: DocumentTemplateInfo[];
   placeholders: string[];
 }
+
+// Owner analytics (app/api/analytics_api.py).
+export interface AnalyticsResponse {
+  days: number;
+  since: string;
+  questions: {
+    total: number;
+    per_day: { date: string; count: number }[];
+    by_purpose: Record<string, number>;
+    outcomes: Record<string, number>;
+    honest_gap_rate: number | null;
+    median_latency_ms: number | null;
+    p95_latency_ms: number | null;
+  };
+  usage: {
+    calls: number;
+    input_tokens: number;
+    output_tokens: number;
+    estimated_cost_usd: number | null;
+    by_model: { model: string; calls: number; input_tokens: number; output_tokens: number; estimated_cost_usd: number | null }[];
+  };
+  intake: {
+    sessions: number;
+    interviews_started: number;
+    terms_accepted: number;
+    interviews_completed: number;
+    reports_generated: number;
+    reports_approved: number;
+    intake_uploads: number;
+    case_documents: number;
+  };
+  library_by_status: Record<string, number>;
+  top_sources: { category: string; filename: string; count: number }[];
+}

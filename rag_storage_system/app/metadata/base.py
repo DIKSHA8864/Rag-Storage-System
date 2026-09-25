@@ -562,6 +562,21 @@ class MetadataRepository(ABC):
         raise NotImplementedError
 
     # ------------------------------------------------------------------
+    # Analytics (read-only aggregates for /admin/analytics)
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def list_llm_usage_since(self, tenant_id: int, since: str, limit: int = 50000) -> list[dict]:
+        """Every usage-log row for `tenant_id` since `since` (ISO time), oldest first, chunk id lists decoded."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def intake_funnel_counts(self, tenant_id: int, since: str) -> dict:
+        """sessions, interviews_started, terms_accepted, interviews_completed, reports_generated, reports_approved,
+        intake_uploads, case_documents - for intakes/uploads created since `since`."""
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
     # Vault sync (migration 0022) and duplicate detection
     # ------------------------------------------------------------------
 

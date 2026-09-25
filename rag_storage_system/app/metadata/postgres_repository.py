@@ -1126,6 +1126,54 @@ class PostgresMetadataRepository(MetadataRepository):
         return cursor.rowcount > 0
 
     # ------------------------------------------------------------------
+    # Analytics
+    # ------------------------------------------------------------------
+
+    def list_llm_usage_since(self, tenant_id: int, since: str, limit: int = 50000) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT created_at, purpose, model, input_tokens, output_tokens, latency_ms, citation_check_result, "
+                "query_text IS NOT NULL AS is_question, retrieved_chunk_ids FROM llm_usage_log "
+                "WHERE tenant_id = %s AND created_at >= %s ORDER BY created_at LIMIT %s",
+                (tenant_id, since, limit),
+            ).fetchall()
+        return [{**dict(r), "retrieved_chunk_ids": r["retrieved_chunk_ids"] or []} for r in rows]
+
+    def intake_funnel_counts(self, tenant_id: int, since: str) -> dict:
+        with self._connect() as conn:
+            funnel = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS sessions,
+                    COUNT(i.id) AS interviews_started,
+                    COUNT(i.terms_accepted_at) AS terms_accepted,
+                    SUM(CASE WHEN i.current_state = 'complete' THEN 1 ELSE 0 END) AS interviews_completed,
+                    SUM(CASE WHEN EXISTS (SELECT 1 FROM reports r WHERE r.intake_session_id = s.id) THEN 1 ELSE 0 END)
+                        AS reports_generated,
+                    SUM(CASE WHEN EXISTS (
+                        SELECT 1 FROM reports r JOIN report_reviews rr ON rr.report_id = r.id
+                        WHERE r.intake_session_id = s.id AND rr.status = 'approved'
+                    ) THEN 1 ELSE 0 END) AS reports_approved
+                FROM intake_sessions s
+                LEFT JOIN matters m ON m.id = s.matter_id
+                LEFT JOIN interview_state i ON i.intake_session_id = s.id
+                WHERE (m.tenant_id = %(t)s OR (s.matter_id = 0 AND %(t)s = 1)) AND s.created_at >= %(since)s
+""",
+                {"t": tenant_id, "since": since},
+            ).fetchone()
+            uploads = conn.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM uploaded_inputs u
+                     JOIN intake_sessions s ON s.id = u.intake_session_id LEFT JOIN matters m ON m.id = s.matter_id
+                     WHERE (m.tenant_id = %(t)s OR (s.matter_id = 0 AND %(t)s = 1)) AND u.created_at >= %(since)s) AS intake_uploads,
+                    (SELECT COUNT(*) FROM matter_documents d WHERE d.tenant_id = %(t)s AND d.created_at >= %(since)s) AS case_documents
+""",
+                {"t": tenant_id, "since": since},
+            ).fetchone()
+        return {key: int(value or 0) for key, value in {**dict(funnel), **dict(uploads)}.items()}
+
+    # ------------------------------------------------------------------
     # Vault sync and duplicate detection
     # ------------------------------------------------------------------
 

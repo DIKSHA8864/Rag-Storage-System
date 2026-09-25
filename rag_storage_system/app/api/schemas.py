@@ -1204,3 +1204,21 @@ class DocumentTemplateInfo(BaseModel):
 class DocumentTemplateListResponse(BaseModel):
     templates: list[DocumentTemplateInfo]
     placeholders: list[str]  # every placeholder a template may use
+
+
+# ----------------------------------------------------------------------
+# Owner analytics (app/api/analytics_api.py)
+# ----------------------------------------------------------------------
+
+class AnalyticsResponse(BaseModel):
+    days: int
+    since: str  # first day included (UTC)
+    # total, per_day [{date, count}], by_purpose, outcomes, honest_gap_rate, median_latency_ms, p95_latency_ms
+    questions: dict
+    # calls, input_tokens, output_tokens, estimated_cost_usd (None unless every used model is priced), by_model
+    usage: dict
+    # sessions, interviews_started, terms_accepted, interviews_completed, reports_generated, reports_approved,
+    # intake_uploads, case_documents
+    intake: dict
+    library_by_status: dict
+    top_sources: list[dict]  # [{category, filename, count}] behind grounded answers

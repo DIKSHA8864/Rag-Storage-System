@@ -114,6 +114,11 @@ class VectorStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def chunk_sources(self, chunk_ids: list[str], tenant_id: int) -> dict[str, dict]:
+        """chunk_id -> {"filename", "category"} for those of `chunk_ids` that still exist in `tenant_id`'s index."""
+        raise NotImplementedError
+
+    @abstractmethod
     def count(self) -> int:
         """Total number of chunk embeddings currently stored."""
         raise NotImplementedError

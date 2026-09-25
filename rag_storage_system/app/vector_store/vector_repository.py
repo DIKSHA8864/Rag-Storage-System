@@ -186,6 +186,16 @@ class PgVectorRepository(VectorStore):
                 (tenant_id, category, filename),
             ).rowcount
 
+    def chunk_sources(self, chunk_ids: list[str], tenant_id: int) -> dict[str, dict]:
+        if not chunk_ids:
+            return {}
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT chunk_id, filename, category FROM chunk_embeddings WHERE tenant_id = %s AND chunk_id = ANY(%s)",
+                (tenant_id, list(chunk_ids)),
+            ).fetchall()
+        return {row["chunk_id"]: {"filename": row["filename"], "category": row["category"]} for row in rows}
+
     def delete_matter_document_chunks(self, matter_id: int, document_id: str, tenant_id: int) -> int:
         with self._connect() as conn:
             return conn.execute(

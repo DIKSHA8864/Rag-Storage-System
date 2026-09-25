@@ -213,6 +213,12 @@ class _FakeVectorStore:
                 updated += 1
         return updated
 
+    def chunk_sources(self, chunk_ids, tenant_id) -> dict:
+        return {
+            chunk_id: {"filename": row["filename"], "category": row["category"]}
+            for chunk_id, row in self._rows.items() if chunk_id in set(chunk_ids) and row["tenant_id"] == tenant_id
+        }
+
     def delete_matter_document_chunks(self, matter_id, document_id, tenant_id) -> int:
         doomed = [
             chunk_id for chunk_id, row in self._rows.items()

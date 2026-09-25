@@ -428,3 +428,30 @@ def test_pleading_settings_and_document_templates(repo):
     assert repo.get_document_template(template["id"], 2) is None
     assert repo.delete_document_template(template["id"], 2) is False
     assert repo.delete_document_template(template["id"], 1) is True
+
+
+def test_analytics_queries(repo):
+    import uuid
+    from datetime import datetime, timezone
+
+    if not isinstance(repo, SQLiteMetadataRepository):
+        with repo._connect() as conn:
+            conn.execute("TRUNCATE llm_usage_log")
+            conn.execute("INSERT INTO tenants (id, name, slug) VALUES (2, 'Second Firm', 'second-firm') ON CONFLICT DO NOTHING")
+    since = datetime(2000, 1, 1, tzinfo=timezone.utc).isoformat()
+    before = repo.intake_funnel_counts(1, since)
+
+    repo.add_llm_usage_log(None, None, "owner_research", "m", 5, 1, 10, query_text="q", retrieved_chunk_ids=["a"],
+                           retrieved_chunk_scores=[0.5], citation_check_result="grounded", tenant_id=1)
+    repo.add_llm_usage_log(None, None, "relevance_filter", "m", 5, 1, 10, tenant_id=1)
+    rows = repo.list_llm_usage_since(1, since)
+    assert [(r["is_question"], r["retrieved_chunk_ids"]) for r in rows] == [(True, ["a"]), (False, [])]
+    assert repo.list_llm_usage_since(2, since) == []
+
+    matter = repo.create_matter(f"Analytics {uuid.uuid4().hex[:6]}", uuid.uuid4().hex)
+    session = repo.create_intake_session(matter["id"], "A")
+    repo.create_interview_state(session["id"])
+    after = repo.intake_funnel_counts(1, since)
+    assert after["sessions"] == before["sessions"] + 1
+    assert after["interviews_started"] == before["interviews_started"] + 1
+    assert set(after) >= {"reports_approved", "intake_uploads", "case_documents"}

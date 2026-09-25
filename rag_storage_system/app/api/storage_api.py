@@ -339,6 +339,11 @@ from app.api.pleading_api import router as pleading_router  # noqa: E402
 
 app.include_router(pleading_router)
 
+# Owner analytics. See app/api/analytics_api.py.
+from app.api.analytics_api import router as analytics_router  # noqa: E402
+
+app.include_router(analytics_router)
+
 
 @app.get("/")
 def root() -> dict:
@@ -447,11 +452,12 @@ _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
     "/admin/stats",
     dependencies=[Depends(require_admin_key)],
 )
-def admin_stats() -> dict:
-    """Return server-side document and storage statistics for the admin dashboard."""
+def admin_stats(owner: dict | None = Depends(require_admin_key)) -> dict:
+    """Return server-side document and storage statistics for the admin dashboard - the caller's organization only."""
 
-    documents = metadata_repository.list_documents()
-    folders = metadata_repository.list_folders()
+    tenant_id = _owner_tenant(owner)
+    documents = metadata_repository.list_documents(tenant_id=tenant_id)
+    folders = metadata_repository.list_folders(tenant_id=tenant_id)
 
     status_counts = {
         "Uploaded": 0,

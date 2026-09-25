@@ -95,6 +95,11 @@ class Settings(BaseSettings):
     # (app/intake_engine/follow_ups.py). "" = no follow-ups.
     intake_framework_category: str = "Question Frameworks"
 
+    # Analytics cost estimate: '{"claude-opus-5": [15, 75]}' = USD per million
+    # input / output tokens per model (copy from your Anthropic pricing page).
+    # Empty = token counts only; cost is never guessed.
+    llm_prices: str = ""
+
     # ------------------------------------------------------------------
     # Upload validation
     # ------------------------------------------------------------------

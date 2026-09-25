@@ -41,6 +41,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link href="/prompts">Prompts</Link>
             <Link href="/billing">Billing</Link>
             <Link href="/activity">Activity</Link>
+            <Link href="/analytics">Analytics</Link>
             <Link href="/settings">Settings</Link>
           </nav>
         )}

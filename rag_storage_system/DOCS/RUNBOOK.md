@@ -114,6 +114,17 @@ the old order.
 - Research suggestions never go in the pleading itself. They're on a
   final "ATTORNEY NOTES - REMOVE BEFORE FILING" page.
 
+## Analytics
+
+Admin -> Analytics (owner only, your organization only; 7/30/90 days):
+questions per day and by where they were asked; how they were answered
+(cited, honest gap, withheld, errors); median and 95th-percentile answer
+time; the client intake funnel (started -> terms -> completed -> report
+generated -> approved); uploads; the most-cited library files; and model
+calls and tokens per model. Cost appears only after you set `LLM_PRICES`
+(USD per million input/output tokens per model, from Anthropic's pricing
+page). It is never guessed.
+
 ## Virus scanning
 
 Every upload is scanned before it is stored: library uploads and
