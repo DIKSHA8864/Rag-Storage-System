@@ -114,3 +114,12 @@ export async function apiRequestFormData<T>(
   const text = await response.text();
   return (text ? JSON.parse(text) : undefined) as T;
 }
+
+/** POST a JSON body and hand back the raw Response - for streamed (Server-Sent Events) replies. */
+export async function apiStreamRequest(path: string, body: unknown, token?: string | null): Promise<Response> {
+  return fetchOrThrow(
+    path,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    token
+  );
+}

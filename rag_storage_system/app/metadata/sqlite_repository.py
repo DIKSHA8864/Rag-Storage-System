@@ -106,6 +106,24 @@ CREATE TABLE IF NOT EXISTS retrieval_settings (
     updated_by TEXT
 );
 
+CREATE TABLE IF NOT EXISTS research_threads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    owner_sub TEXT NOT NULL,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS research_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id INTEGER NOT NULL REFERENCES research_threads(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    sources TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS tenant_disclaimers (
     tenant_id INTEGER PRIMARY KEY,
     text TEXT NOT NULL,
@@ -1364,6 +1382,89 @@ class SQLiteMetadataRepository(MetadataRepository):
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM llm_usage_log WHERE id = ?", (new_id,)).fetchone()
         return dict(row)
+
+    # ------------------------------------------------------------------
+    # Owner research threads
+    # ------------------------------------------------------------------
+
+    _THREAD_COLUMNS = "id, tenant_id, owner_sub, title, created_at, updated_at"
+
+    def create_research_thread(self, tenant_id: int, owner_sub: str, title: str) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO research_threads (tenant_id, owner_sub, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (tenant_id, owner_sub, title, now, now),
+            )
+            new_id = cursor.lastrowid
+        return self.get_research_thread(new_id, tenant_id, owner_sub)
+
+    def list_research_threads(self, tenant_id: int, owner_sub: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT t.id, t.tenant_id, t.owner_sub, t.title, t.created_at, t.updated_at,
+                       COUNT(m.id) AS message_count
+                FROM research_threads t LEFT JOIN research_messages m ON m.thread_id = t.id
+                WHERE t.tenant_id = ? AND t.owner_sub = ?
+                GROUP BY t.id
+                ORDER BY t.updated_at DESC, t.id DESC
+                """,
+                (tenant_id, owner_sub),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_research_thread(self, thread_id: int, tenant_id: int, owner_sub: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT {self._THREAD_COLUMNS} FROM research_threads WHERE id = ? AND tenant_id = ? AND owner_sub = ?",
+                (thread_id, tenant_id, owner_sub),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def rename_research_thread(self, thread_id: int, tenant_id: int, owner_sub: str, title: str) -> Optional[dict]:
+        with self._connect() as conn:
+            updated = conn.execute(
+                "UPDATE research_threads SET title = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND owner_sub = ?",
+                (title, _now(), thread_id, tenant_id, owner_sub),
+            ).rowcount
+        return self.get_research_thread(thread_id, tenant_id, owner_sub) if updated else None
+
+    def delete_research_thread(self, thread_id: int, tenant_id: int, owner_sub: str) -> bool:
+        with self._connect() as conn:
+            if conn.execute(
+                "SELECT 1 FROM research_threads WHERE id = ? AND tenant_id = ? AND owner_sub = ?",
+                (thread_id, tenant_id, owner_sub),
+            ).fetchone() is None:
+                return False
+            conn.execute("DELETE FROM research_messages WHERE thread_id = ?", (thread_id,))
+            conn.execute("DELETE FROM research_threads WHERE id = ?", (thread_id,))
+        return True
+
+    def add_research_exchange(self, thread_id: int, question: str, answer: str, sources: list[dict]) -> None:
+        import json
+
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO research_messages (thread_id, role, content, sources, created_at) VALUES (?, 'user', ?, '[]', ?)",
+                (thread_id, question, now),
+            )
+            conn.execute(
+                "INSERT INTO research_messages (thread_id, role, content, sources, created_at) VALUES (?, 'assistant', ?, ?, ?)",
+                (thread_id, answer, json.dumps(sources), now),
+            )
+            conn.execute("UPDATE research_threads SET updated_at = ? WHERE id = ?", (now, thread_id))
+
+    def list_research_messages(self, thread_id: int) -> list[dict]:
+        import json
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, thread_id, role, content, sources, created_at FROM research_messages WHERE thread_id = ? ORDER BY id",
+                (thread_id,),
+            ).fetchall()
+        return [{**dict(r), "sources": json.loads(r["sources"] or "[]")} for r in rows]
 
     def list_llm_usage_log(
         self, tenant_id: int, limit: int = 50, offset: int = 0, questions_only: bool = False

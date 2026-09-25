@@ -312,6 +312,11 @@ from app.api.activity_api import router as activity_router  # noqa: E402
 
 app.include_router(activity_router)
 
+# Owner research threads + streaming answers. See app/api/research_threads_api.py.
+from app.api.research_threads_api import router as research_threads_router  # noqa: E402
+
+app.include_router(research_threads_router)
+
 
 @app.get("/")
 def root() -> dict:

@@ -1020,3 +1020,54 @@ class QueryLogEntry(BaseModel):
 class QueryLogResponse(BaseModel):
     entries: list[QueryLogEntry]
     total: int
+
+
+# ---------------------------------------------------------------------
+# Owner research threads + streaming (app/api/research_threads_api.py)
+# ---------------------------------------------------------------------
+
+
+class ResearchThreadInfo(BaseModel):
+    id: int
+    title: str
+    created_at: str
+    updated_at: str
+    message_count: int = 0
+
+
+class ResearchThreadListResponse(BaseModel):
+    threads: list[ResearchThreadInfo]
+
+
+class ResearchThreadCreateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+
+
+class ResearchThreadRenameRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
+
+class ResearchMessageInfo(BaseModel):
+    id: int
+    role: str  # "user" | "assistant"
+    content: str
+    sources: list[OwnerResearchSource] = []
+    created_at: str
+
+
+class ResearchThreadDetailResponse(BaseModel):
+    thread: ResearchThreadInfo
+    messages: list[ResearchMessageInfo]
+
+
+class ResearchStreamRequest(BaseModel):
+    """Body for POST /research/ask/stream - omit thread_id to start a new thread."""
+
+    query: str = Field(..., min_length=1, max_length=4000)
+    thread_id: int | None = None
+    top_k: int | None = Field(default=None, ge=1, le=50)
+    category: str | None = None
+
+
+class ResearchThreadExportRequest(BaseModel):
+    format: str = Field(..., pattern="^(docx|pdf)$")

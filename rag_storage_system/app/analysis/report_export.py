@@ -144,40 +144,53 @@ def _source_with_excerpt(source: dict) -> str:
     return f"{label}\n\u201c{excerpt}\u201d"
 
 
-def _owner_research_sections(
-    query: str, answer: str, sources: list[dict], disclaimer_text: str
-) -> list[tuple[str, list[str]]]:
+def _memo_blocks(
+    title: str, exchanges: list[dict], disclaimer_text: str, prepared_by: str | None, prepared_on: str
+) -> list[tuple[str, str, list[str]]]:
     """
-    Flatten a single Owner Research Q&A into (heading, paragraphs)
-    pairs - the same content model both DOCX and PDF export render
-    below, so the two formats can't drift apart. Renders exactly the
-    query, answer, and sources the client already has from
-    POST /research/ask; never re-runs retrieval or generation.
+    A research memorandum (Blueprint Phase 2: "heading, question presented,
+    analysis, authorities cited") as (kind, heading, paragraphs) blocks -
+    the one content model both DOCX and PDF render, so they can't drift.
+    `exchanges` are {"question", "answer", "sources"} exactly as shown on
+    screen / saved in the thread; nothing is re-retrieved or re-generated.
     """
 
-    sections: list[tuple[str, list[str]]] = [
-        ("Question", [query]),
-        ("Answer", [answer]),
-    ]
+    header = [f"RE: {title}", f"DATE: {prepared_on}"]
+    if prepared_by:
+        header.append(f"FROM: {prepared_by}")
+    blocks: list[tuple[str, str, list[str]]] = [("header", "", header)]
 
-    if sources:
-        sections.append(("Sources", [_source_with_excerpt(s) for s in sources]))
-    else:
-        sections.append(("Sources", ["No sources - the library did not support this answer."]))
+    numbered = len(exchanges) > 1
+    for number, exchange in enumerate(exchanges, start=1):
+        suffix = f" {number}" if numbered else ""
+        sources = exchange.get("sources") or []
+        blocks.append(("h1", f"Question Presented{suffix}", [exchange["question"]]))
+        blocks.append(("h2", "Analysis", [exchange["answer"]]))
+        blocks.append((
+            "h2", "Authorities Cited",
+            [_source_with_excerpt(s) for s in sources]
+            or ["None - the firm's library did not contain authority on this point."],
+        ))
 
-    sections.append(("Disclaimer", [disclaimer_text]))
+    blocks.append(("h1", "Disclaimer", [disclaimer_text]))
+    return blocks
 
-    return sections
 
+def build_research_memo_docx(
+    title: str, exchanges: list[dict], disclaimer_text: str, prepared_by: str | None = None
+) -> bytes:
+    """Render research Q&A (one answer or a whole thread) as a .docx memorandum."""
 
-def build_owner_research_docx(query: str, answer: str, sources: list[dict], disclaimer_text: str) -> bytes:
-    """Render a single Owner Research answer + the current disclaimer as a .docx file."""
+    from datetime import date
 
     document = Document()
-    document.add_heading("Research Answer", level=0)
+    document.add_heading("Research Memorandum", level=0)
 
-    for heading, paragraphs in _owner_research_sections(query, answer, sources, disclaimer_text):
-        document.add_heading(heading, level=1)
+    for kind, heading, paragraphs in _memo_blocks(title, exchanges, disclaimer_text, prepared_by, date.today().isoformat()):
+        if kind == "h1":
+            document.add_heading(heading, level=1)
+        elif kind == "h2":
+            document.add_heading(heading, level=2)
         for paragraph in paragraphs:
             document.add_paragraph(paragraph)
 
@@ -186,12 +199,17 @@ def build_owner_research_docx(query: str, answer: str, sources: list[dict], disc
     return buffer.getvalue()
 
 
-def build_owner_research_pdf(query: str, answer: str, sources: list[dict], disclaimer_text: str) -> bytes:
-    """Render a single Owner Research answer + the current disclaimer as a .pdf file."""
+def build_research_memo_pdf(
+    title: str, exchanges: list[dict], disclaimer_text: str, prepared_by: str | None = None
+) -> bytes:
+    """Render research Q&A (one answer or a whole thread) as a .pdf memorandum."""
 
-    html_parts = ["<h1>Research Answer</h1>"]
-    for heading, paragraphs in _owner_research_sections(query, answer, sources, disclaimer_text):
-        html_parts.append(f"<h2>{html.escape(heading)}</h2>")
+    from datetime import date
+
+    html_parts = ["<h1>Research Memorandum</h1>"]
+    for kind, heading, paragraphs in _memo_blocks(title, exchanges, disclaimer_text, prepared_by, date.today().isoformat()):
+        if kind in ("h1", "h2"):
+            html_parts.append(f"<{kind}>{html.escape(heading)}</{kind}>")
         html_parts.extend(f"<p>{html.escape(paragraph).replace(chr(10), '<br/>')}</p>" for paragraph in paragraphs)
 
     story = pymupdf.Story(html="".join(html_parts))
@@ -210,3 +228,15 @@ def build_owner_research_pdf(query: str, answer: str, sources: list[dict], discl
 
     writer.close()
     return buffer.getvalue()
+
+
+def build_owner_research_docx(query: str, answer: str, sources: list[dict], disclaimer_text: str) -> bytes:
+    """A single Owner Research answer as a memo (see build_research_memo_docx())."""
+
+    return build_research_memo_docx(query, [{"question": query, "answer": answer, "sources": sources}], disclaimer_text)
+
+
+def build_owner_research_pdf(query: str, answer: str, sources: list[dict], disclaimer_text: str) -> bytes:
+    """A single Owner Research answer as a memo (see build_research_memo_pdf())."""
+
+    return build_research_memo_pdf(query, [{"question": query, "answer": answer, "sources": sources}], disclaimer_text)

@@ -5,9 +5,12 @@ import { useState, type FormEvent } from "react";
 interface ResearchQueryFormProps {
   onSubmit: (query: string) => void;
   isLoading: boolean;
+  /** Empty the box after asking - for follow-up questions in a thread. */
+  clearOnSubmit?: boolean;
+  label?: string;
 }
 
-export function ResearchQueryForm({ onSubmit, isLoading }: ResearchQueryFormProps) {
+export function ResearchQueryForm({ onSubmit, isLoading, clearOnSubmit = false, label = "Research question" }: ResearchQueryFormProps) {
   const [query, setQuery] = useState("");
 
   function handleSubmit(event: FormEvent) {
@@ -15,12 +18,13 @@ export function ResearchQueryForm({ onSubmit, isLoading }: ResearchQueryFormProp
     const trimmed = query.trim();
     if (trimmed === "") return;
     onSubmit(trimmed);
+    if (clearOnSubmit) setQuery("");
   }
 
   return (
     <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
       <label htmlFor="research-query" style={{ fontWeight: 600 }}>
-        Research question
+        {label}
       </label>
       <textarea
         id="research-query"

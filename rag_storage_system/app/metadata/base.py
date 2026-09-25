@@ -460,6 +460,43 @@ class MetadataRepository(ABC):
     ) -> dict:
         raise NotImplementedError
 
+    # ------------------------------------------------------------------
+    # Owner research threads (migration 0021) - always scoped to one
+    # organization AND the admin user who owns the thread (owner_sub).
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_research_thread(self, tenant_id: int, owner_sub: str, title: str) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_research_threads(self, tenant_id: int, owner_sub: str) -> list[dict]:
+        """Newest-updated first, each with a message_count."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_research_thread(self, thread_id: int, tenant_id: int, owner_sub: str) -> Optional[dict]:
+        """None unless the thread belongs to exactly this tenant AND owner."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def rename_research_thread(self, thread_id: int, tenant_id: int, owner_sub: str, title: str) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_research_thread(self, thread_id: int, tenant_id: int, owner_sub: str) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    def add_research_exchange(self, thread_id: int, question: str, answer: str, sources: list[dict]) -> None:
+        """Append one question + its answer (with its locked sources) and bump the thread's updated_at."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_research_messages(self, thread_id: int) -> list[dict]:
+        """Oldest first; `sources` decoded to a list."""
+        raise NotImplementedError
+
     @abstractmethod
     def list_llm_usage_log(
         self, tenant_id: int, limit: int = 50, offset: int = 0, questions_only: bool = False

@@ -531,3 +531,28 @@ export interface QueryLogResponse {
   entries: QueryLogEntry[];
   total: number;
 }
+
+// ---------------------------------------------------------------------
+// Owner research threads (app/api/research_threads_api.py)
+// ---------------------------------------------------------------------
+
+export interface ResearchThreadInfo {
+  id: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+}
+
+export interface ResearchMessageInfo {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  sources: OwnerResearchSource[];
+  created_at: string;
+}
+
+export interface ResearchThreadDetailResponse {
+  thread: ResearchThreadInfo;
+  messages: ResearchMessageInfo[];
+}

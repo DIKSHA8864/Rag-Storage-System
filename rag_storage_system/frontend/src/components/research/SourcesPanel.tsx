@@ -7,12 +7,19 @@ import type { OwnerResearchSource } from "@/lib/api/types";
 const OPEN_SOURCE_EVENT = "ashilegal:open-source";
 
 /** Called by AnswerPanel's inline citations: jump to that source AND show its passage. */
-export function openSourcePassage(index: number) {
-  window.dispatchEvent(new CustomEvent<number>(OPEN_SOURCE_EVENT, { detail: index }));
+export function openSourcePassage(index: number, scope?: string) {
+  window.dispatchEvent(new CustomEvent<{ index: number; scope?: string }>(OPEN_SOURCE_EVENT, { detail: { index, scope } }));
+}
+
+/** The DOM id of source card `index` - scoped when several answers share one page (a research thread). */
+export function sourceElementId(index: number, scope?: string): string {
+  return scope ? `${scope}-source-${index}` : `source-${index}`;
 }
 
 interface SourcesPanelProps {
   sources: OwnerResearchSource[];
+  /** Set when several answers are on one page, so citations open only their own answer's sources. */
+  scope?: string;
 }
 
 // Matter-scoped research (POST /admin/matters/{id}/research) mixes
@@ -41,17 +48,18 @@ function formatCategory(category: string): string {
  * from the backend), so the reader can check the answer against the
  * library text in seconds; a citation click in AnswerPanel opens it.
  */
-export function SourcesPanel({ sources }: SourcesPanelProps) {
+export function SourcesPanel({ sources, scope }: SourcesPanelProps) {
   const [openIndexes, setOpenIndexes] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     function handleOpen(event: Event) {
-      const index = (event as CustomEvent<number>).detail;
-      setOpenIndexes((prev) => new Set(prev).add(index));
+      const detail = (event as CustomEvent<{ index: number; scope?: string }>).detail;
+      if (detail.scope !== scope) return;
+      setOpenIndexes((prev) => new Set(prev).add(detail.index));
     }
     window.addEventListener(OPEN_SOURCE_EVENT, handleOpen);
     return () => window.removeEventListener(OPEN_SOURCE_EVENT, handleOpen);
-  }, []);
+  }, [scope]);
 
   function toggle(index: number) {
     setOpenIndexes((prev) => {
@@ -82,7 +90,7 @@ export function SourcesPanel({ sources }: SourcesPanelProps) {
           {sources.map((source, index) => (
             <li
               key={`${source.filename}-${index}`}
-              id={`source-${index}`}
+              id={sourceElementId(index, scope)}
               style={{
                 border: "1px solid #e5e5e5",
                 borderRadius: 4,

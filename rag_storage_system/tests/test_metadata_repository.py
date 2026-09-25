@@ -289,3 +289,26 @@ def test_list_llm_usage_log_is_per_organization_and_decodes_chunk_lists(repo):
     assert rows[0]["query_text"] == "q1"
     assert rows[0]["retrieved_chunk_ids"] == ["a", "b"]
     assert [float(s) for s in rows[0]["retrieved_chunk_scores"]] == [0.4, 0.6]
+
+
+def test_research_threads_are_per_owner_and_keep_sources(repo):
+    if not isinstance(repo, SQLiteMetadataRepository):
+        with repo._connect() as conn:
+            conn.execute("TRUNCATE research_threads, research_messages RESTART IDENTITY CASCADE")
+            conn.execute("INSERT INTO tenants (id, name, slug) VALUES (2, 'Second Firm', 'second-firm') ON CONFLICT DO NOTHING")
+
+    thread = repo.create_research_thread(1, "7", "Discovery")
+    repo.add_research_exchange(thread["id"], "Q?", "A [x.pdf].", [{"filename": "x.pdf", "excerpt": "passage"}])
+
+    assert repo.get_research_thread(thread["id"], 1, "8") is None
+    assert repo.get_research_thread(thread["id"], 2, "7") is None
+    assert [t["message_count"] for t in repo.list_research_threads(1, "7")] == [2]
+    messages = repo.list_research_messages(thread["id"])
+    assert [m["role"] for m in messages] == ["user", "assistant"]
+    assert messages[1]["sources"] == [{"filename": "x.pdf", "excerpt": "passage"}]
+
+    assert repo.rename_research_thread(thread["id"], 1, "8", "hijack") is None
+    assert repo.rename_research_thread(thread["id"], 1, "7", "Discovery memo")["title"] == "Discovery memo"
+    assert repo.delete_research_thread(thread["id"], 1, "8") is False
+    assert repo.delete_research_thread(thread["id"], 1, "7") is True
+    assert repo.list_research_messages(thread["id"]) == []

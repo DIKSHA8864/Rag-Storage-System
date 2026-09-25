@@ -1,11 +1,13 @@
 import type { OwnerResearchSource } from "@/lib/api/types";
 import { parseAnswerCitations } from "@/lib/research/citations";
-import { openSourcePassage } from "./SourcesPanel";
+import { openSourcePassage, sourceElementId } from "./SourcesPanel";
 
 interface AnswerPanelProps {
   answer: string;
   hasSupport: boolean;
   sources: OwnerResearchSource[];
+  /** Same `scope` as this answer's SourcesPanel, when several answers share one page. */
+  scope?: string;
 }
 
 /**
@@ -21,7 +23,7 @@ interface AnswerPanelProps {
  * answer is styled as an explicit "library doesn't support this"
  * notice instead of a normal answer, so that behavior stays visible.
  */
-export function AnswerPanel({ answer, hasSupport, sources }: AnswerPanelProps) {
+export function AnswerPanel({ answer, hasSupport, sources, scope }: AnswerPanelProps) {
   const segments = parseAnswerCitations(answer, sources);
 
   return (
@@ -47,8 +49,8 @@ export function AnswerPanel({ answer, hasSupport, sources }: AnswerPanelProps) {
           segment.type === "citation" && segment.sourceIndex !== undefined ? (
             <a
               key={i}
-              href={`#source-${segment.sourceIndex}`}
-              onClick={() => openSourcePassage(segment.sourceIndex as number)}
+              href={`#${sourceElementId(segment.sourceIndex, scope)}`}
+              onClick={() => openSourcePassage(segment.sourceIndex as number, scope)}
               title={sources[segment.sourceIndex]?.filename}
               style={{
                 display: "inline-block",

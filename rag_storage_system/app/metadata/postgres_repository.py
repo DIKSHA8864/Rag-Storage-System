@@ -939,6 +939,84 @@ class PostgresMetadataRepository(MetadataRepository):
             ).fetchone()
         return dict(row)
 
+    # ------------------------------------------------------------------
+    # Owner research threads
+    # ------------------------------------------------------------------
+
+    _THREAD_COLUMNS = "id, tenant_id, owner_sub, title, created_at, updated_at"
+
+    def create_research_thread(self, tenant_id: int, owner_sub: str, title: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                f"INSERT INTO research_threads (tenant_id, owner_sub, title) VALUES (%s, %s, %s) "
+                f"RETURNING {self._THREAD_COLUMNS}",
+                (tenant_id, owner_sub, title),
+            ).fetchone()
+        return dict(row)
+
+    def list_research_threads(self, tenant_id: int, owner_sub: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT t.id, t.tenant_id, t.owner_sub, t.title, t.created_at, t.updated_at,
+                       COUNT(m.id) AS message_count
+                FROM research_threads t LEFT JOIN research_messages m ON m.thread_id = t.id
+                WHERE t.tenant_id = %s AND t.owner_sub = %s
+                GROUP BY t.id
+                ORDER BY t.updated_at DESC, t.id DESC
+                """,
+                (tenant_id, owner_sub),
+            ).fetchall()
+        return [{**dict(r), "message_count": int(r["message_count"])} for r in rows]
+
+    def get_research_thread(self, thread_id: int, tenant_id: int, owner_sub: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT {self._THREAD_COLUMNS} FROM research_threads WHERE id = %s AND tenant_id = %s AND owner_sub = %s",
+                (thread_id, tenant_id, owner_sub),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def rename_research_thread(self, thread_id: int, tenant_id: int, owner_sub: str, title: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                f"UPDATE research_threads SET title = %s, updated_at = now() "
+                f"WHERE id = %s AND tenant_id = %s AND owner_sub = %s RETURNING {self._THREAD_COLUMNS}",
+                (title, thread_id, tenant_id, owner_sub),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def delete_research_thread(self, thread_id: int, tenant_id: int, owner_sub: str) -> bool:
+        with self._connect() as conn:
+            deleted = conn.execute(
+                "DELETE FROM research_threads WHERE id = %s AND tenant_id = %s AND owner_sub = %s",
+                (thread_id, tenant_id, owner_sub),
+            ).rowcount
+        return deleted > 0
+
+    def add_research_exchange(self, thread_id: int, question: str, answer: str, sources: list[dict]) -> None:
+        from psycopg.types.json import Jsonb
+
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO research_messages (thread_id, role, content) VALUES (%s, 'user', %s)",
+                (thread_id, question),
+            )
+            conn.execute(
+                "INSERT INTO research_messages (thread_id, role, content, sources) VALUES (%s, 'assistant', %s, %s)",
+                (thread_id, answer, Jsonb(sources)),
+            )
+            conn.execute("UPDATE research_threads SET updated_at = now() WHERE id = %s", (thread_id,))
+
+    def list_research_messages(self, thread_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, thread_id, role, content, sources, created_at FROM research_messages "
+                "WHERE thread_id = %s ORDER BY id",
+                (thread_id,),
+            ).fetchall()
+        return [{**dict(r), "sources": r["sources"] or []} for r in rows]
+
     def list_llm_usage_log(
         self, tenant_id: int, limit: int = 50, offset: int = 0, questions_only: bool = False
     ) -> tuple[list[dict], int]:
