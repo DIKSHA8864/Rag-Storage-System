@@ -940,6 +940,53 @@ class PostgresMetadataRepository(MetadataRepository):
         return dict(row)
 
     # ------------------------------------------------------------------
+    # Guided intake flow v2
+    # ------------------------------------------------------------------
+
+    def set_interview_extras(
+        self, intake_session_id: int, *, flow_version=None, terms_accepted_ip=None,
+        follow_up_questions=None, checklist_snapshot=None,
+    ) -> None:
+        from psycopg.types.json import Jsonb
+
+        values = {
+            "flow_version": flow_version,
+            "terms_accepted_ip": terms_accepted_ip,
+            "follow_up_questions": Jsonb(follow_up_questions) if follow_up_questions is not None else None,
+            "checklist_snapshot": Jsonb(checklist_snapshot) if checklist_snapshot is not None else None,
+        }
+        changes = {column: value for column, value in values.items() if value is not None}
+        if not changes:
+            return
+        assignments = ", ".join(f"{column} = %s" for column in changes)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE interview_state SET {assignments}, updated_at = now() WHERE intake_session_id = %s",
+                (*changes.values(), intake_session_id),
+            )
+
+    def get_intake_checklist(self, tenant_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM intake_checklist_questions WHERE tenant_id = %s ORDER BY position", (tenant_id,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def replace_intake_checklist(self, tenant_id: int, items: list[dict], updated_by: Optional[str]) -> list[dict]:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM intake_checklist_questions WHERE tenant_id = %s", (tenant_id,))
+            for position, item in enumerate(items):
+                conn.execute(
+                    """
+                    INSERT INTO intake_checklist_questions
+                        (tenant_id, key, prompt_en, prompt_es, position, is_active, updated_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (tenant_id, item["key"], item["prompt_en"], item["prompt_es"], position, item["is_active"], updated_by),
+                )
+        return self.get_intake_checklist(tenant_id)
+
+    # ------------------------------------------------------------------
     # Vault sync and duplicate detection
     # ------------------------------------------------------------------
 

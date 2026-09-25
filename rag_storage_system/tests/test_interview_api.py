@@ -48,63 +48,188 @@ def test_starting_a_foreign_session_interview_404s(client, repo):
     assert response.status_code == 404
 
 
-def test_full_english_walkthrough_reaches_completion(client):
+_STORY = "I worked at Acme as a cook. They fired me two weeks after I complained about unpaid overtime."
+_FOLLOW_UPS = ["How many hours a week did you usually work?", "Who did you complain to?"]
+_KEY_DATES = ["April 2021", "2023", "March 2023", "June 2023"]
+
+
+@pytest.fixture
+def follow_ups(monkeypatch):
+    """Stands in for Claude + the firm's question frameworks (app/intake_engine/follow_ups.py)."""
+
+    import app.intake_engine.engine as engine
+
+    calls = []
+
+    def fake_generate(story, language, tenant_id):
+        calls.append((story, language, tenant_id))
+        return list(_FOLLOW_UPS)
+
+    monkeypatch.setattr(engine, "generate_follow_up_questions", fake_generate)
+    return calls
+
+
+def _say(client, session_id, message):
+    return client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": message}).json()
+
+
+def test_full_english_walkthrough_reaches_completion(client, follow_ups):
     session_id = _new_session(client)
     client.post(f"/end-user/intake/sessions/{session_id}/interview/start")
 
-    step = client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "english"})
-    assert step.json()["state"]["current_state"] == "terms_acceptance"
+    step = _say(client, session_id, "english")
+    assert step["state"]["current_state"] == "terms_acceptance"
 
-    step = client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "I agree"})
-    assert step.json()["state"]["current_state"] == "mandatory_sweep"
-    assert step.json()["state"]["terms_accepted_at"] is not None
+    step = _say(client, session_id, "I agree")
+    assert step["state"]["current_state"] == "story"
+    assert step["state"]["flow_version"] == 2
+    assert step["state"]["terms_accepted_at"] is not None
+    assert step["state"]["terms_accepted_ip"]  # recorded with the acceptance
+
+    step = _say(client, session_id, _STORY)
+    assert follow_ups == [(_STORY, "en", 1)]
+    assert step["state"]["current_state"] == "follow_up"
+    assert _FOLLOW_UPS[0] in step["reply"]
+
+    step = _say(client, session_id, "About 55 hours.")
+    assert step["reply"] == _FOLLOW_UPS[1]
+    step = _say(client, session_id, "skip")
+    assert step["state"]["current_state"] == "mandatory_sweep"
+    assert MANDATORY_SWEEP_QUESTIONS[0].prompt_en in step["reply"]
 
     for question in MANDATORY_SWEEP_QUESTIONS:
-        step = client.post(
-            f"/end-user/intake/sessions/{session_id}/interview/message",
-            json={"message": f"Answer for {question.key}"},
-        )
-    assert step.json()["state"]["current_state"] == "protected_activity"
-    assert step.json()["state"]["mandatory_sweep_completed"] is True
+        step = _say(client, session_id, f"Answer for {question.key}")
+    assert step["state"]["current_state"] == "protected_activity"
+    assert step["state"]["mandatory_sweep_completed"] is True
 
     for question in PROTECTED_ACTIVITY_QUESTIONS:
-        step = client.post(
-            f"/end-user/intake/sessions/{session_id}/interview/message",
-            json={"message": f"Answer for {question.key}"},
-        )
-    assert step.json()["state"]["current_state"] == "general_narrative"
+        step = _say(client, session_id, f"Answer for {question.key}")
+    assert step["state"]["current_state"] == "timeline"
 
-    step = client.post(
-        f"/end-user/intake/sessions/{session_id}/interview/message",
-        json={"message": "I was fired after reporting a safety violation."},
-    )
-    assert step.json()["done"] is True
-    assert step.json()["state"]["current_state"] == "complete"
+    for answer in _KEY_DATES:
+        step = _say(client, session_id, answer)
+        assert step["error"] is False
+    assert step["state"]["current_state"] == "documents"
+
+    step = _say(client, session_id, "Pay stubs and my termination letter.")
+    assert step["done"] is True
+    assert step["state"]["current_state"] == "complete"
 
     facts = client.get(f"/end-user/intake/sessions/{session_id}/facts").json()["facts"]
-    fact_keys = {f["fact_key"] for f in facts}
-    expected_keys = {q.key for q in MANDATORY_SWEEP_QUESTIONS} | {q.key for q in PROTECTED_ACTIVITY_QUESTIONS} | {"narrative_summary"}
-    assert fact_keys == expected_keys
+    by_key = {f["fact_key"]: f for f in facts}
+    expected_keys = (
+        {q.key for q in MANDATORY_SWEEP_QUESTIONS} | {q.key for q in PROTECTED_ACTIVITY_QUESTIONS}
+        | {"client_story", "follow_up_1", "follow_up_2", "documents_available",
+           "date_hired", "date_problem_started", "date_first_complaint", "date_last_day"}
+    )
+    assert set(by_key) == expected_keys
+    assert by_key["follow_up_1"]["fact_value"] == f"Q: {_FOLLOW_UPS[0]}\nA: About 55 hours."
+    assert by_key["follow_up_2"]["fact_value"].endswith("A: (skipped)")
+    assert by_key["date_hired"]["fact_value"] == "2021-04 (answer: April 2021)"
+    assert by_key["date_hired"]["category"] == "timeline"
 
 
-def test_full_spanish_walkthrough_uses_spanish_prompts_throughout(client):
+def test_full_spanish_walkthrough_uses_spanish_prompts_throughout(client, follow_ups):
     session_id = _new_session(client)
     client.post(f"/end-user/intake/sessions/{session_id}/interview/start")
 
-    step = client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "espanol"})
-    assert step.json()["state"]["language"] == "es"
-    assert "Acepto" in step.json()["reply"]
+    step = _say(client, session_id, "espanol")
+    assert step["state"]["language"] == "es"
+    assert "Acepto" in step["reply"]
 
-    step = client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "Acepto"})
-    assert step.json()["state"]["current_state"] == "mandatory_sweep"
-    assert step.json()["reply"] == MANDATORY_SWEEP_QUESTIONS[0].prompt_es
+    step = _say(client, session_id, "Acepto")
+    assert step["state"]["current_state"] == "story"
+    assert "cuentenos" in step["reply"]
+
+    _say(client, session_id, "Trabaje como cocinero y no me pagaron las horas extra.")
+    assert follow_ups[-1][1] == "es"
 
 
-def test_mandatory_sweep_question_cannot_be_skipped_with_blank_answer(client):
+def test_no_follow_ups_goes_straight_to_the_checklist(client, monkeypatch):
+    import app.intake_engine.engine as engine
+
+    monkeypatch.setattr(engine, "generate_follow_up_questions", lambda story, language, tenant_id: [])
+    session_id = _new_session(client)
+    client.post(f"/end-user/intake/sessions/{session_id}/interview/start")
+    _say(client, session_id, "english")
+    _say(client, session_id, "I agree")
+
+    step = _say(client, session_id, _STORY)
+
+    assert step["state"]["current_state"] == "mandatory_sweep"
+    assert step["reply"].endswith(MANDATORY_SWEEP_QUESTIONS[0].prompt_en)
+
+
+def test_follow_ups_are_generated_once_and_survive_resume(client, follow_ups):
+    session_id = _new_session(client)
+    client.post(f"/end-user/intake/sessions/{session_id}/interview/start")
+    _say(client, session_id, "english")
+    _say(client, session_id, "I agree")
+    _say(client, session_id, _STORY)
+
+    resumed = client.get(f"/end-user/intake/sessions/{session_id}/interview").json()
+    assert resumed["state"]["current_state"] == "follow_up"
+    assert resumed["state"]["current_question_key"] == "follow_up_1"
+    _say(client, session_id, "50")
+    _say(client, session_id, "My manager")
+
+    assert len(follow_ups) == 1
+
+
+def test_a_date_out_of_order_is_rejected_and_asked_again(client, follow_ups):
+    session_id = _new_session(client)
+    client.post(f"/end-user/intake/sessions/{session_id}/interview/start")
+    step = _say(client, session_id, "english")
+    for message in ["I agree", _STORY, "a", "b"] + ["No"] * (len(MANDATORY_SWEEP_QUESTIONS) + len(PROTECTED_ACTIVITY_QUESTIONS)):
+        step = _say(client, session_id, message)
+    assert step["state"]["current_question_key"] == "date_hired"
+
+    step = _say(client, session_id, "April 2021")
+    step = _say(client, session_id, "2019")  # problem started before being hired
+    assert step["error"] is True
+    assert "before the date you started working (2021-04)" in step["reply"]
+    assert step["state"]["current_question_key"] == "date_problem_started"
+
+    step = _say(client, session_id, "next tuesday maybe")
+    assert step["error"] is True
+    assert "couldn't read that as a date" in step["reply"]
+
+    step = _say(client, session_id, "don't know")
+    assert step["error"] is False
+    assert step["state"]["current_question_key"] == "date_first_complaint"
+
+    step = _say(client, session_id, "3000")
+    assert step["error"] is True and "future" in step["reply"]
+
+
+def test_an_interview_started_on_flow_1_finishes_on_flow_1(client, repo):
+    """Interviews already in progress when flow 2 shipped keep their old order."""
+
+    session_id = _new_session(client)
+    repo.create_interview_state(session_id)  # a pre-0023 row: flow_version defaults to 1, no checklist snapshot
+    repo.add_intake_message(session_id, "assistant", "Please select your language")
+
+    _say(client, session_id, "english")
+    step = _say(client, session_id, "I agree")
+    assert step["state"]["current_state"] == "mandatory_sweep"
+    assert step["state"]["flow_version"] == 1
+
+    for _ in MANDATORY_SWEEP_QUESTIONS + PROTECTED_ACTIVITY_QUESTIONS:
+        step = _say(client, session_id, "No")
+    assert step["state"]["current_state"] == "general_narrative"
+    step = _say(client, session_id, "I was fired.")
+    assert step["done"] is True
+
+
+def test_mandatory_sweep_question_cannot_be_skipped_with_blank_answer(client, monkeypatch):
+    import app.intake_engine.engine as engine
+
+    monkeypatch.setattr(engine, "generate_follow_up_questions", lambda story, language, tenant_id: [])
     session_id = _new_session(client)
     client.post(f"/end-user/intake/sessions/{session_id}/interview/start")
     client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "english"})
     client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "I agree"})
+    client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": _STORY})
 
     step = client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "   "})
 
@@ -146,13 +271,13 @@ def test_resume_after_new_client_instance_continues_the_same_interview(repo, mon
     second_client = TestClient(storage_api.app)
 
     resumed = second_client.get(f"/end-user/intake/sessions/{session_id}/interview")
-    assert resumed.json()["state"]["current_state"] == "mandatory_sweep"
+    assert resumed.json()["state"]["current_state"] == "story"
 
     step = second_client.post(
         f"/end-user/intake/sessions/{session_id}/interview/message",
-        json={"message": "No immediate risk."},
+        json={"message": _STORY},
     )
-    assert step.json()["state"]["current_step_index"] == 1
+    assert step.json()["state"]["current_state"] == "mandatory_sweep"
 
 
 def test_sending_a_message_without_starting_the_interview_first_is_rejected(client):
@@ -168,27 +293,24 @@ def test_getting_a_foreign_session_facts_404s(client, repo):
     response = client.get(f"/end-user/intake/sessions/{foreign_session['id']}/facts")
     assert response.status_code == 404
 
-def test_every_question_shows_its_number_out_of_a_fixed_total(client):
-    """The interview is a fixed length - the client always sees 'Question X of Y', ending at Y."""
-
-    from app.intake_engine.state_machine import TOTAL_QUESTIONS
-
-    assert TOTAL_QUESTIONS == len(MANDATORY_SWEEP_QUESTIONS) + len(PROTECTED_ACTIVITY_QUESTIONS) + 1
+def test_every_question_shows_its_number_out_of_the_total(client, follow_ups):
+    """The client always sees 'Question X of Y': consecutive numbers, ending at Y."""
 
     session_id = _new_session(client)
     start = client.post(f"/end-user/intake/sessions/{session_id}/interview/start").json()
     assert start["state"]["question_number"] is None
-    assert start["state"]["total_questions"] == TOTAL_QUESTIONS
 
-    client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "english"})
-    step = client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "I agree"}).json()
+    _say(client, session_id, "english")
+    step = _say(client, session_id, "I agree")
 
+    answers = iter([_STORY, "a", "b"] + ["No"] * (len(MANDATORY_SWEEP_QUESTIONS) + len(PROTECTED_ACTIVITY_QUESTIONS)) + _KEY_DATES + ["none"])
     seen = []
     while step["state"]["current_state"] != "complete":
         seen.append(step["state"]["question_number"])
-        step = client.post(
-            f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "No"}
-        ).json()
+        step = _say(client, session_id, next(answers))
+        assert step["error"] is False
 
-    assert seen == list(range(1, TOTAL_QUESTIONS + 1))
+    expected_total = 1 + len(_FOLLOW_UPS) + len(MANDATORY_SWEEP_QUESTIONS) + len(PROTECTED_ACTIVITY_QUESTIONS) + 4 + 1
+    assert seen == list(range(1, expected_total + 1))
+    assert step["state"]["total_questions"] == expected_total
     assert step["state"]["question_number"] is None

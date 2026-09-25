@@ -54,8 +54,17 @@ def client(tmp_path, monkeypatch, repo):
 
     fake_queue = _FakeQueue()
     monkeypatch.setattr(intake_api, "get_job_queue", lambda: fake_queue)
+    _no_follow_ups(monkeypatch)
 
     return TestClient(storage_api.app)
+
+
+def _no_follow_ups(monkeypatch):
+    """Follow-ups need Claude + the firm's frameworks; these tests run without either."""
+
+    import app.intake_engine.engine as engine
+
+    monkeypatch.setattr(engine, "generate_follow_up_questions", lambda story, language, tenant_id: [])
 
 
 def _hit(filename: str, category: str, score: float) -> dict:
@@ -89,6 +98,10 @@ def _walk_full_interview(client, session_id: int) -> None:
     client.post(f"/end-user/intake/sessions/{session_id}/interview/start")
     client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "english"})
     client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "I agree"})
+    client.post(
+        f"/end-user/intake/sessions/{session_id}/interview/message",
+        json={"message": "My employer fired me after I reported a safety issue."},
+    )
 
     for question in MANDATORY_SWEEP_QUESTIONS:
         client.post(
@@ -100,10 +113,11 @@ def _walk_full_interview(client, session_id: int) -> None:
             f"/end-user/intake/sessions/{session_id}/interview/message",
             json={"message": f"Answer for {question.key}"},
         )
-    client.post(
-        f"/end-user/intake/sessions/{session_id}/interview/message",
-        json={"message": "My employer fired me after I reported a safety issue."},
-    )
+    for answer in ["April 2021", "2023", "none", "still working"]:
+        step = client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": answer})
+        assert step.json()["error"] is False
+    step = client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "Pay stubs"})
+    assert step.json()["done"] is True
 
 
 def test_citation_lock(monkeypatch, repo):
@@ -210,6 +224,7 @@ def test_ancillary_sweep_covers_every_required_topic_and_feeds_the_report(monkey
 
     assert "Mandatory Sweep" in full_text
     assert "Protected Activity" in full_text
+    assert "Started working: 2021-04 (answer: April 2021)" in full_text
     for topic in _REQUIRED_ANCILLARY_SWEEP_TOPICS:
         assert topic in full_text
 
@@ -246,12 +261,17 @@ def test_sync(repo, monkeypatch):
     """
 
     monkeypatch.setattr(storage_api, "metadata_repository", repo)
+    _no_follow_ups(monkeypatch)
     first_client = TestClient(storage_api.app)
 
     session_id = _new_session(first_client)
     first_client.post(f"/end-user/intake/sessions/{session_id}/interview/start")
     first_client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "english"})
     first_client.post(f"/end-user/intake/sessions/{session_id}/interview/message", json={"message": "I agree"})
+    first_client.post(
+        f"/end-user/intake/sessions/{session_id}/interview/message",
+        json={"message": "I was fired after complaining about safety."},
+    )
     first_client.post(
         f"/end-user/intake/sessions/{session_id}/interview/message",
         json={"message": "No immediate risk."},

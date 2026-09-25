@@ -323,6 +323,11 @@ from app.api.vault_sync_api import router as vault_sync_router  # noqa: E402
 
 app.include_router(vault_sync_router)
 
+# Owner-editable guided-intake checklist. See app/api/intake_checklist_api.py.
+from app.api.intake_checklist_api import router as intake_checklist_router  # noqa: E402
+
+app.include_router(intake_checklist_router)
+
 
 @app.get("/")
 def root() -> dict:

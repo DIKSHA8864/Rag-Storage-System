@@ -461,6 +461,29 @@ class MetadataRepository(ABC):
         raise NotImplementedError
 
     # ------------------------------------------------------------------
+    # Guided intake flow v2 (migration 0023)
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def set_interview_extras(
+        self, intake_session_id: int, *, flow_version: Optional[int] = None,
+        terms_accepted_ip: Optional[str] = None, follow_up_questions: Optional[list] = None,
+        checklist_snapshot: Optional[list] = None,
+    ) -> None:
+        """Set whichever of these are given (None = leave unchanged). JSON columns take/return lists."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_intake_checklist(self, tenant_id: int) -> list[dict]:
+        """`tenant_id`'s saved checklist in order ({key, prompt_en, prompt_es, is_active, ...}); [] = never customized."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def replace_intake_checklist(self, tenant_id: int, items: list[dict], updated_by: Optional[str]) -> list[dict]:
+        """Replace the whole checklist (order = list order) atomically and return it."""
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
     # Vault sync (migration 0022) and duplicate detection
     # ------------------------------------------------------------------
 

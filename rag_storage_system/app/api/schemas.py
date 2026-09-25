@@ -641,6 +641,12 @@ class InterviewStateInfo(BaseModel):
     # is None before the questions start and after the interview completes.
     question_number: int | None = None
     total_questions: int
+    # Flow 2 (story first) vs flow 1 (interviews started before it); which
+    # question is on screen (e.g. "date_hired", "follow_up_2", "story") so
+    # the chat can offer fitting quick replies.
+    flow_version: int = 1
+    current_question_key: str | None = None
+    terms_accepted_ip: str | None = None
 
 
 class InterviewStartResponse(BaseModel):
@@ -1104,3 +1110,25 @@ class VaultSyncStatusResponse(BaseModel):
 class VaultSyncStartResponse(BaseModel):
     job_id: str
     status: str
+
+
+# ----------------------------------------------------------------------
+# Guided intake checklist (app/api/intake_checklist_api.py)
+# ----------------------------------------------------------------------
+
+class IntakeChecklistItem(BaseModel):
+    key: str
+    prompt_en: str
+    prompt_es: str
+    is_active: bool = True
+    required: bool = False  # a Blueprint-required topic: can be reworded, not switched off
+
+
+class IntakeChecklistUpdate(BaseModel):
+    items: list[IntakeChecklistItem]
+
+
+class IntakeChecklistResponse(BaseModel):
+    items: list[IntakeChecklistItem]
+    customized: bool  # False = the built-in default (never saved, or reset)
+    required_keys: list[str]

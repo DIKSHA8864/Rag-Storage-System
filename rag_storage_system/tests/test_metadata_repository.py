@@ -339,3 +339,37 @@ def test_vault_sync_manifest_runs_and_duplicate_lookup(repo):
     last = repo.latest_vault_sync_run(1)
     assert (last["status"], last["error"], last["skipped"]) == ("refused", "empty", [{"path": "p", "reason": "r"}])
     assert repo.latest_vault_sync_run(2) is None
+
+
+def test_interview_extras_and_intake_checklist(repo):
+    if not isinstance(repo, SQLiteMetadataRepository):
+        with repo._connect() as conn:
+            conn.execute("TRUNCATE intake_checklist_questions RESTART IDENTITY")
+            conn.execute("INSERT INTO tenants (id, name, slug) VALUES (2, 'Second Firm', 'second-firm') ON CONFLICT DO NOTHING")
+
+    import uuid
+
+    matter = repo.create_matter(f"Flow v2 {uuid.uuid4().hex[:8]}", uuid.uuid4().hex)
+    session = repo.create_intake_session(matter_id=matter["id"], title="Intake")
+    repo.create_interview_state(session["id"])
+    assert repo.get_interview_state(session["id"])["flow_version"] == 1  # rows from before flow 2 read as flow 1
+
+    snapshot = [{"key": "overtime", "prompt_en": "OT?", "prompt_es": "Horas extra?"}]
+    repo.set_interview_extras(session["id"], flow_version=2, checklist_snapshot=snapshot)
+    repo.set_interview_extras(session["id"], terms_accepted_ip="203.0.113.7", follow_up_questions=[])
+    state = repo.get_interview_state(session["id"])
+    assert (state["flow_version"], state["terms_accepted_ip"]) == (2, "203.0.113.7")
+    assert state["checklist_snapshot"] == snapshot
+    assert state["follow_up_questions"] == []  # "generated, none" - distinct from never generated (None)
+
+    items = [
+        {"key": "overtime", "prompt_en": "OT?", "prompt_es": "Horas extra?", "is_active": True},
+        {"key": "tips", "prompt_en": "Tips?", "prompt_es": "Propinas?", "is_active": False},
+    ]
+    saved = repo.replace_intake_checklist(1, items, "owner@example.com")
+    assert [(r["key"], bool(r["is_active"])) for r in saved] == [("overtime", True), ("tips", False)]
+    assert repo.get_intake_checklist(2) == []
+    repo.replace_intake_checklist(1, list(reversed(items)), None)
+    assert [r["key"] for r in repo.get_intake_checklist(1)] == ["tips", "overtime"]
+    repo.replace_intake_checklist(1, [], None)
+    assert repo.get_intake_checklist(1) == []

@@ -23,27 +23,56 @@ interface ChatMessage {
   content: string;
 }
 
-// The 6 real stages app/intake_engine/models.py's InterviewState
-// defines - shown here only as progress labels, never as a frontend-
-// invented flow. The actual prompts/questions always come from the
-// backend's own `prompt`/`reply` text.
-const STAGE_ORDER = [
-  "language_selection",
-  "terms_acceptance",
-  "mandatory_sweep",
-  "protected_activity",
-  "general_narrative",
-  "complete",
-];
+// The real stages app/intake_engine/models.py's InterviewState defines,
+// in the order the backend runs them for this interview's flow - shown
+// here only as progress labels, never as a frontend-invented flow. The
+// actual prompts/questions always come from the backend's own
+// `prompt`/`reply` text.
+const STAGE_ORDER_BY_FLOW: Record<number, string[]> = {
+  1: ["language_selection", "terms_acceptance", "mandatory_sweep", "protected_activity", "general_narrative", "complete"],
+  2: [
+    "language_selection",
+    "terms_acceptance",
+    "story",
+    "follow_up",
+    "mandatory_sweep",
+    "protected_activity",
+    "timeline",
+    "documents",
+    "complete",
+  ],
+};
 
 const STAGE_LABELS: Record<string, { en: string; es: string }> = {
   language_selection: { en: "Language", es: "Idioma" },
   terms_acceptance: { en: "Terms", es: "Terminos" },
+  story: { en: "Your story", es: "Su historia" },
+  follow_up: { en: "Follow-up", es: "Seguimiento" },
   mandatory_sweep: { en: "Screening questions", es: "Preguntas de deteccion" },
   protected_activity: { en: "Protected activity", es: "Actividad protegida" },
+  timeline: { en: "Key dates", es: "Fechas" },
+  documents: { en: "Documents", es: "Documentos" },
   general_narrative: { en: "Your story", es: "Su historia" },
   complete: { en: "Complete", es: "Completo" },
 };
+
+type QuickReply = { label: string; value: string };
+
+// Answers the backend understands for each key-date question
+// (app/intake_engine/timeline.py) - besides typing a date.
+function timelineQuickReplies(questionKey: string | null, language: string | null): QuickReply[] {
+  const es = language === "es";
+  const replies: QuickReply[] = [es ? { label: "No se", value: "no se" } : { label: "Don't know", value: "don't know" }];
+  if (questionKey === "date_first_complaint") {
+    replies.push(es ? { label: "Nunca me queje", value: "nunca" } : { label: "Never complained", value: "none" });
+  }
+  if (questionKey === "date_last_day") {
+    replies.push(
+      es ? { label: "Sigo trabajando alli", value: "sigo trabajando" } : { label: "I still work there", value: "still working" }
+    );
+  }
+  return replies;
+}
 
 const LANGUAGE_QUICK_REPLIES = [
   { label: "English", value: "english" },
@@ -53,7 +82,7 @@ const LANGUAGE_QUICK_REPLIES = [
 // Every screening / protected-activity question is a yes-or-no question
 // (app/intake_engine/mandatory_sweep.py, protected_activity.py) - one tap
 // answers it; the text box stays available for anything more to add.
-function yesNoQuickReplies(language: string | null): { label: string; value: string }[] {
+function yesNoQuickReplies(language: string | null): QuickReply[] {
   return language === "es"
     ? [
         { label: "Si", value: "Si" },
@@ -188,9 +217,42 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
   }
 
   const isComplete = state.current_state === "complete";
-  const stageIndex = STAGE_ORDER.indexOf(state.current_state);
+  const es = state.language === "es";
+  const stageOrder = STAGE_ORDER_BY_FLOW[state.flow_version] ?? STAGE_ORDER_BY_FLOW[2];
+  const stageIndex = stageOrder.indexOf(state.current_state);
   // Evidence can only be attached once the client has accepted the terms.
-  const canUpload = stageIndex > STAGE_ORDER.indexOf("terms_acceptance");
+  const canUpload = stageIndex > stageOrder.indexOf("terms_acceptance");
+  const isYesNo = state.current_state === "mandatory_sweep" || state.current_state === "protected_activity";
+  const isLongAnswer = ["story", "general_narrative", "follow_up", "documents"].includes(state.current_state);
+  const quickReplies: QuickReply[] = isYesNo
+    ? yesNoQuickReplies(state.language)
+    : state.current_state === "timeline"
+      ? timelineQuickReplies(state.current_question_key, state.language)
+      : state.current_state === "follow_up"
+        ? [es ? { label: "Omitir esta pregunta", value: "omitir" } : { label: "Skip this question", value: "skip" }]
+        : state.current_state === "documents"
+          ? [es ? { label: "No tengo documentos", value: "ninguno" } : { label: "I have no documents", value: "none" }]
+          : [];
+  const placeholder =
+    state.current_state === "story" || state.current_state === "general_narrative"
+      ? es
+        ? "Cuente lo que paso, con sus propias palabras..."
+        : "Tell us what happened, in your own words..."
+      : state.current_state === "timeline"
+        ? es
+          ? "Por ejemplo: abril 2023, o 15/04/2023"
+          : "For example: April 2023, or 04/15/2023"
+        : state.current_state === "documents"
+          ? es
+            ? "Por ejemplo: talones de pago, mensajes de texto, carta de despido..."
+            : "For example: pay stubs, text messages, termination letter..."
+          : isYesNo
+            ? es
+              ? "O escriba mas detalles..."
+              : "Or type more detail..."
+            : es
+              ? "Escriba su respuesta..."
+              : "Type your answer..."; 
   const uploadPanel = canUpload ? (
     <UploadPanel
       sessionId={sessionId}
@@ -210,7 +272,7 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
       </div>
 
       <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", margin: "0.75rem 0 1rem 0" }}>
-        {STAGE_ORDER.map((stage, index) => {
+        {stageOrder.map((stage, index) => {
           const label = STAGE_LABELS[stage][state.language === "es" ? "es" : "en"];
           const isCurrent = index === stageIndex;
           const isPast = stageIndex >= 0 && index < stageIndex;
@@ -239,9 +301,13 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
               ? `Pregunta ${state.question_number} de ${state.total_questions}`
               : `Question ${state.question_number} of ${state.total_questions}`}
             {state.question_number === 1 &&
-              (state.language === "es"
-                ? " - preguntas cortas, casi todas de si o no (unos 5 minutos)."
-                : " - short questions, mostly yes or no (about 5 minutes).")}
+              (state.flow_version === 1
+                ? es
+                  ? " - preguntas cortas, casi todas de si o no (unos 5 minutos)."
+                  : " - short questions, mostly yes or no (about 5 minutes)."
+                : es
+                  ? " - primero su historia; despues preguntas cortas (unos 10 minutos)."
+                  : " - your story first, then short questions (about 10 minutes).")}
             {state.question_number === state.total_questions &&
               (state.language === "es" ? " - la ultima pregunta." : " - the last question.")}
           </p>
@@ -290,7 +356,8 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
         <div ref={transcriptEndRef} />
       </div>
 
-      {lastTurnRejected && (
+      {/* A rejected date already says why in the reply itself. */}
+      {lastTurnRejected && state.current_state !== "timeline" && (
         <p style={{ fontSize: "0.8rem", color: "#8a6116", marginTop: "0.5rem" }}>
           {state.language === "es"
             ? "No se entendio esa respuesta - por favor intente de nuevo."
@@ -300,7 +367,13 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
 
       {sendError && <ErrorMessage message={sendError} />}
 
-            {isComplete ? (
+      {isSending && state.current_state === "story" && (
+        <p style={{ fontSize: "0.8rem", color: "#555", marginTop: "0.5rem" }}>
+          {es ? "Leyendo su historia..." : "Reading your story..."}
+        </p>
+      )}
+
+      {isComplete ? (
         <>
           <p style={{ marginTop: "1rem", color: "#2e7d32", fontWeight: 600 }}>
             {state.language === "es" ? "Su entrevista ha finalizado. Gracias." : "Your interview is complete. Thank you."}
@@ -328,9 +401,9 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
             </div>
           )}
 
-          {(state.current_state === "mandatory_sweep" || state.current_state === "protected_activity") && (
+          {quickReplies.length > 0 && (
             <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
-              {yesNoQuickReplies(state.language).map((option) => (
+              {quickReplies.map((option) => (
                 <button key={option.value} type="button" onClick={() => handleSend(option.value)} disabled={isSending}>
                   {option.label}
                 </button>
@@ -339,17 +412,13 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
           )}
 
           <form onSubmit={handleSubmit} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
-            {state.current_state === "general_narrative" ? (
+            {isLongAnswer ? (
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 disabled={isSending}
-                rows={6}
-                placeholder={
-                  state.language === "es"
-                    ? "Cuente lo que paso, con sus propias palabras..."
-                    : "Tell us what happened, in your own words..."
-                }
+                rows={state.current_state === "story" || state.current_state === "general_narrative" ? 6 : 3}
+                placeholder={placeholder}
                 style={{ flex: 1, resize: "vertical" }}
               />
             ) : (
@@ -358,15 +427,7 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 disabled={isSending}
-                placeholder={
-                  state.current_state === "mandatory_sweep" || state.current_state === "protected_activity"
-                    ? state.language === "es"
-                      ? "O escriba mas detalles..."
-                      : "Or type more detail..."
-                    : state.language === "es"
-                      ? "Escriba su respuesta..."
-                      : "Type your answer..."
-                }
+                placeholder={placeholder}
                 style={{ flex: 1 }}
               />
             )}

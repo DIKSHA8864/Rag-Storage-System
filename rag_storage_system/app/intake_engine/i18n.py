@@ -35,6 +35,42 @@ _STATE_PROMPTS = {
         "en": "In your own words, please describe what happened and why you are seeking legal help.",
         "es": "En sus propias palabras, describa que sucedio y por que busca ayuda legal.",
     },
+    "story": {
+        "en": (
+            "Please tell us what happened, in your own words and in as much detail as you can: "
+            "who your employer is, what your job was, what went wrong, and when. "
+            "Take your time - you can write as much as you need."
+        ),
+        "es": (
+            "Por favor cuentenos que sucedio, en sus propias palabras y con el mayor detalle posible: "
+            "quien es su empleador, cual era su trabajo, que salio mal y cuando. "
+            "Tome su tiempo - puede escribir todo lo que necesite."
+        ),
+    },
+    "follow_up_intro": {
+        "en": "Thank you. A few questions about what you described:",
+        "es": "Gracias. Algunas preguntas sobre lo que nos conto:",
+    },
+    "checklist_intro": {
+        "en": "Thank you. Now some standard questions we ask everyone:",
+        "es": "Gracias. Ahora algunas preguntas que hacemos a todos:",
+    },
+    "timeline_intro": {
+        "en": "Almost done. A few key dates:",
+        "es": "Ya casi terminamos. Algunas fechas importantes:",
+    },
+    "documents": {
+        "en": (
+            "Last question: what documents do you have that relate to this - for example pay stubs, "
+            "your offer letter, emails or texts, write-ups, a termination letter, or photos? "
+            "List what you have (or say 'none'). You can upload them in the Uploads panel."
+        ),
+        "es": (
+            "Ultima pregunta: que documentos tiene relacionados con esto - por ejemplo talones de pago, "
+            "su carta de oferta, correos o mensajes, amonestaciones, una carta de despido o fotos? "
+            "Enumere lo que tenga (o diga 'ninguno'). Puede subirlos en el panel de archivos."
+        ),
+    },
     "complete": {
         "en": "Thank you. Your intake interview is complete and has been recorded for attorney review.",
         "es": "Gracias. Su entrevista de admision ha finalizado y ha sido registrada para revision de un abogado.",

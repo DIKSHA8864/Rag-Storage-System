@@ -88,6 +88,14 @@ class Settings(BaseSettings):
     dropbox_root_path: str = ""  # e.g. "/AshiLegal Library"; "" = the whole app folder
 
     # ------------------------------------------------------------------
+    # Guided intake (flow v2)
+    # ------------------------------------------------------------------
+    # Library folder holding the firm's intake question frameworks - the
+    # follow-up questions after a client's story are drawn only from it
+    # (app/intake_engine/follow_ups.py). "" = no follow-ups.
+    intake_framework_category: str = "Question Frameworks"
+
+    # ------------------------------------------------------------------
     # Upload validation
     # ------------------------------------------------------------------
     allowed_extensions: str = ".pdf,.docx,.txt"

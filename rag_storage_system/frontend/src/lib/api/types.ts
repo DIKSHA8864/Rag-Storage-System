@@ -160,6 +160,11 @@ export interface InterviewStateInfo {
   // "Question X of Y" - null before the questions start and once complete.
   question_number: number | null;
   total_questions: number;
+  // 2 = story first (every new interview); 1 = started before that, finishes on the old order.
+  flow_version: number;
+  // e.g. "story", "follow_up_2", "overtime", "date_hired", "documents".
+  current_question_key: string | null;
+  terms_accepted_ip: string | null;
 }
 
 export interface InterviewStartResponse {
@@ -582,4 +587,19 @@ export interface VaultSyncStatusResponse {
   source: string | null;
   interval_seconds: number | null;
   last_run: VaultSyncRunInfo | null;
+}
+
+// Guided-intake checklist (app/api/intake_checklist_api.py).
+export interface IntakeChecklistItem {
+  key: string;
+  prompt_en: string;
+  prompt_es: string;
+  is_active: boolean;
+  required: boolean;
+}
+
+export interface IntakeChecklistResponse {
+  items: IntakeChecklistItem[];
+  customized: boolean;
+  required_keys: string[];
 }

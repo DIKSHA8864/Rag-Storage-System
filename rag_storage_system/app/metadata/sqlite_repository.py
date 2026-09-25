@@ -106,6 +106,19 @@ CREATE TABLE IF NOT EXISTS retrieval_settings (
     updated_by TEXT
 );
 
+CREATE TABLE IF NOT EXISTS intake_checklist_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    key TEXT NOT NULL,
+    prompt_en TEXT NOT NULL,
+    prompt_es TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    UNIQUE (tenant_id, key)
+);
+
 CREATE TABLE IF NOT EXISTS vault_sync_manifest (
     tenant_id INTEGER NOT NULL,
     source_path TEXT NOT NULL,
@@ -400,10 +413,29 @@ def _rewrite_prefix(value: str, old_prefix: str, new_prefix: str) -> str:
     return value
 
 
+
+def _decode_interview_state(row) -> dict:
+    """interview_state row with its JSON columns (flow v2) decoded to lists."""
+
+    import json
+
+    state = dict(row)
+    for column in ("follow_up_questions", "checklist_snapshot"):
+        if state.get(column) is not None:
+            state[column] = json.loads(state[column])
+    return state
+
 class SQLiteMetadataRepository(MetadataRepository):
 
     _TENANT_ID_TABLES = (
         "matters", "documents", "folders", "prompt_versions", "cause_of_action_library", "llm_usage_log",
+    )
+
+    _ADDED_COLUMNS = (
+        ("interview_state", "flow_version", "INTEGER NOT NULL DEFAULT 1"),
+        ("interview_state", "terms_accepted_ip", "TEXT"),
+        ("interview_state", "follow_up_questions", "TEXT"),
+        ("interview_state", "checklist_snapshot", "TEXT"),
     )
 
     def __init__(self, db_path: Path):
@@ -427,6 +459,12 @@ class SQLiteMetadataRepository(MetadataRepository):
                 existing_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
                 if "tenant_id" not in existing_columns:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id INTEGER NOT NULL DEFAULT 1")
+
+            # Same for columns added to existing tables later (Postgres: ALTER ... IF NOT EXISTS in the migration).
+            for table, column, definition in self._ADDED_COLUMNS:
+                existing_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                if column not in existing_columns:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
             # Billing foundation (Phase 5 Step 25): the pre-existing
             # Default Organization (tenant_id=1) is seeded onto a real,
@@ -1198,7 +1236,7 @@ class SQLiteMetadataRepository(MetadataRepository):
             row = conn.execute(
                 "SELECT * FROM interview_state WHERE intake_session_id = ?", (intake_session_id,)
             ).fetchone()
-            return dict(row) if row else None
+            return _decode_interview_state(row) if row else None
 
     def update_interview_state(
         self,
@@ -1225,7 +1263,7 @@ class SQLiteMetadataRepository(MetadataRepository):
             row = conn.execute(
                 "SELECT * FROM interview_state WHERE intake_session_id = ?", (intake_session_id,)
             ).fetchone()
-            return dict(row)
+            return _decode_interview_state(row)
 
     # ------------------------------------------------------------------
     # Guided Intake Engine - Messages
@@ -1409,6 +1447,54 @@ class SQLiteMetadataRepository(MetadataRepository):
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM llm_usage_log WHERE id = ?", (new_id,)).fetchone()
         return dict(row)
+
+    # ------------------------------------------------------------------
+    # Guided intake flow v2
+    # ------------------------------------------------------------------
+
+    def set_interview_extras(
+        self, intake_session_id: int, *, flow_version=None, terms_accepted_ip=None,
+        follow_up_questions=None, checklist_snapshot=None,
+    ) -> None:
+        import json
+
+        values = {
+            "flow_version": flow_version,
+            "terms_accepted_ip": terms_accepted_ip,
+            "follow_up_questions": json.dumps(follow_up_questions) if follow_up_questions is not None else None,
+            "checklist_snapshot": json.dumps(checklist_snapshot) if checklist_snapshot is not None else None,
+        }
+        changes = {column: value for column, value in values.items() if value is not None}
+        if not changes:
+            return
+        assignments = ", ".join(f"{column} = ?" for column in changes)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE interview_state SET {assignments}, updated_at = ? WHERE intake_session_id = ?",
+                (*changes.values(), _now(), intake_session_id),
+            )
+
+    def get_intake_checklist(self, tenant_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM intake_checklist_questions WHERE tenant_id = ? ORDER BY position", (tenant_id,)
+            ).fetchall()
+        return [{**dict(r), "is_active": bool(r["is_active"])} for r in rows]
+
+    def replace_intake_checklist(self, tenant_id: int, items: list[dict], updated_by: Optional[str]) -> list[dict]:
+        now = _now()
+        with self._connect() as conn:
+            conn.execute("DELETE FROM intake_checklist_questions WHERE tenant_id = ?", (tenant_id,))
+            for position, item in enumerate(items):
+                conn.execute(
+                    """
+                    INSERT INTO intake_checklist_questions
+                        (tenant_id, key, prompt_en, prompt_es, position, is_active, updated_at, updated_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (tenant_id, item["key"], item["prompt_en"], item["prompt_es"], position, int(item["is_active"]), now, updated_by),
+                )
+        return self.get_intake_checklist(tenant_id)
 
     # ------------------------------------------------------------------
     # Vault sync and duplicate detection

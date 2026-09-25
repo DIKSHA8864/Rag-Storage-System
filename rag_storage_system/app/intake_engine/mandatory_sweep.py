@@ -84,3 +84,48 @@ MANDATORY_SWEEP_QUESTIONS: list[SweepQuestion] = [
         prompt_es="Alguna vez solicito una adaptacion en el trabajo por una discapacidad, condicion medica, practica religiosa u otra necesidad similar?",
     ),
 ]
+
+# ----------------------------------------------------------------------
+# The owner-editable checklist (flow v2, /admin/intake/checklist)
+# ----------------------------------------------------------------------
+
+# Blueprint Phase 3's required ancillary-sweep topics: an owner can reword
+# them but never switch them off (tests/test_phase3_blueprint_acceptance.py).
+REQUIRED_CHECKLIST_KEYS = frozenset({
+    "timely_wages", "overtime", "meal_rest_breaks", "wage_statements", "protected_complaints", "leave", "accommodation",
+})
+
+
+def default_checklist() -> list[dict]:
+    return [
+        {"key": q.key, "prompt_en": q.prompt_en, "prompt_es": q.prompt_es, "is_active": True, "required": q.key in REQUIRED_CHECKLIST_KEYS}
+        for q in MANDATORY_SWEEP_QUESTIONS
+    ]
+
+
+def tenant_checklist(repository, tenant_id: int) -> list[dict]:
+    """The organization's checklist (every row, active or not) - the built-in default until an owner saves one."""
+
+    rows = repository.get_intake_checklist(tenant_id)
+    if not rows:
+        return default_checklist()
+    return [
+        {"key": r["key"], "prompt_en": r["prompt_en"], "prompt_es": r["prompt_es"], "is_active": bool(r["is_active"]),
+         "required": r["key"] in REQUIRED_CHECKLIST_KEYS}
+        for r in rows
+    ]
+
+
+def checklist_snapshot(repository, tenant_id: int) -> list[dict]:
+    """The active questions, frozen onto a new interview so later edits don't shift an in-progress one."""
+
+    return [
+        {"key": item["key"], "prompt_en": item["prompt_en"], "prompt_es": item["prompt_es"]}
+        for item in tenant_checklist(repository, tenant_id) if item["is_active"]
+    ]
+
+
+def questions_from_snapshot(snapshot: Optional[list[dict]]) -> Optional[list[SweepQuestion]]:
+    if snapshot is None:
+        return None
+    return [SweepQuestion(key=item["key"], prompt_en=item["prompt_en"], prompt_es=item["prompt_es"]) for item in snapshot]

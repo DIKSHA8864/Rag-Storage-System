@@ -22,6 +22,7 @@ retrieval is unavailable.
 from datetime import datetime, timezone
 
 from app.disclaimer import get_current_disclaimer_text
+from app.intake_engine.timeline import TIMELINE_QUESTIONS
 from app.metadata.base import MetadataRepository
 from app.report.rag_analysis import build_rag_sections, gather_fact_support
 from app.report.schema import ExtractedInputSummary, ReportCitation, StructuredReport, TimelineEntry
@@ -34,7 +35,11 @@ _INTAKE_FACT_CATEGORY_LABELS = {
     "mandatory_sweep": "Mandatory Sweep",
     "protected_activity": "Protected Activity",
     "general": "Client Narrative",
+    "follow_up": "Follow-up Answers",
+    "timeline": "Key Dates",
+    "documents": "Documents Available",
 }
+_KEY_DATE_LABELS = {q.key: q.label_en for q in TIMELINE_QUESTIONS}
 
 
 def build_structured_report(
@@ -88,7 +93,18 @@ def build_structured_report(
         matter_name=matter_name,
         generated_at=datetime.now(timezone.utc).isoformat(),
         summary=summary,
+        # The client's key dates first (as answered, at their real
+        # precision - "2023-04" is never shown as a day), then the
+        # session's own activity log.
         timeline=[
+            TimelineEntry(
+                event_type="key_date",
+                description=f"{_KEY_DATE_LABELS.get(fact['fact_key'], fact['fact_key'])}: {fact['fact_value']}",
+                occurred_at=fact["fact_value"].split(" (answer:")[0],
+            )
+            for fact in intake_facts
+            if fact["category"] == "timeline"
+        ] + [
             TimelineEntry(
                 event_type=row["event_type"], description=row["description"], occurred_at=str(row["created_at"])
             )

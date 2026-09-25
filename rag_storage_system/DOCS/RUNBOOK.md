@@ -57,6 +57,27 @@ it couldn't run - e.g. an invalid ANTHROPIC_API_KEY or no credit). A relevance
 check that can't run is shown to users as "couldn't be verified - try again",
 never as "No authority".
 
+## Guided intake (story first)
+
+Every new interview: language -> terms -> the client's story -> up to 4
+follow-up questions -> the screening checklist -> protected activity ->
+key dates -> documents. Interviews started before this change finish on
+the old order.
+
+- **Follow-up questions** are drawn only from the library folder
+  `INTAKE_FRAMEWORK_CATEGORY` (default "Question Frameworks") and need
+  `ANTHROPIC_API_KEY`. No framework passage matches, no key, or a failed
+  call means no follow-ups. The interview then goes straight to the checklist.
+- **Checklist**: Admin -> Intake. The Blueprint's required topics can be
+  reworded but not switched off. An interview keeps the checklist it
+  started with.
+- **Key dates** are checked: unreadable dates, future dates, and dates
+  before the hire date are asked again. "Don't know" is always accepted.
+- **Terms acceptance** records the time, the terms version, and the
+  client's IP address. Behind a reverse proxy, start uvicorn with
+  `--proxy-headers --forwarded-allow-ips=<proxy IP>`. Without that, every
+  client's IP is recorded as the proxy's address.
+
 ## Voice/Video (Client intake OCR/Speech-to-Text/Vision)
 Real providers are opt-in (`OCR_PROVIDER`/`STT_PROVIDER`/`VISION_PROVIDER` in
 `.env` — see `config/settings.py`); each defaults to `mock` (a clearly-labeled

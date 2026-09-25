@@ -12,11 +12,13 @@ Endpoints:
 
 The state machine itself (app/intake_engine/state_machine.py) is pure
 and DB-free; app/intake_engine/engine.py is what actually persists
-each turn: language selection -> terms acceptance -> mandatory sweep
--> protected activity -> closing narrative -> complete.
+each turn: language selection -> terms acceptance -> the client's story
+-> follow-up questions -> checklist sweep -> protected activity -> key
+dates -> documents -> complete (flow 1 interviews, started before flow 2,
+finish on sweep -> protected activity -> closing narrative).
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.intake_common import get_owned_intake_session
 from app.api.schemas import (
@@ -29,8 +31,8 @@ from app.api.schemas import (
     InterviewStartResponse,
     InterviewStateInfo,
 )
-from app.intake_engine.engine import resume_interview, start_interview, submit_message
-from app.intake_engine.state_machine import TOTAL_QUESTIONS, question_number
+from app.intake_engine.engine import context_from_state, resume_interview, start_interview, submit_message
+from app.intake_engine.state_machine import current_question_key, question_number, total_questions
 from app.security.auth import current_matter, require_end_user_key
 
 router = APIRouter(
@@ -41,6 +43,7 @@ router = APIRouter(
 
 
 def _state_info(row: dict) -> InterviewStateInfo:
+    context = context_from_state(row)
     return InterviewStateInfo(
         intake_session_id=row["intake_session_id"],
         language=row.get("language"),
@@ -49,9 +52,23 @@ def _state_info(row: dict) -> InterviewStateInfo:
         current_state=row["current_state"],
         current_step_index=row["current_step_index"],
         mandatory_sweep_completed=bool(row["mandatory_sweep_completed"]),
-        question_number=question_number(row["current_state"], row["current_step_index"]),
-        total_questions=TOTAL_QUESTIONS,
+        question_number=question_number(context),
+        total_questions=total_questions(context),
+        flow_version=context.flow_version,
+        current_question_key=current_question_key(context),
+        terms_accepted_ip=row.get("terms_accepted_ip"),
     )
+
+
+def _client_ip(request: Request) -> str | None:
+    """
+    The connecting address. Behind a reverse proxy, run uvicorn with
+    --proxy-headers --forwarded-allow-ips=<proxy address> so this is the
+    client's real IP (X-Forwarded-For is only trusted from that proxy -
+    a client can't forge it). See DOCS/RUNBOOK.md.
+    """
+
+    return request.client.host if request.client else None
 
 
 @router.post("/sessions/{session_id}/interview/start", response_model=InterviewStartResponse)
@@ -63,7 +80,7 @@ def start_intake_interview(session_id: int, matter: dict = Depends(current_matte
     repo = storage_api.metadata_repository
     get_owned_intake_session(repo, session_id, matter)
 
-    state = start_interview(session_id, repo)
+    state = start_interview(session_id, repo, tenant_id=matter.get("tenant_id", 1))
     messages = repo.list_intake_messages(session_id)
     opening_prompt = messages[-1]["content"] if messages else ""
 
@@ -72,7 +89,7 @@ def start_intake_interview(session_id: int, matter: dict = Depends(current_matte
 
 @router.post("/sessions/{session_id}/interview/message", response_model=InterviewMessageResponse)
 def send_intake_interview_message(
-    session_id: int, request: InterviewMessageRequest, matter: dict = Depends(current_matter)
+    session_id: int, request: InterviewMessageRequest, http_request: Request, matter: dict = Depends(current_matter)
 ) -> InterviewMessageResponse:
     """Submit one answer and advance the state machine."""
 
@@ -82,7 +99,10 @@ def send_intake_interview_message(
     get_owned_intake_session(repo, session_id, matter)
 
     try:
-        result = submit_message(session_id, request.message, repo)
+        result = submit_message(
+            session_id, request.message, repo,
+            tenant_id=matter.get("tenant_id", 1), client_ip=_client_ip(http_request),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
