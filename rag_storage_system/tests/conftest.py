@@ -213,6 +213,15 @@ class _FakeVectorStore:
                 updated += 1
         return updated
 
+    def delete_matter_document_chunks(self, matter_id, document_id, tenant_id) -> int:
+        doomed = [
+            chunk_id for chunk_id, row in self._rows.items()
+            if row["tenant_id"] == tenant_id and row["category"] == f"matter-{matter_id}" and row["document_id"] == document_id
+        ]
+        for chunk_id in doomed:
+            del self._rows[chunk_id]
+        return len(doomed)
+
     def delete_library_chunks_except(self, keep_chunk_ids) -> int:
         return self._delete_where(lambda r: r["chunk_id"] not in keep_chunk_ids)
 

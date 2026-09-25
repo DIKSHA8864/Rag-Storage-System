@@ -373,3 +373,36 @@ def test_interview_extras_and_intake_checklist(repo):
     assert [r["key"] for r in repo.get_intake_checklist(1)] == ["tips", "overtime"]
     repo.replace_intake_checklist(1, [], None)
     assert repo.get_intake_checklist(1) == []
+
+
+def test_case_matters_and_matter_documents(repo):
+    import uuid
+    from datetime import datetime, timezone
+
+    if not isinstance(repo, SQLiteMetadataRepository):
+        with repo._connect() as conn:
+            conn.execute("TRUNCATE matter_documents RESTART IDENTITY")
+
+    personal = repo.create_matter(f"Personal {uuid.uuid4().hex[:6]}", uuid.uuid4().hex)
+    email = f"case-test-{uuid.uuid4().hex[:6]}@example.com"
+    account = repo.create_end_user_invite(email, 1, None)
+    repo.activate_end_user(account["id"], "hash", personal["id"], datetime.now(timezone.utc).isoformat())
+
+    case = repo.create_case_matter("Overtime (x)", uuid.uuid4().hex, 1, account["id"])
+    assert (case["kind"], case["end_user_id"]) == ("case", account["id"])
+    assert repo.get_matter(personal["id"])["kind"] == "client"
+    assert [m["id"] for m in repo.list_case_matters_for_end_user(account["id"], 1)] == [case["id"]]
+    assert repo.list_case_matters_for_end_user(account["id"], 2) == []
+    emails = {m["id"]: m["client_email"] for m in repo.list_matters_with_clients(1)}
+    assert emails[case["id"]] == emails[personal["id"]] == email
+
+    doc = repo.create_matter_document(1, case["id"], "pleading", "complaint.pdf", "matter_1/case_documents",
+                                      "complaint.pdf", 10, "sha", "owner@example.com")
+    assert (doc["status"], doc["chunk_count"]) == ("queued", 0)
+    repo.update_matter_document_status(doc["id"], "indexed", 4)
+    assert repo.get_matter_document(doc["id"], case["id"])["chunk_count"] == 4
+    assert repo.get_matter_document(doc["id"], personal["id"]) is None
+    assert [d["id"] for d in repo.list_matter_documents(case["id"])] == [doc["id"]]
+    assert repo.delete_matter_document(doc["id"], personal["id"]) is False
+    assert repo.delete_matter_document(doc["id"], case["id"]) is True
+    assert repo.list_matter_documents(case["id"]) == []

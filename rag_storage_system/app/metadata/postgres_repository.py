@@ -987,6 +987,82 @@ class PostgresMetadataRepository(MetadataRepository):
         return self.get_intake_checklist(tenant_id)
 
     # ------------------------------------------------------------------
+    # Case matters and attorney case documents
+    # ------------------------------------------------------------------
+
+    def create_case_matter(self, name: str, api_key_hash: str, tenant_id: int, end_user_id: int) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO matters (tenant_id, name, api_key_hash, kind, end_user_id) "
+                "VALUES (%s, %s, %s, 'case', %s) RETURNING *",
+                (tenant_id, name, api_key_hash, end_user_id),
+            ).fetchone()
+        return dict(row)
+
+    def list_case_matters_for_end_user(self, end_user_id: int, tenant_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM matters WHERE end_user_id = %s AND tenant_id = %s AND kind = 'case' ORDER BY id",
+                (end_user_id, tenant_id),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_matters_with_clients(self, tenant_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT m.*, COALESCE(
+                    (SELECT email FROM end_users WHERE id = m.end_user_id),
+                    (SELECT email FROM end_users WHERE matter_id = m.id ORDER BY id LIMIT 1)
+                ) AS client_email
+                FROM matters m WHERE m.tenant_id = %s ORDER BY m.kind DESC, m.created_at DESC, m.id DESC
+                """,
+                (tenant_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def create_matter_document(self, tenant_id, matter_id, doc_type, original_filename, stored_category,
+                               stored_filename, size, sha256, uploaded_by) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO matter_documents (tenant_id, matter_id, doc_type, original_filename, stored_category,
+                                              stored_filename, size, sha256, uploaded_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
+                """,
+                (tenant_id, matter_id, doc_type, original_filename, stored_category, stored_filename, size, sha256, uploaded_by),
+            ).fetchone()
+        return dict(row)
+
+    def list_matter_documents(self, matter_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM matter_documents WHERE matter_id = %s ORDER BY created_at DESC, id DESC", (matter_id,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_matter_document(self, document_id: int, matter_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM matter_documents WHERE id = %s AND matter_id = %s", (document_id, matter_id)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_matter_document_status(self, document_id: int, status: str, chunk_count: int = 0, error=None) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE matter_documents SET status = %s, chunk_count = %s, error = %s, updated_at = now() WHERE id = %s",
+                (status, chunk_count, error, document_id),
+            )
+
+    def delete_matter_document(self, document_id: int, matter_id: int) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM matter_documents WHERE id = %s AND matter_id = %s", (document_id, matter_id)
+            )
+        return cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
     # Vault sync and duplicate detection
     # ------------------------------------------------------------------
 

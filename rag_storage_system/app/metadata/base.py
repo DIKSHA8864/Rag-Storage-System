@@ -484,6 +484,48 @@ class MetadataRepository(ABC):
         raise NotImplementedError
 
     # ------------------------------------------------------------------
+    # Case matters and attorney case documents (migration 0024)
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_case_matter(self, name: str, api_key_hash: str, tenant_id: int, end_user_id: int) -> dict:
+        """A matter of kind 'case' opened by client account `end_user_id`."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_case_matters_for_end_user(self, end_user_id: int, tenant_id: int) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_matters_with_clients(self, tenant_id: int) -> list[dict]:
+        """list_matters() plus `kind`, `end_user_id` and the client's email (`client_email`, None if no account)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_matter_document(self, tenant_id: int, matter_id: int, doc_type: str, original_filename: str,
+                               stored_category: str, stored_filename: str, size: int, sha256: str,
+                               uploaded_by: Optional[str]) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_matter_documents(self, matter_id: int) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_matter_document(self, document_id: int, matter_id: int) -> Optional[dict]:
+        """None unless the document belongs to `matter_id`."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_matter_document_status(self, document_id: int, status: str, chunk_count: int = 0,
+                                      error: Optional[str] = None) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_matter_document(self, document_id: int, matter_id: int) -> bool:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
     # Vault sync (migration 0022) and duplicate detection
     # ------------------------------------------------------------------
 

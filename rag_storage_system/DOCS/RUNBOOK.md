@@ -78,6 +78,22 @@ the old order.
   `--proxy-headers --forwarded-allow-ips=<proxy IP>`. Without that, every
   client's IP is recorded as the proxy's address.
 
+## Case matters and case documents
+
+- Each new intake from a signed-in client opens its own **case matter**,
+  named "<intake title> (<client email>)". It shows under Matters as
+  "Case". Intakes started earlier stay in the client's own matter. If the
+  plan's matter limit is reached, a new intake goes into the client's own
+  matter instead of failing.
+- On a case's page, attorneys upload that case's **documents**
+  (pleadings, orders, motions, discovery, correspondence, evidence).
+  Each file is virus-scanned, stored in case storage (INTAKE_STORAGE_PATH,
+  not the library), and indexed by the background worker into that
+  matter only. "Searchable (N passages)" means it can now be cited by the
+  matter's research, reports and complaint drafts. "Failed" usually means
+  a scanned PDF with no text layer; fix it and use Retry, or upload a
+  text version. Delete removes the file and its passages from search.
+
 ## Virus scanning
 
 Every upload is scanned before it is stored: library uploads and

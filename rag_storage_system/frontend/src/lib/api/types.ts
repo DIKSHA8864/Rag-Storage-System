@@ -227,6 +227,9 @@ export interface MatterInfo {
   name: string;
   is_active: boolean;
   created_at: string;
+  // "client" = a client's own matter; "case" = one case (a client's intake + the attorney's case documents).
+  kind: string;
+  client_email: string | null;
 }
 
 export interface MatterListResponse {
@@ -602,4 +605,23 @@ export interface IntakeChecklistResponse {
   items: IntakeChecklistItem[];
   customized: boolean;
   required_keys: string[];
+}
+
+// Attorney case documents (app/api/matter_documents_api.py).
+export interface MatterDocumentInfo {
+  id: number;
+  matter_id: number;
+  doc_type: string;
+  original_filename: string;
+  size: number;
+  uploaded_by: string | null;
+  status: "queued" | "indexed" | "failed";
+  chunk_count: number;
+  error: string | null;
+  created_at: string;
+}
+
+export interface MatterDocumentListResponse {
+  documents: MatterDocumentInfo[];
+  doc_types: string[];
 }

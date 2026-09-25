@@ -106,6 +106,24 @@ CREATE TABLE IF NOT EXISTS retrieval_settings (
     updated_by TEXT
 );
 
+CREATE TABLE IF NOT EXISTS matter_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    matter_id INTEGER NOT NULL,
+    doc_type TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    stored_category TEXT NOT NULL,
+    stored_filename TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    sha256 TEXT NOT NULL,
+    uploaded_by TEXT,
+    status TEXT NOT NULL DEFAULT 'queued',
+    chunk_count INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS intake_checklist_questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
@@ -436,6 +454,8 @@ class SQLiteMetadataRepository(MetadataRepository):
         ("interview_state", "terms_accepted_ip", "TEXT"),
         ("interview_state", "follow_up_questions", "TEXT"),
         ("interview_state", "checklist_snapshot", "TEXT"),
+        ("matters", "kind", "TEXT NOT NULL DEFAULT 'client'"),
+        ("matters", "end_user_id", "INTEGER"),
     )
 
     def __init__(self, db_path: Path):
@@ -1495,6 +1515,83 @@ class SQLiteMetadataRepository(MetadataRepository):
                     (tenant_id, item["key"], item["prompt_en"], item["prompt_es"], position, int(item["is_active"]), now, updated_by),
                 )
         return self.get_intake_checklist(tenant_id)
+
+    # ------------------------------------------------------------------
+    # Case matters and attorney case documents
+    # ------------------------------------------------------------------
+
+    def create_case_matter(self, name: str, api_key_hash: str, tenant_id: int, end_user_id: int) -> dict:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO matters (tenant_id, name, api_key_hash, is_active, created_at, kind, end_user_id) "
+                "VALUES (?, ?, ?, 1, ?, 'case', ?)",
+                (tenant_id, name, api_key_hash, _now(), end_user_id),
+            )
+            return dict(conn.execute("SELECT * FROM matters WHERE id = ?", (cursor.lastrowid,)).fetchone())
+
+    def list_case_matters_for_end_user(self, end_user_id: int, tenant_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM matters WHERE end_user_id = ? AND tenant_id = ? AND kind = 'case' ORDER BY id",
+                (end_user_id, tenant_id),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_matters_with_clients(self, tenant_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT m.*, COALESCE(
+                    (SELECT email FROM end_users WHERE id = m.end_user_id),
+                    (SELECT email FROM end_users WHERE matter_id = m.id ORDER BY id LIMIT 1)
+                ) AS client_email
+                FROM matters m WHERE m.tenant_id = ? ORDER BY m.kind DESC, m.created_at DESC, m.id DESC
+                """,
+                (tenant_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def create_matter_document(self, tenant_id, matter_id, doc_type, original_filename, stored_category,
+                               stored_filename, size, sha256, uploaded_by) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO matter_documents (tenant_id, matter_id, doc_type, original_filename, stored_category,
+                                              stored_filename, size, sha256, uploaded_by, status, chunk_count,
+                                              created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?)
+                """,
+                (tenant_id, matter_id, doc_type, original_filename, stored_category, stored_filename, size, sha256,
+                 uploaded_by, now, now),
+            )
+            return dict(conn.execute("SELECT * FROM matter_documents WHERE id = ?", (cursor.lastrowid,)).fetchone())
+
+    def list_matter_documents(self, matter_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM matter_documents WHERE matter_id = ? ORDER BY created_at DESC, id DESC", (matter_id,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_matter_document(self, document_id: int, matter_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM matter_documents WHERE id = ? AND matter_id = ?", (document_id, matter_id)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_matter_document_status(self, document_id: int, status: str, chunk_count: int = 0, error=None) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE matter_documents SET status = ?, chunk_count = ?, error = ?, updated_at = ? WHERE id = ?",
+                (status, chunk_count, error, _now(), document_id),
+            )
+
+    def delete_matter_document(self, document_id: int, matter_id: int) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM matter_documents WHERE id = ? AND matter_id = ?", (document_id, matter_id))
+        return cursor.rowcount > 0
 
     # ------------------------------------------------------------------
     # Vault sync and duplicate detection

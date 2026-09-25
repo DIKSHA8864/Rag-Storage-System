@@ -14,6 +14,7 @@ import { SessionDetail } from "@/components/matters/SessionDetail";
 import { MatterResearchPanel } from "@/components/matters/MatterResearchPanel";
 import { ComplaintGenerator } from "@/components/complaints/ComplaintGenerator";
 import { MatterResearchSuggestions } from "@/components/matters/MatterResearchSuggestions";
+import { CaseDocuments } from "@/components/matters/CaseDocuments";
 
 /**
  * The real Matter Workspace - matter detail, its intake sessions, and
@@ -115,7 +116,17 @@ export default function MatterWorkspacePage() {
   return (
     <div style={{ maxWidth: 720, margin: "0 auto" }}>
       <h1>{matter.name}</h1>
-      <p style={{ color: matter.is_active ? "#2e7d32" : "#999" }}>{matter.is_active ? "Active" : "Inactive"}</p>
+      <p style={{ color: "#555", fontSize: "0.9rem" }}>
+        {matter.kind === "case" ? "Case" : "Client matter"}
+        {matter.client_email && ` - client ${matter.client_email}`}
+        {" - "}
+        <span style={{ color: matter.is_active ? "#2e7d32" : "#999" }}>{matter.is_active ? "Active" : "Inactive"}</span>
+      </p>
+
+      <section style={{ marginTop: "1.5rem" }}>
+        <h2 style={{ fontSize: "1rem", color: "#555" }}>Case documents</h2>
+        <CaseDocuments matterId={matterId} token={token ?? ""} onAuthFailure={handleAuthFailure} />
+      </section>
 
       <section style={{ marginTop: "1.5rem" }}>
         <h2 style={{ fontSize: "1rem", color: "#555" }}>Intake sessions</h2>

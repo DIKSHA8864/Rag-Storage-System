@@ -109,6 +109,11 @@ class VectorStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def delete_matter_document_chunks(self, matter_id: int, document_id: str, tenant_id: int) -> int:
+        """Remove one document's chunks from a Matter's own namespace ("matter-<id>") - never library chunks."""
+        raise NotImplementedError
+
+    @abstractmethod
     def count(self) -> int:
         """Total number of chunk embeddings currently stored."""
         raise NotImplementedError

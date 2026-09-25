@@ -390,6 +390,11 @@ class MatterInfo(BaseModel):
     name: str
     is_active: bool
     created_at: str
+    # "client" = a client's own matter; "case" = one case (a client's intake,
+    # with the attorney's case documents). client_email is None when the
+    # matter has no client account (e.g. an access-code matter).
+    kind: str = "client"
+    client_email: str | None = None
 
 
 class MatterListResponse(BaseModel):
@@ -1132,3 +1137,25 @@ class IntakeChecklistResponse(BaseModel):
     items: list[IntakeChecklistItem]
     customized: bool  # False = the built-in default (never saved, or reset)
     required_keys: list[str]
+
+
+# ----------------------------------------------------------------------
+# Attorney case documents (app/api/matter_documents_api.py)
+# ----------------------------------------------------------------------
+
+class MatterDocumentInfo(BaseModel):
+    id: int
+    matter_id: int
+    doc_type: str
+    original_filename: str
+    size: int
+    uploaded_by: str | None = None
+    status: str  # queued | indexed | failed
+    chunk_count: int
+    error: str | None = None
+    created_at: str
+
+
+class MatterDocumentListResponse(BaseModel):
+    documents: list[MatterDocumentInfo]
+    doc_types: list[str]

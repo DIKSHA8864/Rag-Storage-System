@@ -186,6 +186,13 @@ class PgVectorRepository(VectorStore):
                 (tenant_id, category, filename),
             ).rowcount
 
+    def delete_matter_document_chunks(self, matter_id: int, document_id: str, tenant_id: int) -> int:
+        with self._connect() as conn:
+            return conn.execute(
+                "DELETE FROM chunk_embeddings WHERE tenant_id = %s AND category = %s AND document_id = %s",
+                (tenant_id, f"matter-{matter_id}", document_id),
+            ).rowcount
+
     def delete_category_chunks(self, category: str, tenant_id: int) -> int:
         with self._connect() as conn:
             return conn.execute(

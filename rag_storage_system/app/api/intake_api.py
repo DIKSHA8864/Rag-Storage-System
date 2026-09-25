@@ -61,6 +61,7 @@ from app.report.pdf_renderer import PdfReportRenderer
 from app.security.auth import current_matter, require_end_user_key
 from config.settings import get_settings
 from app.api.intake_common import get_owned_intake_session as _get_owned_session
+from app.api.intake_common import list_owned_intake_sessions, matter_for_new_intake, owned_matter_ids
 router = APIRouter(
     prefix="/end-user/intake",
     tags=["end-user-intake"],
@@ -152,7 +153,9 @@ def create_intake_session(
     if request.thread_id is not None and repo.get_thread(request.thread_id, matter["id"]) is None:
         raise HTTPException(status_code=404, detail="Thread not found.")
 
-    session = repo.create_intake_session(matter["id"], request.title, thread_id=request.thread_id)
+    session = repo.create_intake_session(
+        matter_for_new_intake(repo, matter, request.title), request.title, thread_id=request.thread_id
+    )
     repo.add_timeline_event(session["id"], "session_created", f"Intake session '{request.title}' created.")
 
     return _session_info(session)
@@ -162,7 +165,7 @@ def create_intake_session(
 def list_intake_sessions(matter: dict = Depends(current_matter)) -> IntakeSessionListResponse:
     from app.api import storage_api
 
-    sessions = storage_api.metadata_repository.list_intake_sessions(matter["id"])
+    sessions = list_owned_intake_sessions(storage_api.metadata_repository, matter)
     return IntakeSessionListResponse(sessions=[_session_info(s) for s in sessions])
 
 
@@ -230,7 +233,7 @@ async def upload_intake_input(
 
     uploaded_input = storage_api.metadata_repository.create_uploaded_input(
         intake_session_id=session_id,
-        matter_id=matter["id"],
+        matter_id=session["matter_id"],
         original_filename=filename,
         stored_category=result["category"],
         stored_filename=result["stored_filename"],
@@ -263,7 +266,8 @@ def get_uploaded_input_detail(upload_id: int, matter: dict = Depends(current_mat
     repo = storage_api.metadata_repository
     uploaded_input = repo.get_uploaded_input(upload_id)
 
-    if uploaded_input is None or repo.get_intake_session(uploaded_input["intake_session_id"], matter["id"]) is None:
+    session = repo.get_intake_session_by_id(uploaded_input["intake_session_id"]) if uploaded_input else None
+    if session is None or session["matter_id"] not in owned_matter_ids(repo, matter):
         raise HTTPException(status_code=404, detail="Uploaded input not found.")
 
     return _uploaded_input_detail(repo, uploaded_input)
@@ -319,13 +323,14 @@ def generate_intake_report(
     from app.storage import get_intake_storage_backend
 
     repo = storage_api.metadata_repository
-    _get_owned_session(repo, session_id, matter)
+    session = _get_owned_session(repo, session_id, matter)
+    session_matter = repo.get_matter(session["matter_id"]) or matter
 
     renderer_cls = _RENDERERS.get(request.format)
     if renderer_cls is None:
         raise HTTPException(status_code=400, detail="`format` must be 'docx', 'pdf', or 'image'.")
 
-    structured_report = build_structured_report(session_id, matter["name"], repo)
+    structured_report = build_structured_report(session_id, session_matter["name"], repo)
 
     renderer = renderer_cls()
     content = renderer.render(structured_report)
@@ -336,7 +341,7 @@ def generate_intake_report(
     filename = f"report_{session_id}.{renderer.file_extension}"
     stored = storage_backend.save(category, filename, io.BytesIO(content))
 
-    report = repo.create_report(session_id, matter["id"], request.format, stored["category"], stored["stored_filename"])
+    report = repo.create_report(session_id, session["matter_id"], request.format, stored["category"], stored["stored_filename"])
     repo.add_timeline_event(session_id, "report_generated", f"{request.format.upper()} report generated.")
     repo.create_report_review(report["id"])
 
@@ -351,7 +356,8 @@ def download_intake_report(report_id: int, matter: dict = Depends(current_matter
     repo = storage_api.metadata_repository
     report = repo.get_report(report_id)
 
-    if report is None or repo.get_intake_session(report["intake_session_id"], matter["id"]) is None:
+    session = repo.get_intake_session_by_id(report["intake_session_id"]) if report else None
+    if session is None or session["matter_id"] not in owned_matter_ids(repo, matter):
         raise HTTPException(status_code=404, detail="Report not found.")
 
     review = repo.get_report_review(report["id"])

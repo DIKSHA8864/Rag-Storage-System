@@ -23,7 +23,7 @@ def matter_namespace(matter_id: int) -> str:
 
 def ingest_matter_document(
     matter_id: int,
-    uploaded_input_id: int,
+    uploaded_input_id,  # int for a client intake upload; "case-<id>" for an attorney case document
     filename: str,
     data: bytes,
     vector_store: Optional[VectorStore] = None,

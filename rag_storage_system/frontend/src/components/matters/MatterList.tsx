@@ -27,7 +27,13 @@ export function MatterList({ matters }: MatterListProps) {
               color: "inherit",
             }}
           >
-            <span>{matter.name}</span>
+            <span>
+              {matter.name}
+              <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", color: "#777" }}>
+                {matter.kind === "case" ? "Case" : "Client"}
+                {matter.client_email && matter.kind !== "case" ? ` - ${matter.client_email}` : ""}
+              </span>
+            </span>
             <span style={{ color: matter.is_active ? "#2e7d32" : "#999", fontSize: "0.85rem" }}>
               {matter.is_active ? "Active" : "Inactive"}
             </span>

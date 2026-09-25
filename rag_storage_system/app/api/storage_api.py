@@ -329,6 +329,11 @@ from app.api.intake_checklist_api import router as intake_checklist_router  # no
 
 app.include_router(intake_checklist_router)
 
+# Attorney case documents per matter. See app/api/matter_documents_api.py.
+from app.api.matter_documents_api import router as matter_documents_router  # noqa: E402
+
+app.include_router(matter_documents_router)
+
 
 @app.get("/")
 def root() -> dict:
@@ -550,7 +555,7 @@ def list_matters(owner: dict = Depends(require_admin_key)) -> MatterListResponse
     creation.
     """
 
-    matters = metadata_repository.list_matters(tenant_id=owner["tenant_id"])
+    matters = metadata_repository.list_matters_with_clients(owner["tenant_id"])
 
     return MatterListResponse(
         matters=[
@@ -559,6 +564,8 @@ def list_matters(owner: dict = Depends(require_admin_key)) -> MatterListResponse
                 name=m["name"],
                 is_active=bool(m["is_active"]),
                 created_at=str(m["created_at"]),
+                kind=m.get("kind") or "client",
+                client_email=m.get("client_email"),
             )
             for m in matters
         ]
@@ -664,8 +671,10 @@ def get_matter_detail(matter_id: int, owner: dict = Depends(require_admin_key)) 
     if matter is None:
         raise HTTPException(status_code=404, detail="Matter not found.")
 
+    client = metadata_repository.get_end_user(matter["end_user_id"]) if matter.get("end_user_id") else None
     return MatterInfo(
         id=matter["id"], name=matter["name"], is_active=bool(matter["is_active"]), created_at=str(matter["created_at"]),
+        kind=matter.get("kind") or "client", client_email=client["email"] if client else None,
     )
 
 
