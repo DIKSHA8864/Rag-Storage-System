@@ -386,3 +386,27 @@ def test_failed_code_email_never_logs_the_code(repo, monkeypatch, caplog):
     code = re.search(r"\b(\d{6})\b", sender.subjects[-1]).group(1)
     assert "Could not send signup code email to someone@example.com" in caplog.text
     assert code not in caplog.text
+
+
+def test_api_terminal_says_why_a_code_was_or_was_not_sent(repo, mailbox, caplog):
+    """The page's answer is always the same, so the admin reads the reason in the API log - never the code."""
+
+    from app.security import end_user_accounts as accounts
+
+    with caplog.at_level("INFO", logger="app.security.end_user_accounts"):
+        accounts.request_code(repo, "stranger@example.com", accounts.PURPOSE_SIGNUP)
+        assert "NOT sent to stranger@example.com: this email has not been invited" in caplog.text
+
+        accounts.invite_end_users(repo, ["person@example.com"], tenant_id=1, invited_by="admin@example.com")
+        assert "Sent invite email to person@example.com" in caplog.text
+
+        accounts.request_code(repo, "person@example.com", accounts.PURPOSE_SIGNUP)
+        assert "Sent signup code email to person@example.com" in caplog.text
+
+        accounts.request_code(repo, "person@example.com", accounts.PURPOSE_SIGNUP)
+        assert "NOT resent to person@example.com: one was sent less than 60 seconds ago" in caplog.text
+
+        accounts.request_code(repo, "person@example.com", accounts.PURPOSE_PASSWORD_RESET)
+        assert "the account is 'invited', but password_reset needs 'active'" in caplog.text
+
+    assert mailbox.latest_code_for("person@example.com") not in caplog.text

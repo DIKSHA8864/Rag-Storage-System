@@ -96,6 +96,7 @@ def _send_email(to_email: str, subject: str, body: str, kind: str) -> bool:
 
     try:
         get_email_sender().send(to_email, subject, body)
+        logger.info("Sent %s email to %s", kind, to_email)
         return True
     except Exception:
         logger.exception("Could not send %s email to %s", kind, to_email)
@@ -193,7 +194,16 @@ def request_code(repo: MetadataRepository, email: str, purpose: str) -> None:
     account = repo.get_end_user_by_email(email)
     required_status = STATUS_INVITED if purpose == PURPOSE_SIGNUP else STATUS_ACTIVE
 
-    if account is None or account["status"] != required_status:
+    # The caller's response is identical either way - these log lines (API
+    # terminal only, never a code) are how the admin finds out why no email came.
+    if account is None:
+        logger.info("%s NOT sent to %s: this email has not been invited (invite it on the Users page).", purpose, email)
+        return
+    if account["status"] != required_status:
+        logger.info(
+            "%s NOT sent to %s: the account is '%s', but %s needs '%s'.",
+            purpose, email, account["status"], purpose, required_status,
+        )
         return
 
     latest = repo.get_latest_verification_code(email, purpose)
@@ -202,6 +212,10 @@ def request_code(repo: MetadataRepository, email: str, purpose: str) -> None:
         and latest["consumed_at"] is None
         and _now() - _as_datetime(latest["created_at"]) < timedelta(seconds=RESEND_COOLDOWN_SECONDS)
     ):
+        logger.info(
+            "%s code NOT resent to %s: one was sent less than %s seconds ago - the earlier code still works.",
+            purpose, email, RESEND_COOLDOWN_SECONDS,
+        )
         return
 
     settings = get_settings()

@@ -62,6 +62,10 @@ placeholder, never fabricated text) until turned on:
   blocked it tries 465 and says to set `SMTP_PORT=465` when that works. Restart
   the API after any `.env` change, and make sure the email is **invited** on the
   Users page.
+- The API terminal logs every sign-up/reset request's outcome (never the code):
+  `Sent signup code email to ...`, `NOT sent ...: this email has not been invited`,
+  `NOT sent ...: the account is 'active'...` (already signed up - use Sign in /
+  Forgot password), or `NOT resent ...: one was sent less than 60 seconds ago`.
 - Matter access codes (Matters page) still work for API integrations only; the
   web portal uses accounts.
 

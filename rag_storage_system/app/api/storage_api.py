@@ -185,6 +185,16 @@ if _settings.sentry_dsn:
 
     sentry_sdk.init(dsn=_settings.sentry_dsn, environment=_settings.environment, traces_sample_rate=0.1)
 
+# Sign-up/invite email outcomes (app/security/end_user_accounts.py) at INFO
+# in the API terminal: the sign-up page answers the same way whether or not a
+# code was sent, so this is how an admin sees what happened. Never logs codes.
+_account_log = logging.getLogger("app.security.end_user_accounts")
+if not _account_log.handlers:
+    _account_handler = logging.StreamHandler()
+    _account_handler.setFormatter(logging.Formatter("%(levelname)s:     %(message)s"))
+    _account_log.addHandler(_account_handler)
+    _account_log.setLevel(logging.INFO)
+
 app = FastAPI(
     title="Secure RAG Storage - Admin API",
     description=(
