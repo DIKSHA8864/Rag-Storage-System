@@ -4,6 +4,7 @@ import { createContext, useCallback, useEffect, useState, type ReactNode } from 
 
 import { endUserLogin } from "@/lib/api/endUserAuth";
 import type { EndUserSessionResponse } from "@/lib/api/types";
+import { markActiveIdentity, reconcileSessions, SESSION_CHANGED_EVENT } from "@/lib/sessionIdentity";
 import { clearEndUserSession, loadEndUserSession, saveEndUserSession } from "./endUserSessionStorage";
 import { clearIntakeSessionId } from "./intakeSessionStorage";
 import { clearIntakeReportId } from "./intakeReportStorage";
@@ -29,15 +30,30 @@ export function EndUserAuthProvider({ children }: { children: ReactNode }) {
     // localStorage doesn't exist during SSR, so the saved session can
     // only be read after mount - same case as the Owner session's own
     // hydration effect (lib/auth/AuthContext.tsx).
+    reconcileSessions();
     const saved = loadEndUserSession();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setEndUserToken(saved?.token ?? null);
     setEmail(saved?.email ?? null);
     setIsLoading(false);
+
+    // A staff sign-in (this tab or another) ends this end-user session.
+    const resync = () => {
+      const current = loadEndUserSession();
+      setEndUserToken(current?.token ?? null);
+      setEmail(current?.email ?? null);
+    };
+    window.addEventListener(SESSION_CHANGED_EVENT, resync);
+    window.addEventListener("storage", resync);
+    return () => {
+      window.removeEventListener(SESSION_CHANGED_EVENT, resync);
+      window.removeEventListener("storage", resync);
+    };
   }, []);
 
   const startSession = useCallback((session: EndUserSessionResponse) => {
     saveEndUserSession(session.access_token, session.email, session.expires_in);
+    markActiveIdentity("end_user");
     setEndUserToken(session.access_token);
     setEmail(session.email);
   }, []);

@@ -2,6 +2,8 @@
 // session - mirrors lib/auth/token-storage.ts (the Owner's session),
 // under separate keys so the two sessions never collide.
 
+import { isEndUserToken } from "../auth/tokenClaims";
+
 const TOKEN_KEY = "ashilegal_end_user_session_token";
 const EXPIRES_AT_KEY = "ashilegal_end_user_session_expires_at";
 const EMAIL_KEY = "ashilegal_end_user_session_email";
@@ -28,7 +30,7 @@ export function loadEndUserSession(): StoredEndUserSession | null {
     const email = localStorage.getItem(EMAIL_KEY);
     const expiresAt = Number(localStorage.getItem(EXPIRES_AT_KEY));
 
-    if (!token || !email || Number.isNaN(expiresAt) || Date.now() >= expiresAt) {
+    if (!token || !email || Number.isNaN(expiresAt) || Date.now() >= expiresAt || !isEndUserToken(token)) {
       clearEndUserSession();
       return null;
     }

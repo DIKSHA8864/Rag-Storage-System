@@ -3,14 +3,18 @@
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 
+import { loadEndUserSession } from "@/lib/clientAuth/endUserSessionStorage";
+import { END_USER_HOME } from "@/lib/sessionIdentity";
 import { useAuth } from "./useAuth";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 /**
  * Wrap any page/layout that requires a logged-in Owner/Attorney/
- * Paralegal session. Redirects to /login if there's no valid token
- * once the initial session check finishes - never renders protected
- * content while that check is still in flight.
+ * Paralegal session (a saved token whose role is one of those - see
+ * lib/auth/token-storage.ts). Never renders protected content while
+ * the check is in flight. Without a staff session: a signed-in end user
+ * is sent to their own area, anyone else to the admin sign-in. The API
+ * refuses non-staff tokens on every admin endpoint regardless.
  */
 export function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -18,7 +22,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.replace("/login");
+      router.replace(loadEndUserSession() ? END_USER_HOME : "/login");
     }
   }, [isLoading, isAuthenticated, router]);
 

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import { useAuth } from "@/lib/auth/useAuth";
+import { loadEndUserSession } from "@/lib/clientAuth/endUserSessionStorage";
+import { END_USER_HOME, STAFF_HOME } from "@/lib/sessionIdentity";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 /** Entry point: an already signed-in administrator goes straight to the dashboard; everyone else picks how to sign in. */
@@ -13,8 +15,11 @@ export default function HomePage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      router.replace("/dashboard");
+    if (isLoading) return;
+    if (isAuthenticated) {
+      router.replace(STAFF_HOME);
+    } else if (loadEndUserSession()) {
+      router.replace(END_USER_HOME);
     }
   }, [isLoading, isAuthenticated, router]);
 

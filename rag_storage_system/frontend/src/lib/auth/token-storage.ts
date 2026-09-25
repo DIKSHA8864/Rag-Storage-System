@@ -3,6 +3,8 @@
 // in some environments (private browsing, SSR) and a storage failure
 // must never crash the app, only mean "not logged in."
 
+import { isStaffToken } from "./tokenClaims";
+
 const TOKEN_KEY = "ashilegal_owner_access_token";
 const EXPIRES_AT_KEY = "ashilegal_owner_token_expires_at";
 
@@ -32,7 +34,8 @@ export function loadSession(): StoredSession | null {
 
     const expiresAt = Number(expiresAtRaw);
 
-    if (Number.isNaN(expiresAt) || Date.now() >= expiresAt) {
+    // Only a firm-staff token (owner/attorney/paralegal) opens the admin console.
+    if (Number.isNaN(expiresAt) || Date.now() >= expiresAt || !isStaffToken(token)) {
       clearSession();
       return null;
     }

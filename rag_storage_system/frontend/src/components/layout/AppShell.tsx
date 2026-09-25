@@ -1,14 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { useAuth } from "@/lib/auth/useAuth";
+import { isEndUserPath } from "@/lib/sessionIdentity";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { isAuthenticated, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  // The admin console's navigation only ever appears for a signed-in staff
+  // member, and never on end-user portal pages (they have their own header).
+  const showConsole = isAuthenticated && !isEndUserPath(pathname);
 
   function handleLogout() {
     logout();
@@ -30,8 +35,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           AshiLegal
         </Link>
 
-          {isAuthenticated && (
-                    <nav style={{ display: "flex", gap: "1rem" }}>
+        {showConsole && (
+          <nav style={{ display: "flex", gap: "1rem" }}>
             <Link href="/dashboard">Dashboard</Link>
             <Link href="/research">Research</Link>
             <Link href="/vault">Vault</Link>
@@ -47,7 +52,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
         )}
 
-        {isAuthenticated && (
+        {showConsole && (
           <button onClick={handleLogout} style={{ cursor: "pointer" }}>
             Log out
           </button>
