@@ -1,4 +1,15 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 import type { OwnerResearchSource } from "@/lib/api/types";
+
+const OPEN_SOURCE_EVENT = "ashilegal:open-source";
+
+/** Called by AnswerPanel's inline citations: jump to that source AND show its passage. */
+export function openSourcePassage(index: number) {
+  window.dispatchEvent(new CustomEvent<number>(OPEN_SOURCE_EVENT, { detail: index }));
+}
 
 interface SourcesPanelProps {
   sources: OwnerResearchSource[];
@@ -26,13 +37,31 @@ function formatCategory(category: string): string {
  * shown in that inline citation, so it's clear which source backs
  * which part of the answer.
  *
- * Only fields the backend actually returns are shown (filename,
- * category, section, page range, relevance score). The backend's
- * OwnerResearchSource model has no chunk id or excerpt text today, so
- * none is shown here - adding one would mean inventing data the
- * backend never sent.
+ * Each card can show the retrieved passage itself (`excerpt`, verbatim
+ * from the backend), so the reader can check the answer against the
+ * library text in seconds; a citation click in AnswerPanel opens it.
  */
 export function SourcesPanel({ sources }: SourcesPanelProps) {
+  const [openIndexes, setOpenIndexes] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    function handleOpen(event: Event) {
+      const index = (event as CustomEvent<number>).detail;
+      setOpenIndexes((prev) => new Set(prev).add(index));
+    }
+    window.addEventListener(OPEN_SOURCE_EVENT, handleOpen);
+    return () => window.removeEventListener(OPEN_SOURCE_EVENT, handleOpen);
+  }, []);
+
+  function toggle(index: number) {
+    setOpenIndexes((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
   return (
     <section
       style={{
@@ -107,6 +136,34 @@ export function SourcesPanel({ sources }: SourcesPanelProps) {
                   <dd style={{ margin: 0 }}>{source.score.toFixed(2)}</dd>
                 </div>
               </dl>
+
+              {source.excerpt && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => toggle(index)}
+                    aria-expanded={openIndexes.has(index)}
+                    style={{ fontSize: "0.8rem", marginTop: "0.4rem" }}
+                  >
+                    {openIndexes.has(index) ? "Hide passage" : "Show passage"}
+                  </button>
+                  {openIndexes.has(index) && (
+                    <blockquote
+                      style={{
+                        margin: "0.5rem 0 0 0",
+                        padding: "0.5rem 0.75rem",
+                        borderLeft: "3px solid #1a5fb4",
+                        background: "#f7faff",
+                        fontSize: "0.85rem",
+                        whiteSpace: "pre-wrap",
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {source.excerpt}
+                    </blockquote>
+                  )}
+                </>
+              )}
             </li>
           ))}
         </ul>

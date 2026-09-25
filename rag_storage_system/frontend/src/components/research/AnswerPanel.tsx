@@ -1,5 +1,6 @@
 import type { OwnerResearchSource } from "@/lib/api/types";
 import { parseAnswerCitations } from "@/lib/research/citations";
+import { openSourcePassage } from "./SourcesPanel";
 
 interface AnswerPanelProps {
   answer: string;
@@ -47,6 +48,7 @@ export function AnswerPanel({ answer, hasSupport, sources }: AnswerPanelProps) {
             <a
               key={i}
               href={`#source-${segment.sourceIndex}`}
+              onClick={() => openSourcePassage(segment.sourceIndex as number)}
               title={sources[segment.sourceIndex]?.filename}
               style={{
                 display: "inline-block",

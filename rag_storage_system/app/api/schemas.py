@@ -162,6 +162,10 @@ class OwnerResearchSource(BaseModel):
     start_page: int | None = None
     end_page: int | None = None
     score: float
+    # The retrieved passage itself, verbatim - so a reader can check the
+    # answer against the library text in seconds (Blueprint: "every
+    # retrieved passage is traceable").
+    excerpt: str | None = None
 
 
 class OwnerResearchResponse(BaseModel):

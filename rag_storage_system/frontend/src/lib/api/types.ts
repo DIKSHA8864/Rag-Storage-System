@@ -26,6 +26,8 @@ export interface OwnerResearchSource {
   start_page: number | null;
   end_page: number | null;
   score: number;
+  // The retrieved passage, verbatim.
+  excerpt?: string | null;
 }
 
 export interface OwnerResearchResponse {

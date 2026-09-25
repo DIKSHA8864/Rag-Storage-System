@@ -129,6 +129,21 @@ def build_report_pdf(report: dict, disclaimer_text: str) -> bytes:
 
     writer.close()
     return buffer.getvalue()
+_EXPORT_EXCERPT_CHARS = 700
+
+
+def _source_with_excerpt(source: dict) -> str:
+    """The source label, then the passage it was cited for - quoted, so the memo is verifiable on its own."""
+
+    label = _source_label(source)
+    excerpt = " ".join((source.get("excerpt") or "").split())
+    if not excerpt:
+        return label
+    if len(excerpt) > _EXPORT_EXCERPT_CHARS:
+        excerpt = excerpt[:_EXPORT_EXCERPT_CHARS].rsplit(" ", 1)[0] + " ..."
+    return f"{label}\n\u201c{excerpt}\u201d"
+
+
 def _owner_research_sections(
     query: str, answer: str, sources: list[dict], disclaimer_text: str
 ) -> list[tuple[str, list[str]]]:
@@ -146,7 +161,7 @@ def _owner_research_sections(
     ]
 
     if sources:
-        sections.append(("Sources", [_source_label(s) for s in sources]))
+        sections.append(("Sources", [_source_with_excerpt(s) for s in sources]))
     else:
         sections.append(("Sources", ["No sources - the library did not support this answer."]))
 
@@ -177,7 +192,7 @@ def build_owner_research_pdf(query: str, answer: str, sources: list[dict], discl
     html_parts = ["<h1>Research Answer</h1>"]
     for heading, paragraphs in _owner_research_sections(query, answer, sources, disclaimer_text):
         html_parts.append(f"<h2>{html.escape(heading)}</h2>")
-        html_parts.extend(f"<p>{html.escape(paragraph)}</p>" for paragraph in paragraphs)
+        html_parts.extend(f"<p>{html.escape(paragraph).replace(chr(10), '<br/>')}</p>" for paragraph in paragraphs)
 
     story = pymupdf.Story(html="".join(html_parts))
     mediabox = pymupdf.paper_rect("a4")

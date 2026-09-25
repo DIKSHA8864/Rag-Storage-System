@@ -361,6 +361,7 @@ async def stream_grounded_answer(
             "start_page": r.get("start_page"),
             "end_page": r.get("end_page"),
             "score": r["final_score"],
+            "excerpt": r.get("chunk_text"),
         }
         for r in relevant_results
     ]
