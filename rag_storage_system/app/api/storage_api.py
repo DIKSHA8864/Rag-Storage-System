@@ -125,6 +125,7 @@ from app.api.schemas import (
 from app.security.auth import ensure_matter_access
 from app.disclaimer import DEFAULT_DISCLAIMER_TEXT, get_current_disclaimer_text
 from app.ingestion.file_validator import validate_file_object
+from app.security.virus_scan import ScannerUnavailable, scan_bytes
 from app.jobs.processing import run_processing_job
 from app.jobs.queue import get_job_queue
 from app.metadata import get_metadata_repository
@@ -1117,6 +1118,22 @@ def _store_upload(upload_bytes: bytes, filename: str, category: str, tenant_id: 
             reason=reason,
         )
 
+    try:
+        verdict = scan_bytes(upload_bytes)
+    except ScannerUnavailable as exc:
+        log_audit_event("upload", category=category, filename=filename, status="rejected", detail=f"not scanned: {exc}")
+        return UploadedFileResult(
+            filename=filename, category=category, status="rejected",
+            reason=f"not stored - {exc} Try again later.",
+        )
+    if not verdict.clean:
+        result = storage_backend.quarantine(tenant_category, filename, io.BytesIO(upload_bytes))
+        log_audit_event("upload", category=category, filename=filename, status="infected", detail=verdict.signature)
+        return UploadedFileResult(
+            filename=filename, category=category, status="rejected",
+            reason=f"virus detected ({verdict.signature}) - moved to quarantine, not added to the library",
+        )
+
     # Same content already in the library (any folder, any name) - storing
     # it again would index the same text twice and double-cite it.
     duplicate = metadata_repository.find_document_by_sha256(hashlib.sha256(upload_bytes).hexdigest(), tenant_id)
@@ -1297,6 +1314,17 @@ async def replace_document(
     is_valid, reason = validate_file_object(filename, len(data))
     if not is_valid:
         raise HTTPException(status_code=400, detail=f"Invalid replacement file: {reason}")
+
+    try:
+        verdict = scan_bytes(data)
+    except ScannerUnavailable as exc:
+        raise HTTPException(status_code=503, detail=f"{exc} The file was not replaced - try again later.")
+    if not verdict.clean:
+        storage_backend.quarantine(_tenant_storage_category(category, owner["tenant_id"]), filename, io.BytesIO(data))
+        log_audit_event("replace", category=category, filename=filename, status="infected", detail=verdict.signature)
+        raise HTTPException(
+            status_code=400, detail=f"Virus detected ({verdict.signature}) - moved to quarantine; the current file is unchanged."
+        )
 
     # The old version's text must stop being citable now - the new one
     # is searchable once processed (its status goes back to Uploaded).

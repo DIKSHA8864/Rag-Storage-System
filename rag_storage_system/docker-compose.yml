@@ -36,6 +36,23 @@ services:
       timeout: 5s
       retries: 10
 
+  # Upload virus scanning (app/security/virus_scan.py). Not started by
+  # default - `docker compose --profile scan up -d clamav`, then set
+  # VIRUS_SCANNER=clamav. Signatures download on first start (a few
+  # minutes, ~1 GB RAM). clamd refuses streams over its StreamMaxLength;
+  # raise it to at least INTAKE_MAX_FILE_SIZE_MB or larger uploads are
+  # refused (see DOCS/RUNBOOK.md "Virus scanning").
+  clamav:
+    image: clamav/clamav:stable
+    container_name: rag_storage_clamav
+    restart: unless-stopped
+    profiles: ["scan"]
+    ports:
+      - "127.0.0.1:3310:3310"
+    volumes:
+      - clamav_db:/var/lib/clamav
+
 volumes:
   postgres_data:
   redis_data:
+  clamav_db:

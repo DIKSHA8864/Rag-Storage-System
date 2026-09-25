@@ -35,6 +35,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 
+from app.security.virus_scan import ScannerUnavailable, scan_bytes
 from app.analysis.ingestion import is_supported_submission, process_submission, process_text_submission
 from app.analysis.report_builder import build_analysis_report
 from app.analysis.report_export import (
@@ -160,6 +161,13 @@ async def _resolve_input_chunks(query: Optional[str], file: Optional[UploadFile]
 
     data = await file.read()
     await file.close()
+
+    try:
+        verdict = scan_bytes(data)
+    except ScannerUnavailable:
+        raise HTTPException(status_code=503, detail="The file couldn't be checked for viruses right now - try again later.")
+    if not verdict.clean:
+        raise HTTPException(status_code=400, detail="This file appears to contain a virus and was not processed.")
     return process_submission(filename, data)
 def _sse_event(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"

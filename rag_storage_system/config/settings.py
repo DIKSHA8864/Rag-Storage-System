@@ -99,6 +99,15 @@ class Settings(BaseSettings):
     # Upload validation
     # ------------------------------------------------------------------
     allowed_extensions: str = ".pdf,.docx,.txt"
+
+    # Virus scanning of every upload (app/security/virus_scan.py):
+    # "clamav" = scan with a ClamAV daemon, "none" = off. When on and the
+    # scanner can't give a verdict, uploads are refused (fails closed).
+    virus_scanner: str = "none"
+    clamav_host: str = "localhost"
+    clamav_port: int = 3310
+    clamav_socket: str = ""  # e.g. /var/run/clamav/clamd.ctl - used instead of host/port when set
+    clamav_timeout_seconds: float = 60
     max_file_size_mb: int = 100
     cors_allowed_origins: str = "http://localhost:3000"
     @property

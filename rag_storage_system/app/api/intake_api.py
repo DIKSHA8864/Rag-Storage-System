@@ -53,6 +53,7 @@ from app.jobs.intake_processing import run_intake_processing_job
 from app.jobs.queue import get_job_queue
 from app.multimodal.models import media_type_for_extension
 from app.multimodal.validation import validate_intake_file
+from app.security.virus_scan import ScannerUnavailable, scan_bytes
 from app.report.builder import build_structured_report
 from app.report.docx_renderer import DocxReportRenderer
 from app.report.image_renderer import ImageReportRenderer
@@ -207,6 +208,23 @@ async def upload_intake_input(
 
     storage_backend = get_intake_storage_backend()
     category = f"session_{session_id}"
+
+    try:
+        verdict = scan_bytes(data)
+    except ScannerUnavailable:
+        raise HTTPException(
+            status_code=503, detail="We couldn't check this file for viruses right now. Please try again in a few minutes."
+        )
+    if not verdict.clean:
+        storage_backend.quarantine(category, filename, io.BytesIO(data))
+        storage_api.metadata_repository.add_timeline_event(
+            session_id, "upload_blocked", f"'{filename}' blocked: virus detected ({verdict.signature})."
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="This file appears to contain a virus and was not accepted. Please send a different copy.",
+        )
+
     storage_backend.create_category(category)
     result = storage_backend.save(category, filename, io.BytesIO(data))
 

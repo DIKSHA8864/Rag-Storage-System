@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.ingestion.file_validator import validate_file_object
+from app.security.virus_scan import ScannerUnavailable, scan_bytes
 from app.security.path_security import sanitize_category_path, sanitize_path_segment
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,19 @@ def sync_folder(
             continue
 
         data = path.read_bytes()
+
+        # Not recorded in the manifest when skipped, so the next run tries again.
+        try:
+            verdict = scan_bytes(data)
+        except ScannerUnavailable as exc:
+            result.skipped.append({"path": relative_path, "reason": f"not synced - {exc}"})
+            continue
+        if not verdict.clean:
+            result.skipped.append({
+                "path": relative_path,
+                "reason": f"virus detected ({verdict.signature}) - not added; remove it from the synced folder",
+            })
+            continue
 
         if known:
             # Changed content: the old version must stop being citable now.

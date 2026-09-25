@@ -78,6 +78,28 @@ the old order.
   `--proxy-headers --forwarded-allow-ips=<proxy IP>`. Without that, every
   client's IP is recorded as the proxy's address.
 
+## Virus scanning
+
+Every upload is scanned before it is stored: library uploads and
+replacements, vault sync, client intake files (ZIPs included), and Ask
+"compare" files. Turn it on with `VIRUS_SCANNER=clamav`, pointed at a
+ClamAV daemon (`CLAMAV_HOST`/`CLAMAV_PORT`, or `CLAMAV_SOCKET`). For
+example, `docker compose --profile scan up -d clamav`.
+
+- Check it: `python scripts/check_virus_scanner.py`. It confirms clamd
+  answers and that the harmless EICAR test file is detected.
+- Infected files: library files go to quarantine and are never added;
+  intake files are refused with a plain message and logged on the
+  session timeline ("upload_blocked"); vault sync skips the file and
+  lists it on the Vault page on every run until it is removed from the
+  synced folder.
+- Scanner down: uploads are **refused** (library: "not stored",
+  intake: 503 "try again in a few minutes"). Nothing is stored
+  unscanned.
+- Large files: set clamd's `StreamMaxLength` at least as large as
+  `INTAKE_MAX_FILE_SIZE_MB`. Anything bigger is refused as "larger than
+  the virus scanner accepts".
+
 ## Voice/Video (Client intake OCR/Speech-to-Text/Vision)
 Real providers are opt-in (`OCR_PROVIDER`/`STT_PROVIDER`/`VISION_PROVIDER` in
 `.env` — see `config/settings.py`); each defaults to `mock` (a clearly-labeled
