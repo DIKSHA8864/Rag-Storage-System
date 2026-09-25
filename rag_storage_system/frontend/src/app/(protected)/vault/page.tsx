@@ -20,6 +20,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { FolderBrowser } from "@/components/vault/FolderBrowser";
 import { DocumentList } from "@/components/vault/DocumentList";
 import { UploadPanel } from "@/components/vault/UploadPanel";
+import { VaultSyncPanel } from "@/components/vault/VaultSyncPanel";
 
 const PROCESS_POLL_INTERVAL_MS = 2000;
 const DOCUMENT_POLL_INTERVAL_MS = 3000;
@@ -358,6 +359,14 @@ export default function VaultPage() {
         )}
         {processError && <ErrorMessage message={processError} />}
       </section>
+
+      <VaultSyncPanel
+        onSynced={() => {
+          void refreshDocuments();
+          void refreshStats();
+          void refreshCategories();
+        }}
+      />
 
       <section style={{ marginTop: "1.5rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

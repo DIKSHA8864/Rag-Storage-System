@@ -14,6 +14,25 @@
 - **Stale test failures after a pull** — clear __pycache__:
   `Get-ChildItem -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force`
 
+## Vault sync (Dropbox / Google Drive)
+- **Set up:** either `VAULT_SYNC_DIR` = a folder the Dropbox / Google Drive desktop
+  app keeps in sync on the server, or `DROPBOX_APP_KEY/SECRET/REFRESH_TOKEN`
+  (+ optional `DROPBOX_ROOT_PATH`) for the Dropbox API. Sub-folders become
+  library folders; files at the top level go to "Unfiled".
+- **Run it:** `python scripts/vault_sync.py --watch` (every
+  `VAULT_SYNC_INTERVAL_SECONDS`, default 5 min) as a service next to the worker,
+  or "Sync now" on the Vault page (Owner). Each run: add new files, replace
+  changed ones (their old text leaves search at once), delete removed ones,
+  then index. The Vault page shows the last run and every skipped file with
+  its reason.
+- **Safety:** it only changes files it synced itself - never a hand upload.
+  A missing/empty sync folder (drive not mounted, app signed out) is refused
+  with nothing changed, as is a run that would delete most synced files at
+  once - confirm that on the Vault page ("Yes, remove those files") or with
+  `--allow-mass-delete`.
+- **Duplicates:** a file whose content is already in the library (upload or
+  sync, any name/folder) is not stored again - the reason names the existing file.
+
 ## Library index stays in step with the library
 - **Delete / Replace a file** (Vault): its text leaves search immediately. A
   replaced file is searchable again once processing (Re-index) has run.

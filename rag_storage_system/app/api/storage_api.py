@@ -64,6 +64,7 @@ the openapi() patch below for why that needed a small nudge).
 GET /upload-test remains available too as a plain HTML fallback.
 """
 
+import hashlib
 import io
 import logging
 import secrets
@@ -316,6 +317,11 @@ app.include_router(activity_router)
 from app.api.research_threads_api import router as research_threads_router  # noqa: E402
 
 app.include_router(research_threads_router)
+
+# Vault sync status + "Sync now". See app/api/vault_sync_api.py.
+from app.api.vault_sync_api import router as vault_sync_router  # noqa: E402
+
+app.include_router(vault_sync_router)
 
 
 @app.get("/")
@@ -1104,6 +1110,19 @@ def _store_upload(upload_bytes: bytes, filename: str, category: str, tenant_id: 
             category=clean_category,
             status="rejected",
             reason=reason,
+        )
+
+    # Same content already in the library (any folder, any name) - storing
+    # it again would index the same text twice and double-cite it.
+    duplicate = metadata_repository.find_document_by_sha256(hashlib.sha256(upload_bytes).hexdigest(), tenant_id)
+    if duplicate is not None:
+        existing = f"{duplicate['category']}/{duplicate['filename']}"
+        log_audit_event("upload", category=category, filename=filename, status="rejected", detail=f"duplicate of {existing}")
+        return UploadedFileResult(
+            filename=filename,
+            category=category,
+            status="rejected",
+            reason=f"duplicate of {existing} (same content is already in the library)",
         )
 
     result = storage_backend.save(tenant_category, filename, io.BytesIO(upload_bytes))

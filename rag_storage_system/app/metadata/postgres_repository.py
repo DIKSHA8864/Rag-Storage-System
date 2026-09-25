@@ -940,6 +940,68 @@ class PostgresMetadataRepository(MetadataRepository):
         return dict(row)
 
     # ------------------------------------------------------------------
+    # Vault sync and duplicate detection
+    # ------------------------------------------------------------------
+
+    def find_document_by_sha256(self, sha256: str, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM documents WHERE tenant_id = %s AND sha256 = %s ORDER BY id LIMIT 1", (tenant_id, sha256)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_vault_manifest(self, tenant_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM vault_sync_manifest WHERE tenant_id = %s", (tenant_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_vault_manifest(
+        self, tenant_id: int, source_path: str, category: str, filename: str, sha256: str, size: int, mtime: float
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO vault_sync_manifest (tenant_id, source_path, category, filename, sha256, size, mtime)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, source_path) DO UPDATE SET
+                    category = excluded.category, filename = excluded.filename, sha256 = excluded.sha256,
+                    size = excluded.size, mtime = excluded.mtime, synced_at = now()
+                """,
+                (tenant_id, source_path, category, filename, sha256, size, mtime),
+            )
+
+    def delete_vault_manifest(self, tenant_id: int, source_path: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM vault_sync_manifest WHERE tenant_id = %s AND source_path = %s", (tenant_id, source_path)
+            )
+
+    def add_vault_sync_run(self, tenant_id: int, run: dict) -> dict:
+        from psycopg.types.json import Jsonb
+
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO vault_sync_runs
+                    (tenant_id, source, status, added, updated, deleted, unchanged, skipped, error, started_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING *
+                """,
+                (
+                    tenant_id, run["source"], run["status"], run["added"], run["updated"], run["deleted"],
+                    run["unchanged"], Jsonb(run["skipped"]), run.get("error"), run["started_at"],
+                ),
+            ).fetchone()
+        return dict(row)
+
+    def latest_vault_sync_run(self, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM vault_sync_runs WHERE tenant_id = %s ORDER BY id DESC LIMIT 1", (tenant_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    # ------------------------------------------------------------------
     # Owner research threads
     # ------------------------------------------------------------------
 

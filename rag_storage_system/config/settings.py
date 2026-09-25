@@ -74,6 +74,19 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     processing_queue_name: str = "processing"
 
+    # Vault sync (app/vault_sync/) - mirror a folder that Dropbox / Google
+    # Drive's desktop app keeps in sync (VAULT_SYNC_DIR), or a Dropbox folder
+    # via the Dropbox API (DROPBOX_* - downloaded into VAULT_MIRROR_DIR first),
+    # into VAULT_SYNC_TENANT_ID's library. Both empty = sync is off.
+    vault_sync_dir: str = ""
+    vault_sync_tenant_id: int = 1
+    vault_mirror_dir: str = "storage/vault_mirror"
+    vault_sync_interval_seconds: int = 300
+    dropbox_app_key: str = ""
+    dropbox_app_secret: str = ""
+    dropbox_refresh_token: str = ""
+    dropbox_root_path: str = ""  # e.g. "/AshiLegal Library"; "" = the whole app folder
+
     # ------------------------------------------------------------------
     # Upload validation
     # ------------------------------------------------------------------

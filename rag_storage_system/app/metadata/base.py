@@ -461,6 +461,38 @@ class MetadataRepository(ABC):
         raise NotImplementedError
 
     # ------------------------------------------------------------------
+    # Vault sync (migration 0022) and duplicate detection
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def find_document_by_sha256(self, sha256: str, tenant_id: int) -> Optional[dict]:
+        """Any of `tenant_id`'s documents with exactly this content, or None."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_vault_manifest(self, tenant_id: int) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def upsert_vault_manifest(
+        self, tenant_id: int, source_path: str, category: str, filename: str, sha256: str, size: int, mtime: float
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_vault_manifest(self, tenant_id: int, source_path: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def add_vault_sync_run(self, tenant_id: int, run: dict) -> dict:
+        """`run`: source, status, added, updated, deleted, unchanged, skipped (list), error, started_at."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def latest_vault_sync_run(self, tenant_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
     # Owner research threads (migration 0021) - always scoped to one
     # organization AND the admin user who owns the thread (owner_sub).
     # ------------------------------------------------------------------

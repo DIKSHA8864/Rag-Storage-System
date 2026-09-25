@@ -1073,3 +1073,34 @@ class ResearchStreamRequest(BaseModel):
 
 class ResearchThreadExportRequest(BaseModel):
     format: str = Field(..., pattern="^(docx|pdf)$")
+
+
+# ---------------------------------------------------------------------
+# Vault sync (app/api/vault_sync_api.py)
+# ---------------------------------------------------------------------
+
+
+class VaultSyncRunInfo(BaseModel):
+    id: int
+    source: str
+    status: str  # "ok" | "refused" | "failed"
+    added: int
+    updated: int
+    deleted: int
+    unchanged: int
+    skipped: list[dict]
+    error: str | None = None
+    started_at: str
+    finished_at: str
+
+
+class VaultSyncStatusResponse(BaseModel):
+    configured: bool
+    source: str | None = None
+    interval_seconds: int | None = None
+    last_run: VaultSyncRunInfo | None = None
+
+
+class VaultSyncStartResponse(BaseModel):
+    job_id: str
+    status: str

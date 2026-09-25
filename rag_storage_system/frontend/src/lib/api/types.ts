@@ -558,3 +558,28 @@ export interface ResearchThreadDetailResponse {
   thread: ResearchThreadInfo;
   messages: ResearchMessageInfo[];
 }
+
+// ---------------------------------------------------------------------
+// Vault sync (app/api/vault_sync_api.py)
+// ---------------------------------------------------------------------
+
+export interface VaultSyncRunInfo {
+  id: number;
+  source: string;
+  status: "ok" | "refused" | "failed" | string;
+  added: number;
+  updated: number;
+  deleted: number;
+  unchanged: number;
+  skipped: { path: string; reason: string }[];
+  error: string | null;
+  started_at: string;
+  finished_at: string;
+}
+
+export interface VaultSyncStatusResponse {
+  configured: boolean;
+  source: string | null;
+  interval_seconds: number | null;
+  last_run: VaultSyncRunInfo | null;
+}

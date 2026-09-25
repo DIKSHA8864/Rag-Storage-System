@@ -312,3 +312,30 @@ def test_research_threads_are_per_owner_and_keep_sources(repo):
     assert repo.delete_research_thread(thread["id"], 1, "8") is False
     assert repo.delete_research_thread(thread["id"], 1, "7") is True
     assert repo.list_research_messages(thread["id"]) == []
+
+
+def test_vault_sync_manifest_runs_and_duplicate_lookup(repo):
+    if not isinstance(repo, SQLiteMetadataRepository):
+        with repo._connect() as conn:
+            conn.execute("TRUNCATE vault_sync_manifest, vault_sync_runs RESTART IDENTITY")
+            conn.execute("INSERT INTO tenants (id, name, slug) VALUES (2, 'Second Firm', 'second-firm') ON CONFLICT DO NOTHING")
+
+    repo.upsert_document("Harassment", "a.pdf", ".pdf", 10, "sha-a", tenant_id=1)
+    assert repo.find_document_by_sha256("sha-a", 1)["filename"] == "a.pdf"
+    assert repo.find_document_by_sha256("sha-a", 2) is None
+
+    repo.upsert_vault_manifest(1, "Harassment/a.pdf", "Harassment", "a.pdf", "sha-a", 10, 1700000000.5)
+    repo.upsert_vault_manifest(1, "Harassment/a.pdf", "Harassment", "a.pdf", "sha-b", 11, 1700000001.5)
+    (row,) = repo.list_vault_manifest(1)
+    assert (row["sha256"], row["size"], float(row["mtime"])) == ("sha-b", 11, 1700000001.5)
+    assert repo.list_vault_manifest(2) == []
+    repo.delete_vault_manifest(1, "Harassment/a.pdf")
+    assert repo.list_vault_manifest(1) == []
+
+    base = {"source": "Folder /x", "added": 1, "updated": 0, "deleted": 0, "unchanged": 2, "error": None,
+            "started_at": "2026-09-25T00:00:00+00:00"}
+    repo.add_vault_sync_run(1, {**base, "status": "ok", "skipped": []})
+    repo.add_vault_sync_run(1, {**base, "status": "refused", "skipped": [{"path": "p", "reason": "r"}], "error": "empty"})
+    last = repo.latest_vault_sync_run(1)
+    assert (last["status"], last["error"], last["skipped"]) == ("refused", "empty", [{"path": "p", "reason": "r"}])
+    assert repo.latest_vault_sync_run(2) is None

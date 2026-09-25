@@ -106,6 +106,33 @@ CREATE TABLE IF NOT EXISTS retrieval_settings (
     updated_by TEXT
 );
 
+CREATE TABLE IF NOT EXISTS vault_sync_manifest (
+    tenant_id INTEGER NOT NULL,
+    source_path TEXT NOT NULL,
+    category TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    mtime REAL NOT NULL,
+    synced_at TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, source_path)
+);
+
+CREATE TABLE IF NOT EXISTS vault_sync_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    status TEXT NOT NULL,
+    added INTEGER NOT NULL DEFAULT 0,
+    updated INTEGER NOT NULL DEFAULT 0,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    unchanged INTEGER NOT NULL DEFAULT 0,
+    skipped TEXT NOT NULL DEFAULT '[]',
+    error TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS research_threads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
@@ -1382,6 +1409,73 @@ class SQLiteMetadataRepository(MetadataRepository):
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM llm_usage_log WHERE id = ?", (new_id,)).fetchone()
         return dict(row)
+
+    # ------------------------------------------------------------------
+    # Vault sync and duplicate detection
+    # ------------------------------------------------------------------
+
+    def find_document_by_sha256(self, sha256: str, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM documents WHERE tenant_id = ? AND sha256 = ? ORDER BY id LIMIT 1", (tenant_id, sha256)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_vault_manifest(self, tenant_id: int) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM vault_sync_manifest WHERE tenant_id = ?", (tenant_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_vault_manifest(
+        self, tenant_id: int, source_path: str, category: str, filename: str, sha256: str, size: int, mtime: float
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO vault_sync_manifest (tenant_id, source_path, category, filename, sha256, size, mtime, synced_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(tenant_id, source_path) DO UPDATE SET
+                    category = excluded.category, filename = excluded.filename, sha256 = excluded.sha256,
+                    size = excluded.size, mtime = excluded.mtime, synced_at = excluded.synced_at
+                """,
+                (tenant_id, source_path, category, filename, sha256, size, mtime, _now()),
+            )
+
+    def delete_vault_manifest(self, tenant_id: int, source_path: str) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM vault_sync_manifest WHERE tenant_id = ? AND source_path = ?", (tenant_id, source_path))
+
+    def add_vault_sync_run(self, tenant_id: int, run: dict) -> dict:
+        import json
+
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO vault_sync_runs
+                    (tenant_id, source, status, added, updated, deleted, unchanged, skipped, error, started_at, finished_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    tenant_id, run["source"], run["status"], run["added"], run["updated"], run["deleted"],
+                    run["unchanged"], json.dumps(run["skipped"]), run.get("error"), run["started_at"], _now(),
+                ),
+            )
+            new_id = cursor.lastrowid
+        return self._vault_run(new_id)
+
+    def _vault_run(self, run_id: int) -> Optional[dict]:
+        import json
+
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM vault_sync_runs WHERE id = ?", (run_id,)).fetchone()
+        return {**dict(row), "skipped": json.loads(row["skipped"])} if row else None
+
+    def latest_vault_sync_run(self, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM vault_sync_runs WHERE tenant_id = ? ORDER BY id DESC LIMIT 1", (tenant_id,)
+            ).fetchone()
+        return self._vault_run(row["id"]) if row else None
 
     # ------------------------------------------------------------------
     # Owner research threads
