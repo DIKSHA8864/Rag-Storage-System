@@ -15,6 +15,8 @@ ALTER TABLE interview_state ADD COLUMN IF NOT EXISTS checklist_snapshot JSONB;
 
 -- The owner-editable ancillary-sweep checklist, per organization. No rows =
 -- the built-in default (app/intake_engine/mandatory_sweep.py).
+SELECT rag_retire_legacy_table('intake_checklist_questions', 'prompt_es');
+
 CREATE TABLE IF NOT EXISTS intake_checklist_questions (
     id SERIAL PRIMARY KEY,
     tenant_id INTEGER NOT NULL REFERENCES tenants(id),

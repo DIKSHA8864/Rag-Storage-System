@@ -11,6 +11,8 @@ ALTER TABLE matters ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT '
 ALTER TABLE matters ADD COLUMN IF NOT EXISTS end_user_id INTEGER REFERENCES end_users(id);
 CREATE INDEX IF NOT EXISTS idx_matters_end_user ON matters (end_user_id);
 
+SELECT rag_retire_legacy_table('matter_documents', 'chunk_count');
+
 CREATE TABLE IF NOT EXISTS matter_documents (
     id SERIAL PRIMARY KEY,
     tenant_id INTEGER NOT NULL REFERENCES tenants(id),

@@ -4,6 +4,9 @@
 -- reliably"). One row per synced source file; the sync only ever manages
 -- library files it created itself. Idempotent (re-applied on every startup).
 
+SELECT rag_retire_legacy_table('vault_sync_manifest', 'source_path');
+SELECT rag_retire_legacy_table('vault_sync_runs', 'skipped');
+
 CREATE TABLE IF NOT EXISTS vault_sync_manifest (
     tenant_id INTEGER NOT NULL REFERENCES tenants(id),
     source_path TEXT NOT NULL,

@@ -3,6 +3,9 @@
 -- the admin user who started it (owner_sub = their login's subject) within
 -- their organization. Idempotent (re-applied on every startup).
 
+SELECT rag_retire_legacy_table('research_messages', 'sources');
+SELECT rag_retire_legacy_table('research_threads', 'owner_sub');
+
 CREATE TABLE IF NOT EXISTS research_threads (
     id SERIAL PRIMARY KEY,
     tenant_id INTEGER NOT NULL REFERENCES tenants(id),

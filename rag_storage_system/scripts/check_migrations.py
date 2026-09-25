@@ -23,7 +23,7 @@ MIGRATIONS_DIR = PROJECT_ROOT / "database" / "migrations"
 
 
 def _statements(sql: str) -> list[str]:
-    """Split on ';' outside quotes, dollar-quoted DO blocks and -- comments."""
+    """Split on ';' outside quotes, dollar-quoted bodies ($$ / $fn$) and -- comments."""
 
     statements, current, i, quote = [], [], 0, None
     while i < len(sql):
@@ -31,10 +31,11 @@ def _statements(sql: str) -> list[str]:
             end = sql.find("\n", i)
             i = len(sql) if end == -1 else end
             continue
-        if sql.startswith("$$", i):
-            quote = None if quote == "$$" else ("$$" if quote is None else quote)
-            current.append("$$")
-            i += 2
+        tag = re.match(r"\$[A-Za-z_]*\$", sql[i:])
+        if tag and quote in (None, tag.group(0)):
+            quote = None if quote == tag.group(0) else tag.group(0)
+            current.append(tag.group(0))
+            i += len(tag.group(0))
             continue
         char = sql[i]
         if char == "'" and quote in (None, "'"):
@@ -66,6 +67,7 @@ def main() -> int:
     settings = get_settings()
     print(f"Database: {settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db}\n")
     with psycopg.connect(settings.postgres_dsn) as conn:
+        failures = 0
         try:
             for path in files:
                 sql = path.read_text(encoding="utf-8")
@@ -81,8 +83,13 @@ def main() -> int:
                         tables = set(re.findall(r"(?:\bON|TABLE(?: IF NOT EXISTS)?|INTO|FROM|JOIN)\s+([a-z_]+)", statement, re.I))
                         for table in sorted(tables - {"if", "only"}):
                             print(f"  table {table} columns now: {_columns(conn, table) or '(table does not exist)'}")
-                        return 1
-                print(f"ok      {path.name}")
+                        failures += 1
+                        break
+                else:
+                    print(f"ok      {path.name}")
+            if failures:
+                print(f"\n{failures} migration file(s) failed - nothing was changed.")
+                return 1
             print("\nAll migrations apply cleanly.")
             return 0
         finally:

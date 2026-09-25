@@ -5,6 +5,8 @@
 ALTER TABLE plans ADD COLUMN IF NOT EXISTS provider_price_id VARCHAR(255);
 
 -- Every webhook event already applied, so a retried delivery is a no-op.
+SELECT rag_retire_legacy_table('billing_provider_events', 'event_id');
+
 CREATE TABLE IF NOT EXISTS billing_provider_events (
     event_id VARCHAR(255) PRIMARY KEY,
     provider VARCHAR(50) NOT NULL,

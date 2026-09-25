@@ -1,5 +1,7 @@
 -- "Talk to a person" (Blueprint Phase 5): a client asks for a human during
 -- intake; the firm's staff see, claim and close the request. Idempotent.
+SELECT rag_retire_legacy_table('handoff_requests', 'contact_method');
+
 CREATE TABLE IF NOT EXISTS handoff_requests (
     id SERIAL PRIMARY KEY,
     tenant_id INTEGER NOT NULL REFERENCES tenants(id),

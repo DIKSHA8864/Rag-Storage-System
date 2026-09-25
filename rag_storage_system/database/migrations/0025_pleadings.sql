@@ -3,6 +3,9 @@
 
 -- What goes in the attorney block and caption of every generated pleading,
 -- per organization. Blank fields are left as bracketed placeholders.
+SELECT rag_retire_legacy_table('tenant_pleading_settings', 'attorney_for');
+SELECT rag_retire_legacy_table('document_templates', 'placeholders');
+
 CREATE TABLE IF NOT EXISTS tenant_pleading_settings (
     tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id),
     attorney_name VARCHAR(255) NOT NULL DEFAULT '',
