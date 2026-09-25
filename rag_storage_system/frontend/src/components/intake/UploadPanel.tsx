@@ -6,10 +6,11 @@ import { ApiError } from "@/lib/api/client";
 import { listIntakeUploads, uploadIntakeFile } from "@/lib/api/intake";
 import type { ExtractedInformationInfo, UploadedInputDetailResponse } from "@/lib/api/types";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
+import { MediaCapture, type CaptureKind } from "./MediaCapture";
 
 // Mirrors the backend's default INTAKE_ALLOWED_EXTENSIONS (config/settings.py).
 // The backend is still the one that decides - this only filters the file picker.
-const ACCEPTED_EXTENSIONS = ".png,.jpg,.jpeg,.tiff,.bmp,.mp3,.wav,.m4a,.mp4,.mov,.avi,.pdf,.docx,.txt,.zip";
+const ACCEPTED_EXTENSIONS = ".png,.jpg,.jpeg,.tiff,.bmp,.mp3,.wav,.m4a,.weba,.ogg,.mp4,.mov,.avi,.webm,.pdf,.docx,.txt,.zip";
 const POLL_INTERVAL_MS = 3000;
 
 type Lang = "en" | "es";
@@ -17,8 +18,11 @@ type Lang = "en" | "es";
 const TEXT = {
   en: {
     title: "Your files",
-    help: "Add photos, audio recordings, videos, or documents that support your case. They're only shared with the firm reviewing your intake.",
-    button: "Add photos, audio or video",
+    help: "Record audio or video, take a photo, or upload documents that support your case. They're only shared with the firm reviewing your intake.",
+    button: "Upload a file",
+    recordAudio: "Record audio",
+    recordVideo: "Record video",
+    takePhoto: "Take a photo",
     uploading: "Uploading",
     empty: "No files added yet.",
     show: "Show what was found",
@@ -43,8 +47,11 @@ const TEXT = {
   },
   es: {
     title: "Sus archivos",
-    help: "Agregue fotos, grabaciones de audio, videos o documentos que respalden su caso. Solo se comparten con el despacho que revisa su admision.",
-    button: "Agregar fotos, audio o video",
+    help: "Grabe audio o video, tome una foto o suba documentos que respalden su caso. Solo se comparten con el despacho que revisa su admision.",
+    button: "Subir un archivo",
+    recordAudio: "Grabar audio",
+    recordVideo: "Grabar video",
+    takePhoto: "Tomar una foto",
     uploading: "Subiendo",
     empty: "Todavia no ha agregado archivos.",
     show: "Ver lo que se encontro",
@@ -126,6 +133,7 @@ export function UploadPanel({ sessionId, endUserToken, language, onUnauthorized 
   const [inFlight, setInFlight] = useState<InFlightUpload[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [capturing, setCapturing] = useState<CaptureKind | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const localIdCounter = useRef(0);
 
@@ -167,13 +175,13 @@ export function UploadPanel({ sessionId, endUserToken, language, onUnauthorized 
     return () => clearTimeout(timer);
   }, [isStillProcessing, uploads, loadUploads]);
 
-  async function handleFilesChosen(files: FileList | null) {
-    if (!files || files.length === 0) return;
+  async function uploadFiles(files: File[]) {
+    if (files.length === 0) return;
     setError(null);
 
     // One at a time: several large videos uploading in parallel would
     // only compete for the same connection.
-    for (const file of Array.from(files)) {
+    for (const file of files) {
       localIdCounter.current += 1;
       const localId = localIdCounter.current;
       setInFlight((prev) => [...prev, { localId, name: file.name, percent: 0 }]);
@@ -191,6 +199,11 @@ export function UploadPanel({ sessionId, endUserToken, language, onUnauthorized 
     }
 
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function handleCaptured(file: File) {
+    setCapturing(null);
+    void uploadFiles([file]);
   }
 
   function toggleExpanded(id: number) {
@@ -214,13 +227,34 @@ export function UploadPanel({ sessionId, endUserToken, language, onUnauthorized 
         type="file"
         multiple
         accept={ACCEPTED_EXTENSIONS}
-        onChange={(e) => handleFilesChosen(e.target.files)}
+        onChange={(e) => uploadFiles(Array.from(e.target.files ?? []))}
         style={{ display: "none" }}
         aria-label={t.button}
       />
-      <button type="button" onClick={() => fileInputRef.current?.click()} disabled={inFlight.length > 0}>
-        {t.button}
-      </button>
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <button type="button" onClick={() => setCapturing("audio")} disabled={inFlight.length > 0 || capturing !== null}>
+          {t.recordAudio}
+        </button>
+        <button type="button" onClick={() => setCapturing("video")} disabled={inFlight.length > 0 || capturing !== null}>
+          {t.recordVideo}
+        </button>
+        <button type="button" onClick={() => setCapturing("photo")} disabled={inFlight.length > 0 || capturing !== null}>
+          {t.takePhoto}
+        </button>
+        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={inFlight.length > 0 || capturing !== null}>
+          {t.button}
+        </button>
+      </div>
+
+      {capturing && (
+        <MediaCapture
+          key={capturing}
+          kind={capturing}
+          language={language}
+          onCaptured={handleCaptured}
+          onClose={() => setCapturing(null)}
+        />
+      )}
 
       {error && (
         <div style={{ marginTop: "0.75rem" }}>

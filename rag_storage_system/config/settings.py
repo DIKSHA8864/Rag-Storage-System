@@ -219,7 +219,7 @@ class Settings(BaseSettings):
     # those (app/multimodal/zip_processor.py).
     intake_allowed_extensions: str = (
         ".pdf,.docx,.txt,.png,.jpg,.jpeg,.tiff,.bmp,"
-        ".mp3,.wav,.m4a,.mp4,.mov,.avi,.zip"
+        ".mp3,.wav,.m4a,.weba,.ogg,.mp4,.mov,.avi,.webm,.zip"
     )
     intake_max_file_size_mb: int = 200
     intake_zip_max_files: int = 50

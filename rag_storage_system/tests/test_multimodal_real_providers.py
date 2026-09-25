@@ -333,6 +333,75 @@ def test_sample_frame_pngs_extracts_evenly_spaced_real_frames(tmp_path):
             assert image.size == (160, 120)
 
 
+def _browser_style_webm(path: Path, seconds: int = 3, fps: int = 10) -> None:
+    """
+    A WebM written to a NON-seekable stream, the way a browser's
+    MediaRecorder writes one - so it carries no duration and no seek
+    index (Chrome's recordings read back with container.duration None).
+    """
+
+    import av
+    import numpy as np
+
+    class _NonSeekable(io.RawIOBase):
+        def __init__(self):
+            self.data = bytearray()
+
+        def writable(self):
+            return True
+
+        def seekable(self):
+            return False
+
+        def write(self, chunk):
+            self.data += bytes(chunk)
+            return len(chunk)
+
+    out = _NonSeekable()
+    container = av.open(out, "w", format="webm")
+    stream = container.add_stream("libvpx", rate=fps)
+    stream.width, stream.height, stream.pix_fmt = 64, 48, "yuv420p"
+    for i in range(seconds * fps):
+        frame = av.VideoFrame.from_ndarray(np.full((48, 64, 3), (i * 7) % 255, dtype=np.uint8), format="rgb24")
+        for packet in stream.encode(frame):
+            container.mux(packet)
+    for packet in stream.encode():
+        container.mux(packet)
+    container.close()
+    path.write_bytes(bytes(out.data))
+
+
+def test_sample_frame_pngs_handles_a_browser_recording_with_no_duration(tmp_path):
+    """Regression: a WebM recorded in the browser has no duration, so no scene was ever described."""
+
+    import av
+
+    video_path = tmp_path / "video-recording.webm"
+    _browser_style_webm(video_path, seconds=3)
+    with av.open(str(video_path)) as container:
+        assert not container.duration  # the case being tested
+
+    frames = _sample_frame_pngs(video_path, 3)
+
+    assert len(frames) == 3
+    timestamps = [t for t, _ in frames]
+    assert timestamps == sorted(timestamps)
+    assert all(0 < t < 3 for t in timestamps)
+    for _, png_bytes in frames:
+        with Image.open(io.BytesIO(png_bytes)) as image:
+            assert image.format == "PNG"
+
+
+def test_browser_recording_formats_are_routed_to_audio_and_video_processing():
+    from app.multimodal.models import MediaType, media_type_for_extension
+    from config.settings import get_settings
+
+    assert media_type_for_extension(".weba") == MediaType.AUDIO
+    assert media_type_for_extension(".ogg") == MediaType.AUDIO
+    assert media_type_for_extension(".webm") == MediaType.VIDEO
+    assert {".weba", ".ogg", ".webm"} <= get_settings().intake_allowed_extensions_set
+
+
 def test_sample_frame_pngs_returns_nothing_for_a_zero_count(tmp_path):
     assert _sample_frame_pngs(tmp_path / "irrelevant.mp4", 0) == []
 

@@ -64,10 +64,21 @@ def _sample_frame_pngs(video_path: Path, count: int) -> list[tuple[float, bytes]
 
     try:
         video_stream = next((s for s in container.streams if s.type == "video"), None)
-        if video_stream is None or not container.duration:
+        if video_stream is None:
             return []
 
-        duration_seconds = container.duration / av.time_base
+        if container.duration:
+            duration_seconds = container.duration / av.time_base
+        else:
+            # A browser recording (MediaRecorder WebM) carries no duration
+            # and no seek index - measure it from the packet timestamps
+            # and decode forward instead of seeking.
+            duration_seconds = _duration_from_packets(video_path)
+            if not duration_seconds:
+                return []
+            timestamps = [duration_seconds * (i + 1) / (count + 1) for i in range(count)]
+            return _decode_forward_to(container, video_stream, timestamps, video_path)
+
         timestamps = [duration_seconds * (i + 1) / (count + 1) for i in range(count)]
 
         frames: list[tuple[float, bytes]] = []
@@ -85,9 +96,7 @@ def _sample_frame_pngs(video_path: Path, count: int) -> list[tuple[float, bytes]
                 for frame in container.decode(video_stream):
                     pts_time = float(frame.pts * video_stream.time_base) if frame.pts is not None else 0.0
                     if pts_time >= target:
-                        buffer = io.BytesIO()
-                        frame.to_image().save(buffer, format="PNG")
-                        frames.append((pts_time, buffer.getvalue()))
+                        frames.append((pts_time, _png_bytes(frame)))
                         break
             except Exception as exc:
                 logger.warning("Could not decode a frame near %.1fs in '%s': %s", target, video_path, exc)
@@ -96,6 +105,49 @@ def _sample_frame_pngs(video_path: Path, count: int) -> list[tuple[float, bytes]
         return frames
     finally:
         container.close()
+
+
+def _duration_from_packets(video_path: Path) -> float:
+    """Last video packet timestamp, in seconds - demux only, no decoding."""
+
+    try:
+        with av.open(str(video_path)) as container:
+            stream = next((s for s in container.streams if s.type == "video"), None)
+            if stream is None:
+                return 0.0
+            last = 0.0
+            for packet in container.demux(stream):
+                if packet.pts is not None:
+                    last = max(last, float(packet.pts * stream.time_base))
+            return last
+    except Exception as exc:
+        logger.warning("Could not measure the duration of '%s': %s", video_path, exc)
+        return 0.0
+
+
+def _png_bytes(frame) -> bytes:
+    buffer = io.BytesIO()
+    frame.to_image().save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _decode_forward_to(container, video_stream, timestamps: list[float], video_path: Path) -> list[tuple[float, bytes]]:
+    """One forward pass: the first frame at or after each target timestamp."""
+
+    frames: list[tuple[float, bytes]] = []
+    pending = sorted(timestamps)
+    try:
+        for frame in container.decode(video_stream):
+            if not pending:
+                break
+            pts_time = float(frame.pts * video_stream.time_base) if frame.pts is not None else 0.0
+            if pts_time >= pending[0]:
+                frames.append((pts_time, _png_bytes(frame)))
+                while pending and pending[0] <= pts_time:
+                    pending.pop(0)
+    except Exception as exc:
+        logger.warning("Stopped sampling frames from '%s' early: %s", video_path, exc)
+    return frames
 
 
 def process_video(filename: str, data: bytes) -> list[ExtractedContent]:

@@ -39,6 +39,12 @@ _EXTENSION_MEDIA_TYPES: dict[str, MediaType] = {
     ".mp3": MediaType.AUDIO,
     ".wav": MediaType.AUDIO,
     ".m4a": MediaType.AUDIO,
+    # Recorded in the browser (MediaRecorder): Chrome/Edge audio is
+    # audio/webm (saved as .weba), Firefox audio is .ogg, and video from
+    # Chrome/Edge/Firefox is .webm. Safari records .m4a / .mp4.
+    ".weba": MediaType.AUDIO,
+    ".ogg": MediaType.AUDIO,
+    ".webm": MediaType.VIDEO,
     ".mp4": MediaType.VIDEO,
     ".mov": MediaType.VIDEO,
     ".avi": MediaType.VIDEO,
