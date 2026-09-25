@@ -11,6 +11,7 @@ Usage:
     python scripts/check_email.py <send-a-test-to@example.com>
 """
 
+import os
 import smtplib
 import socket
 import sys
@@ -21,6 +22,63 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.notifications.email_sender import get_email_sender  # noqa: E402
 from config.settings import get_settings  # noqa: E402
+
+
+EMAIL_KEYS = ("EMAIL_PROVIDER", "SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM_EMAIL", "SMTP_USE_TLS")
+
+
+def find_hidden_overrides(env_path: Path) -> list[str]:
+    """
+    Problems that make the app use a different value than the one you
+    just typed into .env - invisible from just looking at the top of it.
+    """
+
+    problems = []
+
+    if not env_path.exists():
+        return [f"No .env file at {env_path} - run the API and this script from the project folder."]
+
+    seen: dict[str, list[int]] = {}
+    for number, raw in enumerate(env_path.read_text(encoding="utf-8-sig").splitlines(), start=1):
+        line = raw.strip()
+        if line.startswith("export "):
+            line = line[len("export "):]
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key = line.split("=", 1)[0].strip().upper()
+        if key in EMAIL_KEYS:
+            seen.setdefault(key, []).append(number)
+
+    for key, lines in seen.items():
+        if len(lines) > 1:
+            problems.append(
+                f"{key} appears {len(lines)} times in .env (lines {', '.join(map(str, lines))}) - "
+                f"the LAST one (line {lines[-1]}) wins. Delete the extra lines."
+            )
+
+    for key in EMAIL_KEYS:
+        if key in os.environ or key.lower() in os.environ:
+            problems.append(
+                f"{key} is also set as a Windows/terminal environment variable, which OVERRIDES .env. "
+                f"Remove it (PowerShell: Remove-Item Env:{key}) or open a new terminal."
+            )
+
+    return problems
+
+
+def check_password_shape(password: str) -> list[str]:
+    problems = []
+    if any(ch in password for ch in "<>\"'"):
+        problems.append("SMTP_PASSWORD contains < > or quotes - paste only the 16 letters, nothing around them.")
+    if " " in password:
+        problems.append("SMTP_PASSWORD contains spaces - remove them (Gmail shows the App Password in groups of 4).")
+    compact = password.replace(" ", "")
+    if len(compact) != 16 or not compact.isalpha():
+        problems.append(
+            f"SMTP_PASSWORD is {len(compact)} characters - a Gmail App Password is exactly 16 letters. "
+            f"This looks like the normal Gmail password or a copy/paste mistake."
+        )
+    return problems
 
 
 def main() -> int:
@@ -37,16 +95,22 @@ def main() -> int:
     print(f"  SMTP_USERNAME   = {settings.smtp_username or '(empty)'}")
     print(f"  SMTP_PASSWORD   = {'(empty)' if not settings.smtp_password else f'set, {len(settings.smtp_password)} characters'}")
     print(f"  SMTP_FROM_EMAIL = {settings.smtp_from_email or '(empty - uses SMTP_USERNAME)'}")
+    print(f"  read from       = {Path('.env').resolve()}")
     print()
+
+    problems = find_hidden_overrides(Path(".env"))
+    if settings.email_provider == "smtp" and settings.smtp_password:
+        problems += check_password_shape(settings.smtp_password)
+    if problems:
+        print("Problems found:")
+        for problem in problems:
+            print(f"  - {problem}")
+        print()
 
     if settings.email_provider == "console":
         print("EMAIL_PROVIDER is 'console': codes are PRINTED in the API terminal, not emailed.")
         print("To send real email set EMAIL_PROVIDER=smtp in .env (see .env.example), then restart the API.")
         return 1
-
-    if settings.smtp_password and " " in settings.smtp_password:
-        print("Note: SMTP_PASSWORD contains spaces - remove them (Gmail shows the App Password in groups of 4).")
-        print()
 
     try:
         get_email_sender().send(
