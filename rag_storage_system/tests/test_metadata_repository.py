@@ -406,3 +406,25 @@ def test_case_matters_and_matter_documents(repo):
     assert repo.delete_matter_document(doc["id"], personal["id"]) is False
     assert repo.delete_matter_document(doc["id"], case["id"]) is True
     assert repo.list_matter_documents(case["id"]) == []
+
+
+def test_pleading_settings_and_document_templates(repo):
+    if not isinstance(repo, SQLiteMetadataRepository):
+        with repo._connect() as conn:
+            conn.execute("TRUNCATE tenant_pleading_settings, document_templates RESTART IDENTITY")
+            conn.execute("INSERT INTO tenants (id, name, slug) VALUES (2, 'Second Firm', 'second-firm') ON CONFLICT DO NOTHING")
+
+    assert repo.get_pleading_settings(1) is None
+    repo.save_pleading_settings(1, {"attorney_name": "Jane", "county": "Los Angeles"}, "owner@example.com")
+    saved = repo.save_pleading_settings(1, {"attorney_name": "Jane Q.", "bar_number": "123"}, "owner2@example.com")
+    assert (saved["attorney_name"], saved["bar_number"], saved["county"], saved["updated_by"]) == ("Jane Q.", "123", "", "owner2@example.com")
+    assert repo.get_pleading_settings(2) is None
+
+    template = repo.create_document_template(1, "Firm", "complaint", "firm.docx", "templates/tenant-1", "firm.docx",
+                                             ["body", "plaintiff"], "owner@example.com")
+    assert template["placeholders"] == ["body", "plaintiff"]
+    assert [t["id"] for t in repo.list_document_templates(1, "complaint")] == [template["id"]]
+    assert repo.list_document_templates(2) == []
+    assert repo.get_document_template(template["id"], 2) is None
+    assert repo.delete_document_template(template["id"], 2) is False
+    assert repo.delete_document_template(template["id"], 1) is True

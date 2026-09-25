@@ -329,6 +329,13 @@ export interface CauseOfActionCreateRequest {
 export interface ComplaintGenerateRequest {
   cause_of_action_ids: number[];
   format: "docx";
+  // "pleading" = California pleading paper; "template" = the firm's own .docx (template_id); "plain" = simple draft.
+  style?: "pleading" | "template" | "plain";
+  template_id?: number | null;
+  plaintiff_name?: string | null;
+  defendant_name?: string | null;
+  case_number?: string | null;
+  county?: string | null;
 }
 
 export interface ComplaintInfo {
@@ -624,4 +631,37 @@ export interface MatterDocumentInfo {
 export interface MatterDocumentListResponse {
   documents: MatterDocumentInfo[];
   doc_types: string[];
+}
+
+// Pleading details + firm templates (app/api/pleading_api.py).
+export interface PleadingSettings {
+  attorney_name: string;
+  bar_number: string;
+  firm_name: string;
+  address: string;
+  phone: string;
+  email: string;
+  attorney_for: string;
+  court_name: string;
+  county: string;
+}
+
+export interface PleadingSettingsResponse extends PleadingSettings {
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+export interface DocumentTemplateInfo {
+  id: number;
+  name: string;
+  kind: string;
+  original_filename: string;
+  placeholders: string[];
+  uploaded_by: string | null;
+  created_at: string;
+}
+
+export interface DocumentTemplateListResponse {
+  templates: DocumentTemplateInfo[];
+  placeholders: string[];
 }

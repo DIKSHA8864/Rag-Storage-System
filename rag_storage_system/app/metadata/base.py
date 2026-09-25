@@ -526,6 +526,42 @@ class MetadataRepository(ABC):
         raise NotImplementedError
 
     # ------------------------------------------------------------------
+    # Pleading settings and document templates (migration 0025)
+    # ------------------------------------------------------------------
+
+    PLEADING_FIELDS = (
+        "attorney_name", "bar_number", "firm_name", "address", "phone", "email", "attorney_for", "court_name", "county",
+    )
+
+    @abstractmethod
+    def get_pleading_settings(self, tenant_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_pleading_settings(self, tenant_id: int, values: dict, updated_by: Optional[str]) -> dict:
+        """Upsert every field in PLEADING_FIELDS (missing = '')."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_document_template(self, tenant_id: int, name: str, kind: str, original_filename: str,
+                                 stored_category: str, stored_filename: str, placeholders: list[str],
+                                 uploaded_by: Optional[str]) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_document_templates(self, tenant_id: int, kind: Optional[str] = None) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_document_template(self, template_id: int, tenant_id: int) -> Optional[dict]:
+        """None unless the template belongs to `tenant_id`."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_document_template(self, template_id: int, tenant_id: int) -> bool:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
     # Vault sync (migration 0022) and duplicate detection
     # ------------------------------------------------------------------
 

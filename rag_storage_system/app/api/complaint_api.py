@@ -29,7 +29,11 @@ from app.api.schemas import (
     ComplaintListResponse,
     ComplaintPreviewSection,
 )
+from app.api.pleading_api import load_template_bytes
 from app.complaint.builder import build_complaint_draft
+from app.complaint.pleading import build_pleading_content
+from app.complaint.pleading_paper import render_pleading_paper
+from app.complaint.template_fill import TemplateError, fill_template
 from app.complaint.docx_renderer import ComplaintDocxRenderer
 from app.complaint.sections import complaint_sections
 from app.security.auth import ensure_matter_access, require_admin_key
@@ -85,6 +89,14 @@ def generate_complaint(
     if renderer_cls is None:
         raise HTTPException(status_code=400, detail="`format` must be 'docx'.")
 
+    if request.style not in ("pleading", "template", "plain"):
+        raise HTTPException(status_code=400, detail="`style` must be 'pleading', 'template', or 'plain'.")
+    template = None
+    if request.style == "template":
+        template = repo.get_document_template(request.template_id, owner["tenant_id"]) if request.template_id else None
+        if template is None:
+            raise HTTPException(status_code=404, detail="Template not found.")
+
     matter = repo.get_matter(session["matter_id"])
     draft = build_complaint_draft(
         session_id, session["matter_id"], matter["name"] if matter else "Unknown Matter",
@@ -92,7 +104,20 @@ def generate_complaint(
     )
 
     renderer = renderer_cls()
-    content = renderer.render(draft)
+    if request.style == "plain":
+        content = renderer.render(draft)
+    else:
+        pleading = build_pleading_content(
+            draft, repo.get_pleading_settings(owner["tenant_id"]), plaintiff=request.plaintiff_name,
+            defendant=request.defendant_name, case_number=request.case_number, county=request.county,
+        )
+        if template is not None:
+            try:
+                content = fill_template(load_template_bytes(template), pleading)
+            except TemplateError as exc:
+                raise HTTPException(status_code=400, detail=f"The template '{template['name']}' can't be used: {exc}")
+        else:
+            content = render_pleading_paper(pleading)
 
     storage_backend = get_intake_storage_backend()
     category = f"session_{session_id}/complaints"
@@ -104,7 +129,13 @@ def generate_complaint(
         session_id, session["matter_id"], request.format, request.cause_of_action_ids,
         stored["category"], stored["stored_filename"],
     )
-    repo.add_timeline_event(session_id, "complaint_generated", f"Draft complaint generated for causes of action {request.cause_of_action_ids}.")
+    layout = {"pleading": "California pleading paper", "plain": "plain draft"}.get(
+        request.style, f"template '{template['name']}'" if template else request.style
+    )
+    repo.add_timeline_event(
+        session_id, "complaint_generated",
+        f"Draft complaint ({layout}) generated for causes of action {request.cause_of_action_ids}.",
+    )
 
     return ComplaintDraftResponse(
         id=complaint["id"], intake_session_id=session_id, matter_id=session["matter_id"],

@@ -94,6 +94,26 @@ the old order.
   a scanned PDF with no text layer; fix it and use Retry, or upload a
   text version. Delete removes the file and its passages from search.
 
+## Complaints: California pleading paper and firm templates
+
+- Settings -> **Pleading details**: attorney, bar number, firm, address,
+  phone, email, "Attorney for", court and default county. They're printed
+  on every generated complaint; blank fields stay [BRACKETED].
+- The complaint generator (matter page -> select an intake) offers:
+  **California pleading paper** (default: 28 numbered lines, double rule
+  left and single rule right, caption, footer with page number and
+  title, per CRC 2.100-2.119), **Firm template: <name>**, or **Plain
+  draft**. Plaintiff, defendant, case number and county can be filled per
+  case; anything left blank stays a placeholder.
+- Settings -> **Pleading templates**: upload the firm's own .docx. Put
+  `{{body}}` on a paragraph of its own; you can also use
+  `{{attorney_block}} {{court}} {{plaintiff}} {{defendant}}
+  {{case_number}} {{title}} {{causes}}` anywhere, including headers,
+  footers and tables. Unknown placeholders are refused at upload. The
+  complaint text takes the formatting of the `{{body}}` paragraph.
+- Research suggestions never go in the pleading itself. They're on a
+  final "ATTORNEY NOTES - REMOVE BEFORE FILING" page.
+
 ## Virus scanning
 
 Every upload is scanned before it is stored: library uploads and

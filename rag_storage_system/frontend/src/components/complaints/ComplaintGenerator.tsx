@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { generateComplaint, listCausesOfAction, listSessionComplaints, downloadComplaint } from "@/lib/api/complaints";
+import { listTemplates } from "@/lib/api/pleadings";
 import { ApiError } from "@/lib/api/client";
-import type { CauseOfActionInfo, ComplaintDraftResponse, ComplaintInfo } from "@/lib/api/types";
+import type { CauseOfActionInfo, ComplaintDraftResponse, ComplaintInfo, DocumentTemplateInfo } from "@/lib/api/types";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { CauseOfActionForm } from "./CauseOfActionForm";
@@ -35,17 +36,24 @@ export function ComplaintGenerator({ sessionId, token, onAuthFailure }: Complain
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [showCauseForm, setShowCauseForm] = useState(false);
 
+  // Layout: "pleading" (California pleading paper), "plain", or "template:<id>" (the firm's own .docx).
+  const [templates, setTemplates] = useState<DocumentTemplateInfo[]>([]);
+  const [layout, setLayout] = useState("pleading");
+  const [caption, setCaption] = useState({ plaintiff_name: "", defendant_name: "", case_number: "", county: "" });
+
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
 
     try {
-      const [causesResponse, complaintsResponse] = await Promise.all([
+      const [causesResponse, complaintsResponse, templatesResponse] = await Promise.all([
         listCausesOfAction(token),
         listSessionComplaints(sessionId, token),
+        listTemplates(token),
       ]);
       setCausesOfAction(causesResponse.causes_of_action);
       setPastComplaints(complaintsResponse.complaints);
+      setTemplates(templatesResponse.templates);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         onAuthFailure();
@@ -79,7 +87,21 @@ export function ComplaintGenerator({ sessionId, token, onAuthFailure }: Complain
     setGenerateError(null);
     setIsGenerating(true);
     try {
-      const response = await generateComplaint(sessionId, { cause_of_action_ids: selectedCauseIds, format: "docx" }, token);
+      const isTemplate = layout.startsWith("template:");
+      const response = await generateComplaint(
+        sessionId,
+        {
+          cause_of_action_ids: selectedCauseIds,
+          format: "docx",
+          style: isTemplate ? "template" : (layout as "pleading" | "plain"),
+          template_id: isTemplate ? Number(layout.slice("template:".length)) : null,
+          plaintiff_name: caption.plaintiff_name.trim() || null,
+          defendant_name: caption.defendant_name.trim() || null,
+          case_number: caption.case_number.trim() || null,
+          county: caption.county.trim() || null,
+        },
+        token
+      );
       setDraft(response);
       const complaintsResponse = await listSessionComplaints(sessionId, token);
       setPastComplaints(complaintsResponse.complaints);
@@ -154,6 +176,39 @@ export function ComplaintGenerator({ sessionId, token, onAuthFailure }: Complain
             <CauseOfActionForm token={token} onCreated={handleCauseCreated} onAuthFailure={onAuthFailure} />
           </div>
         )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem 1rem", fontSize: "0.85rem" }}>
+        <label style={{ gridColumn: "1 / -1" }}>
+          Layout{" "}
+          <select value={layout} onChange={(e) => setLayout(e.target.value)}>
+            <option value="pleading">California pleading paper (28 numbered lines)</option>
+            {templates.map((template) => (
+              <option key={template.id} value={`template:${template.id}`}>
+                Firm template: {template.name}
+              </option>
+            ))}
+            <option value="plain">Plain draft</option>
+          </select>
+        </label>
+        {layout !== "plain" &&
+          (
+            [
+              ["plaintiff_name", "Plaintiff"],
+              ["defendant_name", "Defendant"],
+              ["case_number", "Case number"],
+              ["county", "County (blank = your default)"],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+              {label}
+              <input
+                value={caption[key]}
+                placeholder="Left blank = [BRACKETED] for the attorney"
+                onChange={(e) => setCaption((c) => ({ ...c, [key]: e.target.value }))}
+              />
+            </label>
+          ))}
       </div>
 
       <div>

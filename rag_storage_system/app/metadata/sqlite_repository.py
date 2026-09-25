@@ -106,6 +106,34 @@ CREATE TABLE IF NOT EXISTS retrieval_settings (
     updated_by TEXT
 );
 
+CREATE TABLE IF NOT EXISTS tenant_pleading_settings (
+    tenant_id INTEGER PRIMARY KEY,
+    attorney_name TEXT NOT NULL DEFAULT '',
+    bar_number TEXT NOT NULL DEFAULT '',
+    firm_name TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    phone TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    attorney_for TEXT NOT NULL DEFAULT '',
+    court_name TEXT NOT NULL DEFAULT '',
+    county TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT
+);
+
+CREATE TABLE IF NOT EXISTS document_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'complaint',
+    original_filename TEXT NOT NULL,
+    stored_category TEXT NOT NULL,
+    stored_filename TEXT NOT NULL,
+    placeholders TEXT NOT NULL DEFAULT '[]',
+    uploaded_by TEXT,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS matter_documents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
@@ -1591,6 +1619,80 @@ class SQLiteMetadataRepository(MetadataRepository):
     def delete_matter_document(self, document_id: int, matter_id: int) -> bool:
         with self._connect() as conn:
             cursor = conn.execute("DELETE FROM matter_documents WHERE id = ? AND matter_id = ?", (document_id, matter_id))
+        return cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Pleading settings and document templates
+    # ------------------------------------------------------------------
+
+    def get_pleading_settings(self, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM tenant_pleading_settings WHERE tenant_id = ?", (tenant_id,)).fetchone()
+        return dict(row) if row else None
+
+    def save_pleading_settings(self, tenant_id: int, values: dict, updated_by: Optional[str]) -> dict:
+        fields = self.PLEADING_FIELDS
+        params = [values.get(f, "") or "" for f in fields]
+        with self._connect() as conn:
+            conn.execute(
+                f"""
+                INSERT INTO tenant_pleading_settings (tenant_id, {", ".join(fields)}, updated_by, updated_at)
+                VALUES (?, {", ".join(["?"] * len(fields))}, ?, ?)
+                ON CONFLICT (tenant_id) DO UPDATE SET
+                    {", ".join(f"{f} = excluded.{f}" for f in fields)}, updated_by = excluded.updated_by,
+                    updated_at = excluded.updated_at
+                """,
+                (tenant_id, *params, updated_by, _now()),
+            )
+        return self.get_pleading_settings(tenant_id)
+
+    @staticmethod
+    def _decode_template(row) -> dict:
+        import json
+
+        template = dict(row)
+        template["placeholders"] = json.loads(template["placeholders"] or "[]")
+        return template
+
+    def create_document_template(self, tenant_id, name, kind, original_filename, stored_category, stored_filename,
+                                 placeholders, uploaded_by) -> dict:
+        import json
+
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO document_templates (tenant_id, name, kind, original_filename, stored_category,
+                                                stored_filename, placeholders, uploaded_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (tenant_id, name, kind, original_filename, stored_category, stored_filename, json.dumps(placeholders),
+                 uploaded_by, _now()),
+            )
+            row = conn.execute("SELECT * FROM document_templates WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        return self._decode_template(row)
+
+    def list_document_templates(self, tenant_id: int, kind: Optional[str] = None) -> list[dict]:
+        with self._connect() as conn:
+            if kind:
+                rows = conn.execute(
+                    "SELECT * FROM document_templates WHERE tenant_id = ? AND kind = ? ORDER BY name, id", (tenant_id, kind)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM document_templates WHERE tenant_id = ? ORDER BY name, id", (tenant_id,)
+                ).fetchall()
+        return [self._decode_template(r) for r in rows]
+
+    def get_document_template(self, template_id: int, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM document_templates WHERE id = ? AND tenant_id = ?", (template_id, tenant_id)
+            ).fetchone()
+        return self._decode_template(row) if row else None
+
+    def delete_document_template(self, template_id: int, tenant_id: int) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM document_templates WHERE id = ? AND tenant_id = ?", (template_id, tenant_id))
         return cursor.rowcount > 0
 
     # ------------------------------------------------------------------

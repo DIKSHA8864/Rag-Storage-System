@@ -334,6 +334,11 @@ from app.api.matter_documents_api import router as matter_documents_router  # no
 
 app.include_router(matter_documents_router)
 
+# Pleading details + the firm's own Word templates. See app/api/pleading_api.py.
+from app.api.pleading_api import router as pleading_router  # noqa: E402
+
+app.include_router(pleading_router)
+
 
 @app.get("/")
 def root() -> dict:

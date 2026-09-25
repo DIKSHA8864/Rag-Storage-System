@@ -816,6 +816,15 @@ class ComplaintGenerateRequest(BaseModel):
 
     cause_of_action_ids: list[int] = Field(..., min_length=1)
     format: str = Field(default="docx", description="'docx' (or 'pdf' once ComplaintPdfRenderer is added).")
+    # "pleading" = California pleading paper (CRC 2.100-2.119); "template" = the
+    # firm's own .docx template (template_id); "plain" = the simple draft layout.
+    style: str = Field(default="pleading")
+    template_id: int | None = None
+    # Caption details for this case; blank = a bracketed placeholder for the attorney.
+    plaintiff_name: str | None = Field(default=None, max_length=255)
+    defendant_name: str | None = Field(default=None, max_length=255)
+    case_number: str | None = Field(default=None, max_length=100)
+    county: str | None = Field(default=None, max_length=100)
 
 
 class ComplaintInfo(BaseModel):
@@ -1159,3 +1168,39 @@ class MatterDocumentInfo(BaseModel):
 class MatterDocumentListResponse(BaseModel):
     documents: list[MatterDocumentInfo]
     doc_types: list[str]
+
+
+# ----------------------------------------------------------------------
+# Pleading details and firm templates (app/api/pleading_api.py)
+# ----------------------------------------------------------------------
+
+class PleadingSettings(BaseModel):
+    attorney_name: str = Field(default="", max_length=255)
+    bar_number: str = Field(default="", max_length=50)
+    firm_name: str = Field(default="", max_length=255)
+    address: str = Field(default="", max_length=1000)
+    phone: str = Field(default="", max_length=50)
+    email: str = Field(default="", max_length=255)
+    attorney_for: str = Field(default="", max_length=255)
+    court_name: str = Field(default="", max_length=255)
+    county: str = Field(default="", max_length=100)
+
+
+class PleadingSettingsResponse(PleadingSettings):
+    updated_at: str | None = None
+    updated_by: str | None = None
+
+
+class DocumentTemplateInfo(BaseModel):
+    id: int
+    name: str
+    kind: str
+    original_filename: str
+    placeholders: list[str]
+    uploaded_by: str | None = None
+    created_at: str
+
+
+class DocumentTemplateListResponse(BaseModel):
+    templates: list[DocumentTemplateInfo]
+    placeholders: list[str]  # every placeholder a template may use

@@ -1063,6 +1063,69 @@ class PostgresMetadataRepository(MetadataRepository):
         return cursor.rowcount > 0
 
     # ------------------------------------------------------------------
+    # Pleading settings and document templates
+    # ------------------------------------------------------------------
+
+    def get_pleading_settings(self, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM tenant_pleading_settings WHERE tenant_id = %s", (tenant_id,)).fetchone()
+        return dict(row) if row else None
+
+    def save_pleading_settings(self, tenant_id: int, values: dict, updated_by: Optional[str]) -> dict:
+        fields = self.PLEADING_FIELDS
+        params = [values.get(f, "") or "" for f in fields]
+        with self._connect() as conn:
+            conn.execute(
+                f"""
+                INSERT INTO tenant_pleading_settings (tenant_id, {", ".join(fields)}, updated_by, updated_at)
+                VALUES (%s, {", ".join(["%s"] * len(fields))}, %s, now())
+                ON CONFLICT (tenant_id) DO UPDATE SET
+                    {", ".join(f"{f} = excluded.{f}" for f in fields)}, updated_by = excluded.updated_by, updated_at = now()
+                """,
+                (tenant_id, *params, updated_by),
+            )
+        return self.get_pleading_settings(tenant_id)
+
+    def create_document_template(self, tenant_id, name, kind, original_filename, stored_category, stored_filename,
+                                 placeholders, uploaded_by) -> dict:
+        from psycopg.types.json import Jsonb
+
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO document_templates (tenant_id, name, kind, original_filename, stored_category,
+                                                stored_filename, placeholders, uploaded_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
+                """,
+                (tenant_id, name, kind, original_filename, stored_category, stored_filename, Jsonb(placeholders), uploaded_by),
+            ).fetchone()
+        return dict(row)
+
+    def list_document_templates(self, tenant_id: int, kind: Optional[str] = None) -> list[dict]:
+        with self._connect() as conn:
+            if kind:
+                rows = conn.execute(
+                    "SELECT * FROM document_templates WHERE tenant_id = %s AND kind = %s ORDER BY name, id", (tenant_id, kind)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM document_templates WHERE tenant_id = %s ORDER BY name, id", (tenant_id,)
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_document_template(self, template_id: int, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM document_templates WHERE id = %s AND tenant_id = %s", (template_id, tenant_id)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def delete_document_template(self, template_id: int, tenant_id: int) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM document_templates WHERE id = %s AND tenant_id = %s", (template_id, tenant_id))
+        return cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
     # Vault sync and duplicate detection
     # ------------------------------------------------------------------
 
