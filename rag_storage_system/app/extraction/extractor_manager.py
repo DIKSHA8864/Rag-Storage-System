@@ -38,6 +38,42 @@ def library_document_id(relative_path: Path) -> str:
     return f"{relative_path.stem}-{digest}"
 
 
+_SUMMARY_PREFIX_RE = re.compile(r"^\s*(?:one[- ]line\s+)?(?:summary|synopsis)\s*[:\-\u2013\u2014]\s*", re.IGNORECASE)
+_PAGE_NUMBER_RE = re.compile(r"^\s*(?:page\s*)?\d+\s*$", re.IGNORECASE)
+_SUMMARY_MAX_CHARS = 300
+
+
+def library_summary_line(extracted: dict) -> str | None:
+    """
+    The one-line summary header at the top of a library file (Blueprint
+    Phase 1: every chunk carries "the one-line summary header found at
+    the top of each library file"). An explicit "Summary: ..." line near
+    the top wins; otherwise the file's first line - joined with the
+    second when the first is only a short title (e.g. a cover page's
+    "CHAPTER 10: HARASSMENT" / "10.6. Discovery Issues").
+    """
+
+    lines: list[str] = []
+    for page in extracted.get("pages", []):
+        lines.extend(line.strip() for line in (page.get("text") or "").splitlines())
+        if len([line for line in lines if line]) >= 8:
+            break
+    lines = [line for line in lines if line and not _PAGE_NUMBER_RE.match(line)][:8]
+    if not lines:
+        return None
+
+    for line in lines[:5]:
+        if _SUMMARY_PREFIX_RE.match(line):
+            summary = _SUMMARY_PREFIX_RE.sub("", line).strip()
+            if summary:
+                return summary[:_SUMMARY_MAX_CHARS]
+
+    summary = lines[0]
+    if len(summary) < 40 and len(lines) > 1:
+        summary = f"{summary} - {lines[1]}"
+    return summary[:_SUMMARY_MAX_CHARS]
+
+
 def extract_document(file_path: str | Path) -> dict:
     """
     Select the correct extractor based on file extension.
@@ -139,6 +175,8 @@ def extract_all_documents() -> list[dict]:
         try:
             extracted = extract_document(file_path)
             extracted["document_id"] = document_id
+            extracted["category"] = category
+            extracted["summary"] = library_summary_line(extracted)
 
             output_directory.mkdir(parents=True, exist_ok=True)
 

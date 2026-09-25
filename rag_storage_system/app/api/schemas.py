@@ -166,6 +166,8 @@ class OwnerResearchSource(BaseModel):
     # answer against the library text in seconds (Blueprint: "every
     # retrieved passage is traceable").
     excerpt: str | None = None
+    # The source file's one-line summary header (see extractor_manager.library_summary_line()).
+    summary: str | None = None
 
 
 class OwnerResearchResponse(BaseModel):

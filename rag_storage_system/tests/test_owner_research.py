@@ -126,6 +126,7 @@ def test_authenticated_owner_can_ask_a_real_library_question_and_gets_grounded_c
             "start_page": 1, "end_page": 1, "score": 0.9,
             # The passage shown to the reader is the retrieved chunk, verbatim.
             "excerpt": "Overtime must be paid at 1.5x for hours over 40 in a week.",
+            "summary": None,
         }
     ]
     # Citation lock: every source traces to exactly what retrieve() returned.
@@ -263,6 +264,7 @@ def test_relevant_source_is_kept_and_the_unrelated_one_is_dropped_before_generat
             "filename": "employment_handbook.pdf", "category": "HR Policy", "section": "2.1",
             "start_page": 1, "end_page": 1, "score": 0.85,
             "excerpt": "Overtime must be paid at 1.5x for hours over 40 in a week.",
+            "summary": None,
         }
     ]
     # The excluded chunk's text never reached the generator's prompt.

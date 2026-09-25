@@ -28,6 +28,8 @@ export interface OwnerResearchSource {
   score: number;
   // The retrieved passage, verbatim.
   excerpt?: string | null;
+  // The source file's one-line summary header.
+  summary?: string | null;
 }
 
 export interface OwnerResearchResponse {

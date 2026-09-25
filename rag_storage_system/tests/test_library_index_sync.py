@@ -24,9 +24,12 @@ from app.storage.local_backend import LocalStorageBackend
 
 
 class _HashEmbedder:
-    """Deterministic 384-dim vectors - no model download."""
+    """Deterministic 384-dim vectors - no model download. Remembers what it was asked to embed."""
+
+    seen: list[str] = []
 
     def embed(self, texts):
+        _HashEmbedder.seen.extend(texts)
         return [[b / 255 for b in (hashlib.sha256(t.encode()).digest() * 12)] for t in texts]
 
 
@@ -218,3 +221,37 @@ def test_processing_refuses_to_clear_anything_if_one_folder_overlaps_the_origina
     assert (originals / "Docs" / "keep.txt").read_text() == "irreplaceable"
     # Nothing was cleared - not even the correctly configured folders.
     assert all((folder / "sentinel.json").exists() for folder in healthy)
+
+
+def test_every_chunk_carries_the_files_summary_header_and_is_embedded_with_its_context(client, _fake_vector_store):
+    _HashEmbedder.seen.clear()
+    _upload(
+        client, "Retaliation", "feha_retaliation.txt",
+        "Summary: FEHA retaliation - elements and burden shifting.\n"
+        "An employee must show protected activity, an adverse action, and a causal link.",
+    )
+
+    _process(client)
+
+    row = _indexed(_fake_vector_store, filename="feha_retaliation.txt")[0]
+    assert row["metadata"]["summary"] == "FEHA retaliation - elements and burden shifting."
+    assert row["metadata"]["category"] == "Retaliation"
+    # What's stored and cited is the passage itself...
+    assert not row["chunk_text"].startswith("feha_retaliation.txt")
+    # ...but what's embedded has the context header in front of it.
+    embedded = next(t for t in _HashEmbedder.seen if "causal link" in t)
+    assert embedded.startswith("feha_retaliation.txt | Retaliation")
+    assert "FEHA retaliation - elements and burden shifting." in embedded.splitlines()[1]
+
+
+@pytest.mark.parametrize("first_page, expected", [
+    ("Summary: Meal and rest break rules.\nBody", "Meal and rest break rules."),
+    ("One-line summary - Wage statement penalties\nBody", "Wage statement penalties"),
+    ("CHAPTER 10: HARASSMENT\n10.6. Discovery Issues\n1", "CHAPTER 10: HARASSMENT - 10.6. Discovery Issues"),
+    ("1\nA full first sentence that is clearly long enough to be a summary on its own.", "A full first sentence that is clearly long enough to be a summary on its own."),
+    ("", None),
+])
+def test_summary_header_detection(first_page, expected):
+    from app.extraction.extractor_manager import library_summary_line
+
+    assert library_summary_line({"pages": [{"text": first_page}]}) == expected

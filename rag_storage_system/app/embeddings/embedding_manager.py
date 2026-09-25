@@ -55,6 +55,22 @@ def embed_texts(texts: list[str], model_name: Optional[str] = None) -> list[list
     return provider.embed(texts)
 
 
+def embedding_input(chunk: dict) -> str:
+    """
+    The text actually embedded for a library chunk: a context header -
+    filename | folder | section, then the file's one-line summary - above
+    the chunk text (Blueprint Work Plan M1: "prepend to every chunk:
+    filename, folder/category path, section heading, and the file's
+    one-line summary header"). A passage that doesn't repeat its topic
+    ("the court may appoint a special master") still lands near questions
+    about that topic. The stored/cited chunk_text stays the passage alone.
+    """
+
+    metadata = chunk.get("metadata") or {}
+    header = " | ".join(part for part in (chunk.get("filename"), metadata.get("category"), chunk.get("section")) if part)
+    return "\n".join(part for part in (header, metadata.get("summary"), chunk["text"]) if part)
+
+
 def _attach_embedding(chunk: dict, embedding: list[float], model_name: str) -> dict:
     return {
         "chunk_id": chunk["chunk_id"],
@@ -113,7 +129,7 @@ def process_all_chunks() -> list[dict]:
             chunks.append(json.load(file))
 
     model_name = get_settings().embedding_model
-    embeddings = embed_texts([chunk["text"] for chunk in chunks], model_name=model_name)
+    embeddings = embed_texts([embedding_input(chunk) for chunk in chunks], model_name=model_name)
 
     results = []
 

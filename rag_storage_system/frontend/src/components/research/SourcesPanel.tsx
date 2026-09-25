@@ -113,6 +113,11 @@ export function SourcesPanel({ sources, scope }: SourcesPanelProps) {
                 </span>
                 <span style={{ fontWeight: 600 }}>{source.filename}</span>
               </div>
+              {source.summary && (
+                <div style={{ fontSize: "0.85rem", color: "#444", marginTop: "0.2rem", fontStyle: "italic" }}>
+                  {source.summary}
+                </div>
+              )}
 
               <dl style={{ margin: "0.35rem 0 0 0", fontSize: "0.85rem", color: "#666" }}>
                 <div style={{ display: "flex", gap: "0.35rem" }}>

@@ -118,6 +118,14 @@ def process_extracted_document(
         )
 
         data = segment_to_dict(segment)
+        # Carried into every chunk's metadata (chunker copies segment
+        # metadata) - see app/embeddings/embedding_manager.py's
+        # embedding_input() for how it shapes what gets embedded.
+        data["metadata"] = {
+            **(data.get("metadata") or {}),
+            "category": document.get("category"),
+            "summary": document.get("summary"),
+        }
 
         with open(
             output_path,
