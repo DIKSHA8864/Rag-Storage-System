@@ -55,9 +55,13 @@ placeholder, never fabricated text) until turned on:
   `ENVIRONMENT=production`.
 - **Codes not arriving?** The sign-up page answers the same way whether or not
   an email was sent, so check directly: `python scripts/check_email.py you@example.com`
-  shows the active settings, sends a test email and explains the exact failure
-  (wrong App Password, blocked port 587, still in console mode). Restart the API
-  after any `.env` change, and make sure the email is **invited** on the Users page.
+  shows the active settings (and duplicate `.env` keys / environment-variable
+  overrides), then connects step by step - reach, encrypt, login, send - and
+  explains the step that failed (wrong App Password, antivirus mail scanning,
+  blocked port, Gmail temporarily blocking after failed logins). If port 587 is
+  blocked it tries 465 and says to set `SMTP_PORT=465` when that works. Restart
+  the API after any `.env` change, and make sure the email is **invited** on the
+  Users page.
 - Matter access codes (Matters page) still work for API integrations only; the
   web portal uses accounts.
 
