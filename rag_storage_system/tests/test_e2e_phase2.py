@@ -491,3 +491,31 @@ def test_streaming_event_sequence_is_exactly_sources_then_chunks_then_done(clien
     assert set(types) <= {"sources", "answer_chunk", "error", "done"}
     # No event type appears out of its allowed relative order.
     assert types.index("sources") < types.index("done")
+
+def test_an_unavailable_relevance_check_is_an_error_event_not_a_false_no_authority_answer(client, monkeypatch):
+    """Regression: a relevance check that couldn't run used to reach the end user as 'No authority ... in the library'."""
+
+    monkeypatch.setattr(
+        end_user_api, "retrieve",
+        lambda *a, **k: [_hit(filename="discovery_issues.pdf", score=0.8, text="A formal noticed motion is required.")],
+    )
+    monkeypatch.setattr(
+        "app.analysis.relevance_guard.get_settings",
+        lambda: SimpleNamespace(anthropic_api_key="test-key", analysis_model="claude-opus-5"),
+    )
+    # A verdict cut off by max_tokens - what the old 200-token cap produced with adaptive thinking on.
+    truncated = SimpleNamespace(
+        content=[], usage=SimpleNamespace(input_tokens=5, output_tokens=200), stop_reason="max_tokens",
+    )
+    monkeypatch.setattr(
+        "anthropic.Anthropic",
+        lambda api_key: SimpleNamespace(messages=SimpleNamespace(create=lambda **kwargs: truncated)),
+    )
+
+    events = _parse_sse(_stream(client, query="What must an employer show to get discovery of sexual conduct?"))
+
+    assert ("sources", {"sources": []}) in events
+    errors = [data for etype, data in events if etype == "error"]
+    assert errors and errors[0]["code"] == "relevance_check_unavailable"
+    assert not [data for etype, data in events if etype == "answer_chunk"]
+    assert events[-1][0] == "done"

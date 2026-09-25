@@ -104,7 +104,10 @@ class ClaudeVisionProvider(VisionProvider):
         with track_llm_call("vision_captioning", self._model) as record_usage:
             response = self._client.messages.create(
                 model=self._model,
-                max_tokens=300,
+                # Room for adaptive thinking (on by default on current Opus
+                # models, counted against this cap) plus the caption itself.
+                max_tokens=4000,
+                output_config={"effort": "low"},
                 system=_CAPTION_SYSTEM_PROMPT,
                 messages=[
                     {
@@ -125,8 +128,14 @@ class ClaudeVisionProvider(VisionProvider):
             )
             record_usage(response.usage.input_tokens, response.usage.output_tokens)
 
-        caption = "".join(block.text for block in response.content if block.type == "text")
-        return caption.strip(), False
+        stop_reason = getattr(response, "stop_reason", "end_turn")
+        if stop_reason not in ("end_turn", "stop_sequence"):
+            raise RuntimeError(f"Image description for '{filename}' ended early (stop_reason={stop_reason!r}).")
+
+        caption = "".join(block.text for block in response.content if block.type == "text").strip()
+        if not caption:
+            raise RuntimeError(f"Image description for '{filename}' came back empty.")
+        return caption, False
 
 
 def get_vision_provider() -> VisionProvider:

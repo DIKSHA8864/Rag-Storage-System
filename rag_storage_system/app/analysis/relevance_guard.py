@@ -41,11 +41,13 @@ only defense active. This mirrors how every other real-vs-mock
 provider in this codebase (embeddings, narrative, vision, OCR, STT)
 already degrades: never fabricate a capability that isn't configured.
 
-FAILS CLOSED, not open: if Claude's classification response can't be
-parsed, or the API call itself fails, this returns NO chunks as
-verified-relevant (rather than treating the failure as "everything
-passes") - for a legal-research tool, an honest gap is always
-preferable to proceeding on unverified grounding.
+FAILS CLOSED, not open - and says so: if the classification call
+fails, is cut short, or can't be parsed, this raises
+RelevanceCheckUnavailable instead of letting any chunk through. The
+caller then declines to answer AND tells the user the check was
+unavailable - it must never report "no authority in the library",
+which would be a false statement about the library when the real
+problem is that the check itself couldn't run.
 """
 
 import json
@@ -55,6 +57,25 @@ from typing import Optional
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+# Room for the model's own reasoning (adaptive thinking is on by default
+# on current Opus models and counts against max_tokens) plus the small
+# JSON answer. A tight cap here once ate the whole budget on thinking,
+# leaving no JSON - which read as "nothing relevant" on every question.
+_MAX_TOKENS = 4000
+
+_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "relevant_excerpts": {"type": "array", "items": {"type": "integer"}},
+    },
+    "required": ["relevant_excerpts"],
+    "additionalProperties": False,
+}
+
+
+class RelevanceCheckUnavailable(Exception):
+    """The relevance check could not produce a verdict - no chunk may be treated as verified."""
 
 _MAX_EXCERPT_CHARS = 600
 
@@ -77,10 +98,10 @@ For each excerpt, decide whether it is MATERIALLY relevant: does it \
 actually address the same legal issue, claim, or subject matter as \
 the QUESTION - not merely share words with it.
 
-Respond with ONLY a JSON array of the integer indices of the excerpts \
-that ARE materially relevant, e.g. [0, 2]. If none are materially \
-relevant, respond with exactly []. Output nothing else - no \
-explanation, no legal analysis, no additional text.
+Respond with the integer indices of the excerpts that ARE materially \
+relevant in "relevant_excerpts", e.g. {"relevant_excerpts": [0, 2]}. \
+If none are materially relevant, use an empty list. No explanation, \
+no legal analysis.
 """
 
 
@@ -122,42 +143,41 @@ def filter_materially_relevant_chunks(
         with track_llm_call("relevance_filter", settings.analysis_model, tenant_id=tenant_id) as record_usage:
             response = client.messages.create(
                 model=settings.analysis_model,
-                max_tokens=200,
+                max_tokens=_MAX_TOKENS,
                 system=_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": _build_user_message(query, chunks)}],
+                output_config={"effort": "low", "format": {"type": "json_schema", "schema": _OUTPUT_SCHEMA}},
             )
             usage = getattr(response, "usage", None)
             record_usage(getattr(usage, "input_tokens", 0) or 0, getattr(usage, "output_tokens", 0) or 0)
-    except Exception:
-        logger.warning(
-            "Relevance filtering failed (Claude call error) - treating no chunks as "
-            "verified-relevant rather than risking an answer grounded in unverified sources.",
-            exc_info=True,
-        )
-        return []
+    except Exception as exc:
+        logger.warning("Relevance check failed (Claude call error) - declining to answer.", exc_info=True)
+        raise RelevanceCheckUnavailable("The relevance check call failed.") from exc
 
-    relevant_indices = _parse_relevant_indices("".join(
-        block.text for block in response.content if block.type == "text"
-    ), len(chunks))
+    stop_reason = getattr(response, "stop_reason", "end_turn")
+    if stop_reason not in ("end_turn", "stop_sequence"):
+        logger.warning("Relevance check ended with stop_reason=%r - declining to answer.", stop_reason)
+        raise RelevanceCheckUnavailable(f"The relevance check stopped early ({stop_reason}).")
 
+    relevant_indices = _parse_relevant_indices(
+        "".join(block.text for block in response.content if block.type == "text"), len(chunks)
+    )
     if relevant_indices is None:
-        logger.warning(
-            "Relevance filtering got an unparseable response from Claude - treating no "
-            "chunks as verified-relevant rather than risking an answer grounded in "
-            "unverified sources."
-        )
-        return []
+        logger.warning("Relevance check returned an unparseable response - declining to answer.")
+        raise RelevanceCheckUnavailable("The relevance check returned an unreadable verdict.")
 
     return [chunk for i, chunk in enumerate(chunks) if i in relevant_indices]
 
 
 def _parse_relevant_indices(text: str, chunk_count: int) -> Optional[set[int]]:
+    """{"relevant_excerpts": [...]} (the structured-output shape), or a bare [...] list."""
+
     try:
         parsed = json.loads(text.strip())
     except json.JSONDecodeError:
         return None
-
-    if not isinstance(parsed, list) or not all(isinstance(i, int) for i in parsed):
+    if isinstance(parsed, dict):
+        parsed = parsed.get("relevant_excerpts")
+    if not isinstance(parsed, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in parsed):
         return None
-
     return {i for i in parsed if 0 <= i < chunk_count}

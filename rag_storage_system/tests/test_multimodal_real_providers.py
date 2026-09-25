@@ -140,6 +140,26 @@ def test_claude_vision_sends_the_image_as_a_base64_content_block(monkeypatch):
     assert isinstance(image_block["source"]["data"], str)
 
 
+def test_claude_vision_leaves_room_for_thinking(monkeypatch):
+    """Regression: a 300-token cap could be spent entirely on adaptive thinking, leaving an empty caption."""
+
+    monkeypatch.setattr("app.multimodal.vision.get_settings", lambda: _FakeSettings())
+    fake_client = _fake_anthropic_client("caption")
+    monkeypatch.setattr("anthropic.Anthropic", lambda api_key: fake_client)
+
+    ClaudeVisionProvider().describe(_text_image_bytes("irrelevant"), "scene.png")
+
+    assert fake_client.messages.last_call["max_tokens"] >= 2000
+
+
+def test_claude_vision_empty_caption_is_an_error_not_a_blank_description(monkeypatch):
+    monkeypatch.setattr("app.multimodal.vision.get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr("anthropic.Anthropic", lambda api_key: _fake_anthropic_client("   "))
+
+    with pytest.raises(RuntimeError, match="empty"):
+        ClaudeVisionProvider().describe(_text_image_bytes("irrelevant"), "scene.png")
+
+
 def test_claude_vision_rejects_unsupported_image_format(monkeypatch):
     monkeypatch.setattr("app.multimodal.vision.get_settings", lambda: _FakeSettings())
     monkeypatch.setattr("anthropic.Anthropic", lambda api_key: _fake_anthropic_client("caption"))

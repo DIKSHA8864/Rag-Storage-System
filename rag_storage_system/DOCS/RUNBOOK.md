@@ -14,6 +14,15 @@
 - **Stale test failures after a pull** — clear __pycache__:
   `Get-ChildItem -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force`
 
+## "No authority on this point was found" for a question the library covers
+Run `python scripts/diagnose_ask.py "the exact question"` (add `--as person@firm.com`
+to use an end user's organization). It prints each step of the Ask pipeline:
+documents Indexed for that organization, the retrieval settings, every candidate
+chunk with its score vs the threshold, and the relevance check's verdict (or why
+it couldn't run - e.g. an invalid ANTHROPIC_API_KEY or no credit). A relevance
+check that can't run is shown to users as "couldn't be verified - try again",
+never as "No authority".
+
 ## Voice/Video (Client intake OCR/Speech-to-Text/Vision)
 Real providers are opt-in (`OCR_PROVIDER`/`STT_PROVIDER`/`VISION_PROVIDER` in
 `.env` — see `config/settings.py`); each defaults to `mock` (a clearly-labeled

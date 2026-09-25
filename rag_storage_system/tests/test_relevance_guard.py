@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.analysis.relevance_guard import filter_materially_relevant_chunks
+from app.analysis.relevance_guard import RelevanceCheckUnavailable, filter_materially_relevant_chunks
 
 
 @pytest.fixture(autouse=True)
@@ -39,10 +39,10 @@ def _chunk(filename: str, text: str) -> dict:
     return {"chunk_id": filename, "filename": filename, "chunk_text": text, "final_score": 0.5}
 
 
-def _fake_client(response_text: str):
+def _fake_client(response_text: str, stop_reason: str = "end_turn"):
     block = SimpleNamespace(type="text", text=response_text)
     usage = SimpleNamespace(input_tokens=12, output_tokens=8)
-    response = SimpleNamespace(content=[block], usage=usage)
+    response = SimpleNamespace(content=[block], usage=usage, stop_reason=stop_reason)
 
     class _FakeMessages:
         def create(self, **kwargs):
@@ -125,18 +125,16 @@ def test_fails_closed_on_unparseable_response(monkeypatch):
     monkeypatch.setattr("app.analysis.relevance_guard.get_settings", lambda: _FakeSettings())
     monkeypatch.setattr("anthropic.Anthropic", lambda api_key: _fake_client("I think excerpt 0 is relevant."))
 
-    result = filter_materially_relevant_chunks("A question", _employment_and_insurance_chunks())
-
-    assert result == []
+    with pytest.raises(RelevanceCheckUnavailable):
+        filter_materially_relevant_chunks("A question", _employment_and_insurance_chunks())
 
 
 def test_fails_closed_when_response_is_not_a_json_array(monkeypatch):
     monkeypatch.setattr("app.analysis.relevance_guard.get_settings", lambda: _FakeSettings())
     monkeypatch.setattr("anthropic.Anthropic", lambda api_key: _fake_client('{"0": true}'))
 
-    result = filter_materially_relevant_chunks("A question", _employment_and_insurance_chunks())
-
-    assert result == []
+    with pytest.raises(RelevanceCheckUnavailable):
+        filter_materially_relevant_chunks("A question", _employment_and_insurance_chunks())
 
 
 def test_fails_closed_on_api_error(monkeypatch):
@@ -148,9 +146,8 @@ def test_fails_closed_on_api_error(monkeypatch):
 
     monkeypatch.setattr("anthropic.Anthropic", lambda api_key: SimpleNamespace(messages=_BrokenMessages()))
 
-    result = filter_materially_relevant_chunks("A question", _employment_and_insurance_chunks())
-
-    assert result == []
+    with pytest.raises(RelevanceCheckUnavailable):
+        filter_materially_relevant_chunks("A question", _employment_and_insurance_chunks())
 
 
 def test_out_of_range_indices_are_ignored_not_treated_as_a_parse_failure(monkeypatch):
@@ -175,3 +172,43 @@ def test_sends_the_question_and_chunk_text_to_claude(monkeypatch):
     assert "Can an employee be fired for filing a discrimination complaint?" in sent_message
     assert "employment_handbook.pdf" in sent_message
     assert "cgl_policy_exclusions.pdf" in sent_message
+
+
+def test_structured_output_shape_is_parsed(monkeypatch):
+    monkeypatch.setattr("app.analysis.relevance_guard.get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr("anthropic.Anthropic", lambda api_key: _fake_client('{"relevant_excerpts": [1]}'))
+
+    chunks = _employment_and_insurance_chunks()
+    assert filter_materially_relevant_chunks("A question", chunks) == [chunks[1]]
+
+
+def test_leaves_room_for_thinking_and_requests_json_schema_output(monkeypatch):
+    """Regression: a 200-token cap was all spent on adaptive thinking, so no verdict came back -> every Ask said 'No authority'."""
+
+    monkeypatch.setattr("app.analysis.relevance_guard.get_settings", lambda: _FakeSettings())
+    fake_client = _fake_client('{"relevant_excerpts": [0]}')
+    monkeypatch.setattr("anthropic.Anthropic", lambda api_key: fake_client)
+
+    filter_materially_relevant_chunks("A question", _employment_and_insurance_chunks())
+
+    call = fake_client.messages.last_call
+    assert call["max_tokens"] >= 2000
+    assert call["output_config"]["format"]["type"] == "json_schema"
+    assert call["output_config"]["format"]["schema"]["required"] == ["relevant_excerpts"]
+
+
+@pytest.mark.parametrize("stop_reason", ["max_tokens", "refusal"])
+def test_a_cut_short_verdict_is_unavailable_not_an_empty_verdict(monkeypatch, stop_reason):
+    monkeypatch.setattr("app.analysis.relevance_guard.get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr("anthropic.Anthropic", lambda api_key: _fake_client("", stop_reason=stop_reason))
+
+    with pytest.raises(RelevanceCheckUnavailable):
+        filter_materially_relevant_chunks("A question", _employment_and_insurance_chunks())
+
+
+def test_boolean_indices_are_rejected(monkeypatch):
+    monkeypatch.setattr("app.analysis.relevance_guard.get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr("anthropic.Anthropic", lambda api_key: _fake_client('{"relevant_excerpts": [true]}'))
+
+    with pytest.raises(RelevanceCheckUnavailable):
+        filter_materially_relevant_chunks("A question", _employment_and_insurance_chunks())

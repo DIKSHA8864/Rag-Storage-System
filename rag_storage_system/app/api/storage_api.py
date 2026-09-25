@@ -130,7 +130,7 @@ from app.metadata import get_metadata_repository
 from app.metadata.models import DocumentStatus
 from app.retrieval.retriever import retrieve, retrieve_for_matter
 from app.retrieval_settings import DEFAULT_MIN_CHUNKS, DEFAULT_SCORE_THRESHOLD, DEFAULT_TOP_K, get_current_retrieval_settings
-from app.analysis.answer_generation import stream_grounded_answer
+from app.analysis.answer_generation import RELEVANCE_CHECK_UNAVAILABLE_CODE, stream_grounded_answer
 from app.billing import get_billing_service
 from app.billing.service import RESOURCE_DOCUMENTS, RESOURCE_LLM_CALLS, RESOURCE_MATTERS, RESOURCE_STORAGE_BYTES, PlanLimitExceededError
 from app.report.rag_analysis import gather_fact_support
@@ -1570,6 +1570,8 @@ async def owner_research_ask(request: OwnerResearchRequest, owner: dict = Depend
             answer_pieces.append(payload["text"])
         elif event == "error":
             logger.warning("Owner research answer generation error for query %r: %s", request.query, payload["detail"])
+            if payload.get("code") == RELEVANCE_CHECK_UNAVAILABLE_CODE:
+                raise HTTPException(status_code=503, detail=payload["detail"])
 
     return OwnerResearchResponse(
         query=request.query,
@@ -1654,6 +1656,8 @@ async def matter_research_ask(
                 "Matter %s research answer generation error for query %r: %s",
                 matter_id, request.query, payload["detail"],
             )
+            if payload.get("code") == RELEVANCE_CHECK_UNAVAILABLE_CODE:
+                raise HTTPException(status_code=503, detail=payload["detail"])
 
     return OwnerResearchResponse(
         query=request.query,

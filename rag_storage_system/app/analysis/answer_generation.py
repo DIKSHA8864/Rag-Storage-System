@@ -121,6 +121,9 @@ def _citations_are_grounded(text: str, allowed_filenames: set[str]) -> bool:
     return True
 
 
+_ANSWER_MAX_TOKENS = 16000
+
+
 async def _claude_full_answer(
     query: str, chunks: list[dict], usage_log: dict | None = None, tenant_id: int = 1
 ) -> str:
@@ -152,7 +155,10 @@ async def _claude_full_answer(
 
     response = await client.messages.create(
         model=settings.analysis_model,
-        max_tokens=1024,
+        # Adaptive thinking is on by default on current Opus models and its
+        # tokens count against this cap - too small a cap leaves a cut-off
+        # or empty answer (checked below, never shown to the user).
+        max_tokens=_ANSWER_MAX_TOKENS,
         system=system_prompt,
         messages=[
             {"role": "user", "content": f"KNOWLEDGE BASE EXCERPTS:\n{context}\n\nQUESTION:\n{query}"}
@@ -168,7 +174,14 @@ async def _claude_full_answer(
         usage_log["input_tokens"] = getattr(usage, "input_tokens", 0) or 0
         usage_log["output_tokens"] = getattr(usage, "output_tokens", 0) or 0
 
-    return "".join(block.text for block in response.content if block.type == "text")
+    stop_reason = getattr(response, "stop_reason", "end_turn")
+    if stop_reason not in ("end_turn", "stop_sequence"):
+        raise RuntimeError(f"Claude answer ended early (stop_reason={stop_reason!r}) - not showing a partial answer.")
+
+    text = "".join(block.text for block in response.content if block.type == "text")
+    if not text.strip():
+        raise RuntimeError("Claude returned an empty answer.")
+    return text
 
 
 async def generate_answer_stream(
@@ -230,6 +243,12 @@ async def generate_answer_stream(
         yield piece
 
 
+RELEVANCE_CHECK_UNAVAILABLE_CODE = "relevance_check_unavailable"
+RELEVANCE_CHECK_UNAVAILABLE_TEXT = (
+    "The library's sources couldn't be verified right now, so no answer was given. Please try again shortly."
+)
+
+
 async def stream_grounded_answer(
     query: str, results: list[dict], min_chunks: int,
     *, purpose: str = "grounded_answer", matter_id: int | None = None, intake_session_id: int | None = None,
@@ -276,7 +295,7 @@ async def stream_grounded_answer(
 
     import time
 
-    from app.analysis.relevance_guard import filter_materially_relevant_chunks
+    from app.analysis.relevance_guard import RelevanceCheckUnavailable, filter_materially_relevant_chunks
     from app.observability.usage_log import log_rag_query
 
     start = time.perf_counter()
@@ -293,7 +312,24 @@ async def stream_grounded_answer(
     # never make an ungrounded/fabricated answer more likely; it can
     # only make one that was about to cite something irrelevant refuse
     # to answer instead.
-    relevant_results = filter_materially_relevant_chunks(query, results, tenant_id=tenant_id)
+    try:
+        relevant_results = filter_materially_relevant_chunks(query, results, tenant_id=tenant_id)
+    except RelevanceCheckUnavailable:
+        # Still no answer (fail closed) - but NOT the honest-gap text: the
+        # library may well cover this, the check just couldn't run. Telling
+        # the user "no authority in the library" here would be false.
+        yield "sources", {"sources": []}
+        yield "error", {"detail": RELEVANCE_CHECK_UNAVAILABLE_TEXT, "code": RELEVANCE_CHECK_UNAVAILABLE_CODE}
+        yield "done", {}
+
+        log_rag_query(
+            purpose=purpose, query=query, results=results, model="n/a",
+            input_tokens=0, output_tokens=0,
+            latency_ms=int((time.perf_counter() - start) * 1000),
+            citation_check_result=RELEVANCE_CHECK_UNAVAILABLE_CODE,
+            matter_id=matter_id, intake_session_id=intake_session_id, tenant_id=tenant_id,
+        )
+        return
 
     if len(relevant_results) < min_chunks:
         no_evidence_text = "No authority on this point was found in the firm's legal library."

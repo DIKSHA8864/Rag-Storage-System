@@ -414,3 +414,63 @@ def test_search_endpoint_still_works_unchanged(client, monkeypatch):
     body = response.json()
     assert body["results"][0]["filename"] == "policy.pdf"
     assert "answer" not in body  # /search still returns raw chunks only, no generated answer
+
+
+def test_an_unavailable_relevance_check_is_a_503_never_a_false_no_authority_answer(client, monkeypatch):
+    """
+    Regression: when the relevance check couldn't run (API error, cut-off
+    verdict), the Owner was told "No authority on this point was found"
+    even though the library covered the question.
+    """
+
+    monkeypatch.setattr(
+        storage_api, "retrieve",
+        lambda query, top_k, category=None, score_threshold=0.0, tenant_id=1: [_hit("overtime_policy.pdf", "Wage & Hour", 0.9)],
+    )
+    monkeypatch.setattr(
+        "app.analysis.relevance_guard.get_settings",
+        lambda: SimpleNamespace(anthropic_api_key="test-key", analysis_model="claude-opus-5"),
+    )
+
+    class _BrokenMessages:
+        def create(self, **kwargs):
+            raise RuntimeError("credit balance too low")
+
+    monkeypatch.setattr("anthropic.Anthropic", lambda api_key: SimpleNamespace(messages=_BrokenMessages()))
+
+    response = client.post(
+        "/research/ask", json={"query": "Is overtime required after 40 hours?"}, headers=_owner_header()
+    )
+
+    assert response.status_code == 503
+    assert "couldn't be verified" in response.json()["detail"]
+    assert "No authority" not in response.text
+
+
+@pytest.mark.parametrize("stop_reason, text", [("max_tokens", "Overtime is required after 40 hours becau"), ("end_turn", "")])
+def test_a_cut_off_or_empty_claude_answer_is_never_shown(client, monkeypatch, stop_reason, text):
+    """A truncated/empty generation falls back to the grounded template answer instead of reaching the Owner."""
+
+    monkeypatch.setattr(
+        storage_api, "retrieve",
+        lambda query, top_k, category=None, score_threshold=0.0, tenant_id=1: [_hit("overtime_policy.pdf", "Wage & Hour", 0.9)],
+    )
+    monkeypatch.setattr("app.analysis.answer_generation.get_settings", lambda: _FakeClaudeSettings())
+    fake_client_cls, fake_messages = _fake_async_anthropic(text)
+
+    async def _create(**kwargs):
+        fake_messages.last_call = kwargs
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)], stop_reason=stop_reason)
+
+    fake_messages.create = _create
+    monkeypatch.setattr("anthropic.AsyncAnthropic", fake_client_cls)
+
+    response = client.post(
+        "/research/ask", json={"query": "Is overtime required after 40 hours?"}, headers=_owner_header()
+    )
+
+    assert response.status_code == 200
+    answer = response.json()["answer"]
+    assert "becau" not in answer.split()[-1]
+    assert "Overtime must be paid at 1.5x for hours over 40 in a week." in answer
+    assert fake_messages.last_call["max_tokens"] >= 8000

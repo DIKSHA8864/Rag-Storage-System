@@ -124,11 +124,17 @@ class ClaudeNarrativeGenerator(NarrativeGenerator):
         with track_llm_call("narrative_generation", self._model, tenant_id=tenant_id) as record_usage:
             response = self._client.messages.create(
                 model=self._model,
-                max_tokens=4096,
+                # Adaptive thinking (on by default on current Opus models)
+                # counts against this cap too.
+                max_tokens=16000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": _build_user_message(comparison)}],
             )
             record_usage(response.usage.input_tokens, response.usage.output_tokens)
+
+        stop_reason = getattr(response, "stop_reason", "end_turn")
+        if stop_reason not in ("end_turn", "stop_sequence"):
+            raise RuntimeError(f"Claude narrative ended early (stop_reason={stop_reason!r}).")
 
         text = "".join(block.text for block in response.content if block.type == "text")
 
