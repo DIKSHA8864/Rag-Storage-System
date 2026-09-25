@@ -100,6 +100,10 @@ class Settings(BaseSettings):
     # Empty = token counts only; cost is never guessed.
     llm_prices: str = ""
 
+    # "Talk to a person" requests are also emailed here (comma-separated).
+    # Empty = they only appear under Admin -> Requests.
+    handoff_notify_emails: str = ""
+
     # ------------------------------------------------------------------
     # Upload validation
     # ------------------------------------------------------------------

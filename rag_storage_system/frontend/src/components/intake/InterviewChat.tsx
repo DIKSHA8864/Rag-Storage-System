@@ -8,7 +8,9 @@ import { ApiError } from "@/lib/api/client";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { ReportPanel } from "./ReportPanel";
+import { TalkToPerson } from "./TalkToPerson";
 import { UploadPanel } from "./UploadPanel";
+import { VoiceInterviewer } from "./VoiceInterviewer";
 
 interface InterviewChatProps {
   sessionId: number;
@@ -217,6 +219,7 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
   }
 
   const isComplete = state.current_state === "complete";
+  const lastQuestion = [...messages].reverse().find((message) => message.role === "assistant");
   const es = state.language === "es";
   const stageOrder = STAGE_ORDER_BY_FLOW[state.flow_version] ?? STAGE_ORDER_BY_FLOW[2];
   const stageIndex = stageOrder.indexOf(state.current_state);
@@ -293,6 +296,18 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
           );
         })}
       </div>
+
+      {!isComplete && state.language && lastQuestion && (
+        <VoiceInterviewer
+          sessionId={sessionId}
+          endUserToken={endUserToken}
+          language={state.language}
+          prompt={lastQuestion.content}
+          promptKey={String(lastQuestion.id)}
+          onTranscript={(text) => setDraft((current) => (current.trim() ? `${current.trim()} ${text}` : text))}
+          onUnauthorized={onUnauthorized}
+        />
+      )}
 
       {state.question_number !== null && (
         <div style={{ margin: "0 0 0.75rem 0" }}>
@@ -379,6 +394,7 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
             {state.language === "es" ? "Su entrevista ha finalizado. Gracias." : "Your interview is complete. Thank you."}
           </p>
           {uploadPanel}
+          <TalkToPerson sessionId={sessionId} endUserToken={endUserToken} language={state.language} onUnauthorized={onUnauthorized} />
           <ReportPanel sessionId={sessionId} endUserToken={endUserToken} language={state.language} />
         </>
       ) : (
@@ -435,6 +451,9 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
               {isSending ? "..." : state.language === "es" ? "Enviar" : "Send"}
             </button>
           </form>
+          {state.language && (
+            <TalkToPerson sessionId={sessionId} endUserToken={endUserToken} language={state.language} onUnauthorized={onUnauthorized} />
+          )}
           {uploadPanel}
         </div>
       )}

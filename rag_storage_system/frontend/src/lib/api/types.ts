@@ -707,3 +707,34 @@ export interface BillingProviderInfo {
   can_manage_billing: boolean;
   can_manage_plans: boolean;
 }
+
+// Voice answers + "Talk to a person" (app/api/voice_handoff_api.py).
+export interface HandoffInfo {
+  id: number;
+  matter_id: number;
+  intake_session_id: number | null;
+  contact_method: "phone" | "email" | "video";
+  contact_value: string;
+  preferred_time: string | null;
+  message: string | null;
+  language: string | null;
+  status: "open" | "claimed" | "closed";
+  claimed_by: string | null;
+  closed_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HandoffCreateRequest {
+  intake_session_id?: number | null;
+  contact_method: "phone" | "email" | "video";
+  contact_value: string;
+  preferred_time?: string | null;
+  message?: string | null;
+  language?: "en" | "es" | null;
+}
+
+export interface HandoffListResponse {
+  requests: HandoffInfo[];
+  open_count: number;
+}

@@ -153,6 +153,26 @@ with Stripe test keys and the Stripe CLI (`stripe listen --forward-to
 localhost:8000/billing/stripe/webhook`), or point `STRIPE_API_BASE` at
 `stripe-mock`.
 
+## Voice interviewer and "Talk to a person"
+
+- **Read aloud**: in the client intake, "Read questions aloud" makes the
+  on-screen assistant speak each question in English or Spanish. It
+  uses the browser's own voice, so nothing leaves the device and no
+  service is needed.
+- **Answer by voice** appears only when a real speech-to-text engine is
+  set (`STT_PROVIDER=whisper`). The recording is transcribed on this
+  server, the text goes into the answer box for the client to check and
+  edit, and only what they then send is recorded. The recording is not
+  kept.
+- **Talk to a person**: the client leaves a phone number or email (plus
+  a best time). Staff see it under Admin -> **Requests**, take it ("I'll
+  take it"), contact the client and close it with a note. The client
+  sees the status. Set `HANDOFF_NOTIFY_EMAILS` to also email new
+  requests. There is one open request per client at a time.
+- A realistic video avatar (a filmed or AI presenter) would need a paid
+  service such as HeyGen or D-ID. The built-in presenter is an animated
+  illustration.
+
 ## Virus scanning
 
 Every upload is scanned before it is stored: library uploads and

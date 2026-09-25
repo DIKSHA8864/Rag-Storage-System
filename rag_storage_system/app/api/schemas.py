@@ -1248,3 +1248,49 @@ class RedirectResponse(BaseModel):
 
 class PlanPriceRequest(BaseModel):
     provider_price_id: str | None = Field(default=None, max_length=255)
+
+
+# ----------------------------------------------------------------------
+# Voice interviewing and "Talk to a person" (app/api/voice_handoff_api.py)
+# ----------------------------------------------------------------------
+
+class VoiceCapabilities(BaseModel):
+    speech_to_text: bool  # False = STT_PROVIDER is "mock": questions can still be read aloud, answers are typed
+
+
+class TranscriptionResponse(BaseModel):
+    text: str  # for the client to review/edit - never recorded until they send it
+
+
+class HandoffCreateRequest(BaseModel):
+    intake_session_id: int | None = None
+    contact_method: str = Field(..., pattern="^(phone|email|video)$")
+    contact_value: str = Field(..., min_length=3, max_length=255)
+    preferred_time: str | None = Field(default=None, max_length=255)
+    message: str | None = Field(default=None, max_length=2000)
+    language: str | None = Field(default=None, pattern="^(en|es)$")
+
+
+class HandoffInfo(BaseModel):
+    id: int
+    matter_id: int
+    intake_session_id: int | None = None
+    contact_method: str
+    contact_value: str
+    preferred_time: str | None = None
+    message: str | None = None
+    language: str | None = None
+    status: str  # open | claimed | closed
+    claimed_by: str | None = None
+    closed_note: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class HandoffListResponse(BaseModel):
+    requests: list[HandoffInfo]
+    open_count: int
+
+
+class HandoffCloseRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=2000)

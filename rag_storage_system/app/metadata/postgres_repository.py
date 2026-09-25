@@ -1224,6 +1224,63 @@ class PostgresMetadataRepository(MetadataRepository):
         return cursor.rowcount == 1
 
     # ------------------------------------------------------------------
+    # "Talk to a person" requests
+    # ------------------------------------------------------------------
+
+    def create_handoff_request(self, tenant_id, matter_id, intake_session_id, end_user_id, contact_method, contact_value,
+                               preferred_time, message, language) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "INSERT INTO handoff_requests (tenant_id, matter_id, intake_session_id, end_user_id, contact_method, contact_value, preferred_time, message, language) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
+                (tenant_id, matter_id, intake_session_id, end_user_id, contact_method, contact_value, preferred_time,
+                 message, language),
+            ).fetchone()
+        return dict(row)
+
+    def list_handoff_requests(self, tenant_id: int, status: Optional[str] = None) -> list[dict]:
+        with self._connect() as conn:
+            if status:
+                rows = conn.execute(
+                    "SELECT * FROM handoff_requests WHERE tenant_id = %s AND status = %s ORDER BY created_at DESC, id DESC",
+                    (tenant_id, status),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM handoff_requests WHERE tenant_id = %s ORDER BY created_at DESC, id DESC", (tenant_id,)
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_handoff_request(self, request_id: int, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM handoff_requests WHERE id = %s AND tenant_id = %s", (request_id, tenant_id)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def latest_handoff_for_matter(self, matter_id: int, end_user_id: Optional[int]) -> Optional[dict]:
+        with self._connect() as conn:
+            if end_user_id:
+                row = conn.execute(
+                    "SELECT * FROM handoff_requests WHERE end_user_id = %s ORDER BY id DESC LIMIT 1", (end_user_id,)
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM handoff_requests WHERE matter_id = %s AND end_user_id IS NULL ORDER BY id DESC LIMIT 1",
+                    (matter_id,),
+                ).fetchone()
+        return dict(row) if row else None
+
+    def update_handoff_request(self, request_id: int, tenant_id: int, status: str, claimed_by=None, closed_note=None) -> Optional[dict]:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE handoff_requests SET status = %s, claimed_by = COALESCE(%s, claimed_by), "
+                "closed_note = COALESCE(%s, closed_note), updated_at = NOW() WHERE id = %s AND tenant_id = %s",
+                (status, claimed_by, closed_note, request_id, tenant_id),
+            )
+        return self.get_handoff_request(request_id, tenant_id)
+
+    # ------------------------------------------------------------------
     # Vault sync and duplicate detection
     # ------------------------------------------------------------------
 

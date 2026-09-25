@@ -483,3 +483,23 @@ def test_payment_provider_sync(repo):
     event = f"evt_{uuid.uuid4().hex[:8]}"
     assert repo.record_provider_event(event, "stripe", "invoice.paid", 2) is True
     assert repo.record_provider_event(event, "stripe", "invoice.paid", 2) is False
+
+
+def test_handoff_requests(repo):
+    if not isinstance(repo, SQLiteMetadataRepository):
+        with repo._connect() as conn:
+            conn.execute("TRUNCATE handoff_requests RESTART IDENTITY")
+            conn.execute("INSERT INTO tenants (id, name, slug) VALUES (2, 'Second Firm', 'second-firm') ON CONFLICT DO NOTHING")
+
+    first = repo.create_handoff_request(1, 5, None, None, "phone", "2135550100", "mornings", "help", "en")
+    assert (first["status"], first["contact_method"]) == ("open", "phone")
+    repo.create_handoff_request(2, 6, None, None, "email", "b@example.com", None, None, None)
+    assert [r["id"] for r in repo.list_handoff_requests(1)] == [first["id"]]
+    assert repo.get_handoff_request(first["id"], 2) is None
+    assert repo.latest_handoff_for_matter(5, None)["id"] == first["id"]
+
+    claimed = repo.update_handoff_request(first["id"], 1, "claimed", claimed_by="a@firm.example")
+    closed = repo.update_handoff_request(first["id"], 1, "closed", closed_note="done")
+    assert (claimed["claimed_by"], closed["claimed_by"], closed["closed_note"]) == ("a@firm.example", "a@firm.example", "done")
+    assert repo.list_handoff_requests(1, "open") == []
+    assert repo.update_handoff_request(first["id"], 2, "open") is None

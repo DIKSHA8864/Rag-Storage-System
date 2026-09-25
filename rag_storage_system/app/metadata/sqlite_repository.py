@@ -134,6 +134,24 @@ CREATE TABLE IF NOT EXISTS document_templates (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS handoff_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    matter_id INTEGER NOT NULL,
+    intake_session_id INTEGER,
+    end_user_id INTEGER,
+    contact_method TEXT NOT NULL,
+    contact_value TEXT NOT NULL,
+    preferred_time TEXT,
+    message TEXT,
+    language TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    claimed_by TEXT,
+    closed_note TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS billing_provider_events (
     event_id TEXT PRIMARY KEY,
     provider TEXT NOT NULL,
@@ -1809,6 +1827,64 @@ class SQLiteMetadataRepository(MetadataRepository):
                 (event_id, provider, event_type, tenant_id, _now()),
             )
         return cursor.rowcount == 1
+
+    # ------------------------------------------------------------------
+    # "Talk to a person" requests
+    # ------------------------------------------------------------------
+
+    def create_handoff_request(self, tenant_id, matter_id, intake_session_id, end_user_id, contact_method, contact_value,
+                               preferred_time, message, language) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO handoff_requests (tenant_id, matter_id, intake_session_id, end_user_id, contact_method, contact_value, preferred_time, message, language, status, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)",
+                (tenant_id, matter_id, intake_session_id, end_user_id, contact_method, contact_value, preferred_time,
+                 message, language, now, now),
+            )
+            return dict(conn.execute("SELECT * FROM handoff_requests WHERE id = ?", (cursor.lastrowid,)).fetchone())
+
+    def list_handoff_requests(self, tenant_id: int, status: Optional[str] = None) -> list[dict]:
+        with self._connect() as conn:
+            if status:
+                rows = conn.execute(
+                    "SELECT * FROM handoff_requests WHERE tenant_id = ? AND status = ? ORDER BY created_at DESC, id DESC",
+                    (tenant_id, status),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM handoff_requests WHERE tenant_id = ? ORDER BY created_at DESC, id DESC", (tenant_id,)
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_handoff_request(self, request_id: int, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM handoff_requests WHERE id = ? AND tenant_id = ?", (request_id, tenant_id)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def latest_handoff_for_matter(self, matter_id: int, end_user_id: Optional[int]) -> Optional[dict]:
+        with self._connect() as conn:
+            if end_user_id:
+                row = conn.execute(
+                    "SELECT * FROM handoff_requests WHERE end_user_id = ? ORDER BY id DESC LIMIT 1", (end_user_id,)
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM handoff_requests WHERE matter_id = ? AND end_user_id IS NULL ORDER BY id DESC LIMIT 1",
+                    (matter_id,),
+                ).fetchone()
+        return dict(row) if row else None
+
+    def update_handoff_request(self, request_id: int, tenant_id: int, status: str, claimed_by=None, closed_note=None) -> Optional[dict]:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE handoff_requests SET status = ?, claimed_by = COALESCE(?, claimed_by), "
+                "closed_note = COALESCE(?, closed_note), updated_at = ? WHERE id = ? AND tenant_id = ?",
+                (status, claimed_by, closed_note, _now(), request_id, tenant_id),
+            )
+        return self.get_handoff_request(request_id, tenant_id)
 
     # ------------------------------------------------------------------
     # Vault sync and duplicate detection

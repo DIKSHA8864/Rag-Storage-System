@@ -346,6 +346,13 @@ from app.api.analytics_api import router as analytics_router  # noqa: E402
 
 app.include_router(analytics_router)
 
+# Voice answers + "Talk to a person". See app/api/voice_handoff_api.py.
+from app.api.voice_handoff_api import admin_router as handoff_admin_router  # noqa: E402
+from app.api.voice_handoff_api import end_user_router as voice_end_user_router  # noqa: E402
+
+app.include_router(voice_end_user_router)
+app.include_router(handoff_admin_router)
+
 
 @app.get("/")
 def root() -> dict:

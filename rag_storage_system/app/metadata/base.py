@@ -608,6 +608,33 @@ class MetadataRepository(ABC):
         raise NotImplementedError
 
     # ------------------------------------------------------------------
+    # "Talk to a person" requests (migration 0027)
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_handoff_request(self, tenant_id: int, matter_id: int, intake_session_id: Optional[int],
+                               end_user_id: Optional[int], contact_method: str, contact_value: str,
+                               preferred_time: Optional[str], message: Optional[str], language: Optional[str]) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_handoff_requests(self, tenant_id: int, status: Optional[str] = None) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_handoff_request(self, request_id: int, tenant_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def latest_handoff_for_matter(self, matter_id: int, end_user_id: Optional[int]) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_handoff_request(self, request_id: int, tenant_id: int, status: str, claimed_by: Optional[str] = None,
+                               closed_note: Optional[str] = None) -> Optional[dict]:
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
     # Vault sync (migration 0022) and duplicate detection
     # ------------------------------------------------------------------
 
