@@ -125,6 +125,34 @@ calls and tokens per model. Cost appears only after you set `LLM_PRICES`
 (USD per million input/output tokens per model, from Anthropic's pricing
 page). It is never guessed.
 
+## Stripe payments
+
+Off by default (`BILLING_PROVIDER=manual`). To take card payments:
+1. In Stripe, create a Product + recurring Price for each paid plan.
+2. Set `BILLING_PROVIDER=stripe`, `STRIPE_SECRET_KEY`, and
+   `BILLING_PLAN_ADMIN_EMAILS` (who may create and price plans - plans are
+   shared by every organization). Optionally set
+   `STRIPE_FALLBACK_PLAN_SLUG` (e.g. a "free" plan) so paid limits end when
+   payments end.
+3. Create each plan (POST /admin/billing/plans with `provider_price_id`),
+   or set the price later: PUT /admin/billing/plans/{id}/provider-price.
+4. In Stripe -> Developers -> Webhooks, add
+   `https://<api host>/billing/stripe/webhook` with the events
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+   `customer.subscription.created/updated/deleted`, `invoice.paid` and
+   `invoice.payment_failed`. Put its signing secret in
+   `STRIPE_WEBHOOK_SECRET`.
+
+How it behaves: Billing -> "Pay with card (Stripe)" opens Stripe
+Checkout. The plan changes **only** when Stripe's signed webhook confirms
+the subscription. Each event re-reads the subscription from Stripe, so
+retries and out-of-order deliveries are safe. A paid plan can't be
+assigned directly (409). "Manage billing" opens Stripe's Billing Portal
+(card, invoices, cancel). Card details never reach this server. Test
+with Stripe test keys and the Stripe CLI (`stripe listen --forward-to
+localhost:8000/billing/stripe/webhook`), or point `STRIPE_API_BASE` at
+`stripe-mock`.
+
 ## Virus scanning
 
 Every upload is scanned before it is stored: library uploads and

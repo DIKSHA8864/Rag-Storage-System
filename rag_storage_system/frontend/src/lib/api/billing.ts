@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
 import type {
+  BillingProviderInfo,
   BillingUsageResponse,
   ChangePlanRequest,
   PlanCreateRequest,
@@ -35,4 +36,18 @@ export async function cancelSubscription(token: string): Promise<SubscriptionInf
 
 export async function getUsage(token: string): Promise<BillingUsageResponse> {
   return apiRequest<BillingUsageResponse>("/admin/billing/usage", { token });
+}
+
+export async function getBillingProvider(token: string): Promise<BillingProviderInfo> {
+  return apiRequest<BillingProviderInfo>("/admin/billing/provider", { token });
+}
+
+/** A Stripe Checkout page for a paid plan - the plan changes only once Stripe confirms payment. */
+export async function startCheckout(planSlug: string, token: string): Promise<{ url: string }> {
+  return apiRequest<{ url: string }>("/admin/billing/checkout", { method: "POST", body: { plan_slug: planSlug }, token });
+}
+
+/** Stripe's Billing Portal (card, invoices, cancel). */
+export async function openBillingPortal(token: string): Promise<{ url: string }> {
+  return apiRequest<{ url: string }>("/admin/billing/portal", { method: "POST", token });
 }

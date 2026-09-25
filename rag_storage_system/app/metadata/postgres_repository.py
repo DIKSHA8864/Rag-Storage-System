@@ -1174,6 +1174,56 @@ class PostgresMetadataRepository(MetadataRepository):
         return {key: int(value or 0) for key, value in {**dict(funnel), **dict(uploads)}.items()}
 
     # ------------------------------------------------------------------
+    # Payment provider sync
+    # ------------------------------------------------------------------
+
+    def set_plan_provider_price(self, plan_id: int, provider_price_id: Optional[str]) -> Optional[dict]:
+        with self._connect() as conn:
+            conn.execute("UPDATE plans SET provider_price_id = %s WHERE id = %s", (provider_price_id, plan_id))
+        return self.get_plan(plan_id)
+
+    def get_plan_by_provider_price(self, provider_price_id: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM plans WHERE provider_price_id = %s", (provider_price_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_subscription_by_provider_id(self, provider_subscription_id: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM tenant_subscriptions WHERE provider_subscription_id = %s", (provider_subscription_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def sync_provider_subscription(self, tenant_id, plan_id, status, current_period_start, current_period_end,
+                                   provider, provider_customer_id, provider_subscription_id, canceled_at=None) -> dict:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO tenant_subscriptions (tenant_id, plan_id, status, current_period_start, current_period_end,
+                                                  provider, provider_customer_id, provider_subscription_id, canceled_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id) DO UPDATE SET
+                    plan_id = excluded.plan_id, status = excluded.status,
+                    current_period_start = excluded.current_period_start, current_period_end = excluded.current_period_end,
+                    provider = excluded.provider, provider_customer_id = excluded.provider_customer_id,
+                    provider_subscription_id = excluded.provider_subscription_id, canceled_at = excluded.canceled_at,
+                    trial_end = NULL, updated_at = NOW()
+                """,
+                (tenant_id, plan_id, status, current_period_start, current_period_end, provider,
+                 provider_customer_id, provider_subscription_id, canceled_at),
+            )
+        return self.get_subscription_for_tenant(tenant_id)
+
+    def record_provider_event(self, event_id: str, provider: str, event_type: str, tenant_id: Optional[int]) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT INTO billing_provider_events (event_id, provider, event_type, tenant_id) VALUES (%s, %s, %s, %s) "
+                "ON CONFLICT (event_id) DO NOTHING",
+                (event_id, provider, event_type, tenant_id),
+            )
+        return cursor.rowcount == 1
+
+    # ------------------------------------------------------------------
     # Vault sync and duplicate detection
     # ------------------------------------------------------------------
 

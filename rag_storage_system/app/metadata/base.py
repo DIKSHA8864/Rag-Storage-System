@@ -577,6 +577,37 @@ class MetadataRepository(ABC):
         raise NotImplementedError
 
     # ------------------------------------------------------------------
+    # Payment provider sync (migration 0026) - written only from verified
+    # provider events (app/billing/stripe_webhooks.py), never invented.
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def set_plan_provider_price(self, plan_id: int, provider_price_id: Optional[str]) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_plan_by_provider_price(self, provider_price_id: str) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_subscription_by_provider_id(self, provider_subscription_id: str) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def sync_provider_subscription(
+        self, tenant_id: int, plan_id: int, status: str, current_period_start: str, current_period_end: str,
+        provider: str, provider_customer_id: Optional[str], provider_subscription_id: Optional[str],
+        canceled_at: Optional[str] = None,
+    ) -> dict:
+        """Create or overwrite `tenant_id`'s subscription row with what the provider reports."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def record_provider_event(self, event_id: str, provider: str, event_type: str, tenant_id: Optional[int]) -> bool:
+        """True the first time `event_id` is seen; False for a repeat delivery."""
+        raise NotImplementedError
+
+    # ------------------------------------------------------------------
     # Vault sync (migration 0022) and duplicate detection
     # ------------------------------------------------------------------
 

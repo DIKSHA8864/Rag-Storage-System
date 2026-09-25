@@ -699,3 +699,11 @@ export interface AnalyticsResponse {
   library_by_status: Record<string, number>;
   top_sources: { category: string; filename: string; count: number }[];
 }
+
+// Payment provider (app/api/billing_api.py GET /admin/billing/provider).
+export interface BillingProviderInfo {
+  provider: string;
+  checkout_enabled: boolean;
+  can_manage_billing: boolean;
+  can_manage_plans: boolean;
+}

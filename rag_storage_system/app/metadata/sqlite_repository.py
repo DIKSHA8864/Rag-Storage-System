@@ -134,6 +134,14 @@ CREATE TABLE IF NOT EXISTS document_templates (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS billing_provider_events (
+    event_id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    tenant_id INTEGER,
+    received_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS matter_documents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
@@ -484,6 +492,7 @@ class SQLiteMetadataRepository(MetadataRepository):
         ("interview_state", "checklist_snapshot", "TEXT"),
         ("matters", "kind", "TEXT NOT NULL DEFAULT 'client'"),
         ("matters", "end_user_id", "INTEGER"),
+        ("plans", "provider_price_id", "TEXT"),
     )
 
     def __init__(self, db_path: Path):
@@ -1748,6 +1757,58 @@ class SQLiteMetadataRepository(MetadataRepository):
                 {"t": tenant_id, "since": since},
             ).fetchone()
         return {key: int(value or 0) for key, value in {**dict(funnel), **dict(uploads)}.items()}
+
+    # ------------------------------------------------------------------
+    # Payment provider sync
+    # ------------------------------------------------------------------
+
+    def set_plan_provider_price(self, plan_id: int, provider_price_id: Optional[str]) -> Optional[dict]:
+        with self._connect() as conn:
+            conn.execute("UPDATE plans SET provider_price_id = ? WHERE id = ?", (provider_price_id, plan_id))
+        return self.get_plan(plan_id)
+
+    def get_plan_by_provider_price(self, provider_price_id: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM plans WHERE provider_price_id = ?", (provider_price_id,)).fetchone()
+        return dict(row) if row else None
+
+    def get_subscription_by_provider_id(self, provider_subscription_id: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM tenant_subscriptions WHERE provider_subscription_id = ?", (provider_subscription_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def sync_provider_subscription(self, tenant_id, plan_id, status, current_period_start, current_period_end,
+                                   provider, provider_customer_id, provider_subscription_id, canceled_at=None) -> dict:
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO tenant_subscriptions (tenant_id, plan_id, status, current_period_start, current_period_end,
+                                                  provider, provider_customer_id, provider_subscription_id, canceled_at,
+                                                  created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (tenant_id) DO UPDATE SET
+                    plan_id = excluded.plan_id, status = excluded.status,
+                    current_period_start = excluded.current_period_start, current_period_end = excluded.current_period_end,
+                    provider = excluded.provider, provider_customer_id = excluded.provider_customer_id,
+                    provider_subscription_id = excluded.provider_subscription_id, canceled_at = excluded.canceled_at,
+                    trial_end = NULL, updated_at = excluded.updated_at
+                """,
+                (tenant_id, plan_id, status, current_period_start, current_period_end, provider,
+                 provider_customer_id, provider_subscription_id, canceled_at, now, now),
+            )
+        return self.get_subscription_for_tenant(tenant_id)
+
+    def record_provider_event(self, event_id: str, provider: str, event_type: str, tenant_id: Optional[int]) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO billing_provider_events (event_id, provider, event_type, tenant_id, received_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (event_id, provider, event_type, tenant_id, _now()),
+            )
+        return cursor.rowcount == 1
 
     # ------------------------------------------------------------------
     # Vault sync and duplicate detection

@@ -9,9 +9,9 @@ Controlled by BILLING_PROVIDER (config/settings.py / .env):
         gateway; an Owner/Admin assigns tenants to plans directly via
         app/api/billing_api.py. Real functionality, not a mock.
 
-A real gateway (e.g. "stripe") is a future addition: add the
-implementation class in app/billing/provider.py and a branch below -
-BillingService and every API endpoint stay unchanged either way.
+    "stripe" -> StripePaymentProvider (app/billing/stripe_provider.py) -
+        paid plans start through Stripe Checkout and are granted only by
+        Stripe's signed webhooks (app/billing/stripe_webhooks.py).
 """
 
 from app.billing.provider import PaymentProvider
@@ -31,6 +31,12 @@ def get_billing_provider() -> PaymentProvider:
             from app.billing.provider import ManualPaymentProvider
 
             _provider_instance = ManualPaymentProvider()
+        elif settings.billing_provider == "stripe":
+            from app.billing.stripe_provider import StripeClient, StripePaymentProvider
+
+            _provider_instance = StripePaymentProvider(
+                StripeClient(settings.stripe_secret_key, api_base=settings.stripe_api_base)
+            )
         else:
             raise NotImplementedError(
                 f"BILLING_PROVIDER={settings.billing_provider!r} has no implementation yet - "

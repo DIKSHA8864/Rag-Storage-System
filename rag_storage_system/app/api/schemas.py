@@ -873,6 +873,7 @@ class PlanInfo(BaseModel):
     max_owners: int | None = None
     is_active: bool
     created_at: str
+    provider_price_id: str | None = None  # the Stripe Price it's sold at (BILLING_PROVIDER=stripe)
 
 
 class PlanListResponse(BaseModel):
@@ -892,6 +893,8 @@ class PlanCreateRequest(BaseModel):
     max_storage_bytes: int | None = Field(default=None, ge=0)
     max_llm_calls_per_month: int | None = Field(default=None, ge=0)
     max_owners: int | None = Field(default=None, ge=0)
+    # BILLING_PROVIDER=stripe: the Stripe Price (price_...) this plan is sold at.
+    provider_price_id: str | None = Field(default=None, max_length=255)
 
     @field_validator("billing_interval")
     @classmethod
@@ -1222,3 +1225,26 @@ class AnalyticsResponse(BaseModel):
     intake: dict
     library_by_status: dict
     top_sources: list[dict]  # [{category, filename, count}] behind grounded answers
+
+
+# ----------------------------------------------------------------------
+# Stripe checkout / portal (app/api/billing_api.py)
+# ----------------------------------------------------------------------
+
+class BillingProviderInfo(BaseModel):
+    provider: str                 # "manual" | "stripe"
+    checkout_enabled: bool        # paid plans start through Stripe Checkout
+    can_manage_billing: bool      # this organization has a Stripe customer (Billing Portal)
+    can_manage_plans: bool        # the caller may create plans / set Stripe prices
+
+
+class CheckoutRequest(BaseModel):
+    plan_slug: str = Field(..., min_length=1)
+
+
+class RedirectResponse(BaseModel):
+    url: str
+
+
+class PlanPriceRequest(BaseModel):
+    provider_price_id: str | None = Field(default=None, max_length=255)

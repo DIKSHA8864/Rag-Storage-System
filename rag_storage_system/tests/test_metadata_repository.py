@@ -455,3 +455,31 @@ def test_analytics_queries(repo):
     assert after["sessions"] == before["sessions"] + 1
     assert after["interviews_started"] == before["interviews_started"] + 1
     assert set(after) >= {"reports_approved", "intake_uploads", "case_documents"}
+
+
+def test_payment_provider_sync(repo):
+    import uuid
+
+    if not isinstance(repo, SQLiteMetadataRepository):
+        with repo._connect() as conn:
+            conn.execute("TRUNCATE billing_provider_events")
+            conn.execute("INSERT INTO tenants (id, name, slug) VALUES (2, 'Second Firm', 'second-firm') ON CONFLICT DO NOTHING")
+            conn.execute("DELETE FROM tenant_subscriptions WHERE tenant_id = 2")
+
+    plan = repo.create_plan(slug=f"pro-{uuid.uuid4().hex[:6]}", name="Pro", price_cents=900)
+    price = f"price_{uuid.uuid4().hex[:8]}"
+    assert repo.set_plan_provider_price(plan["id"], price)["provider_price_id"] == price
+    assert repo.get_plan_by_provider_price(price)["id"] == plan["id"]
+
+    sub_id = f"sub_{uuid.uuid4().hex[:8]}"
+    synced = repo.sync_provider_subscription(2, plan["id"], "active", "2026-09-01T00:00:00+00:00",
+                                             "2026-10-01T00:00:00+00:00", "stripe", "cus_1", sub_id)
+    assert (synced["plan_id"], synced["status"], synced["provider_subscription_id"]) == (plan["id"], "active", sub_id)
+    again = repo.sync_provider_subscription(2, plan["id"], "past_due", "2026-09-01T00:00:00+00:00",
+                                            "2026-10-01T00:00:00+00:00", "stripe", "cus_1", sub_id)
+    assert again["status"] == "past_due" and again["id"] == synced["id"]
+    assert repo.get_subscription_by_provider_id(sub_id)["tenant_id"] == 2
+
+    event = f"evt_{uuid.uuid4().hex[:8]}"
+    assert repo.record_provider_event(event, "stripe", "invoice.paid", 2) is True
+    assert repo.record_provider_event(event, "stripe", "invoice.paid", 2) is False

@@ -282,6 +282,17 @@ class Settings(BaseSettings):
     # app/billing/provider.py's ManualPaymentProvider.
     # ------------------------------------------------------------------
     billing_provider: str = "manual"
+    # BILLING_PROVIDER=stripe: the secret key (sk_live_/sk_test_), the webhook
+    # endpoint's signing secret (whsec_), and optionally the plan a tenant drops to
+    # when its paid subscription ends (e.g. "free"; empty = keep the plan, marked canceled).
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_fallback_plan_slug: str = ""
+    stripe_api_base: str = "https://api.stripe.com"  # e.g. http://localhost:12111 for stripe-mock in development
+    # Who may create plans / set their Stripe prices (comma-separated emails). Plans
+    # are shared by every organization, so with Stripe on this must be set - otherwise
+    # any organization's owner could create itself a free unlimited plan.
+    billing_plan_admin_emails: str = ""
 
     # ------------------------------------------------------------------
     # End-user accounts (app/security/end_user_accounts.py) - the Owner

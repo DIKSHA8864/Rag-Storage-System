@@ -298,8 +298,10 @@ app.include_router(complaint_router)
 
 # Billing / Subscription (Phase 5 Step 25) - Owner-JWT scoped. See app/api/billing_api.py.
 from app.api.billing_api import router as billing_router  # noqa: E402
+from app.api.billing_api import webhook_router as billing_webhook_router  # noqa: E402
 
 app.include_router(billing_router)
+app.include_router(billing_webhook_router)
 
 # End-user accounts: Owner-only user management + public signup/login.
 # See app/api/users_api.py, app/api/end_user_auth_api.py.

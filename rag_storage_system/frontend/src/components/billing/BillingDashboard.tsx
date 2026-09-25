@@ -2,9 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { cancelSubscription, changePlan, getSubscription, getUsage, listPlans, subscribe } from "@/lib/api/billing";
+import {
+  cancelSubscription,
+  changePlan,
+  getBillingProvider,
+  getSubscription,
+  getUsage,
+  listPlans,
+  openBillingPortal,
+  startCheckout,
+  subscribe,
+} from "@/lib/api/billing";
 import { ApiError } from "@/lib/api/client";
-import type { BillingUsageResponse, PlanInfo, SubscriptionInfo } from "@/lib/api/types";
+import type { BillingProviderInfo, BillingUsageResponse, PlanInfo, SubscriptionInfo } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
@@ -54,6 +64,9 @@ export function BillingDashboard() {
   const [isChangingPlan, setIsChangingPlan] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [provider, setProvider] = useState<BillingProviderInfo | null>(null);
+  const [checkoutResult, setCheckoutResult] = useState<string | null>(null);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -64,8 +77,11 @@ export function BillingDashboard() {
         throw new ApiError(401, "Session expired. Please log in again.");
       }
 
-      const plansResponse = await listPlans(token);
+      const [plansResponse, providerResponse] = await Promise.all([listPlans(token), getBillingProvider(token)]);
       setPlans(plansResponse.plans);
+      setProvider(providerResponse);
+      // Back from Stripe Checkout (?checkout=success|canceled).
+      setCheckoutResult(new URLSearchParams(window.location.search).get("checkout"));
 
       try {
         const subscriptionResponse = await getSubscription(token);
@@ -129,6 +145,22 @@ export function BillingDashboard() {
     }
   }
 
+  async function redirectTo(getUrl: () => Promise<{ url: string }>, fallback: string) {
+    setActionError(null);
+    setIsRedirecting(true);
+    try {
+      const { url } = await getUrl();
+      window.location.href = url;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        logout();
+        return;
+      }
+      setActionError(err instanceof ApiError ? err.message : fallback);
+      setIsRedirecting(false);
+    }
+  }
+
   async function handleCancel() {
     setActionError(null);
     setIsCanceling(true);
@@ -157,8 +189,26 @@ export function BillingDashboard() {
     return <ErrorMessage message={error} />;
   }
 
+  const selectedPlan = plans.find((plan) => plan.slug === selectedPlanSlug);
+  const payingThroughStripe = Boolean(provider?.can_manage_billing) && subscription?.status !== "canceled";
+  // With Stripe on, a paid plan is started by paying on Stripe's page, not by assignment.
+  const needsCheckout = Boolean(provider?.checkout_enabled && selectedPlan && selectedPlan.price_cents > 0 && !payingThroughStripe);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", maxWidth: 720 }}>
+      {checkoutResult === "success" && (
+        <p role="status" style={{ background: "#eaf6ea", padding: "0.6rem 0.8rem", borderRadius: 4, margin: 0 }}>
+          Payment submitted to Stripe. Your plan changes here as soon as Stripe confirms it (usually within seconds).{" "}
+          <button type="button" onClick={load}>
+            Refresh
+          </button>
+        </p>
+      )}
+      {checkoutResult === "canceled" && (
+        <p role="status" style={{ background: "#f5f5f5", padding: "0.6rem 0.8rem", borderRadius: 4, margin: 0 }}>
+          Checkout was canceled - nothing was charged and your plan is unchanged.
+        </p>
+      )}
       <section>
         <h3 style={{ fontSize: "0.95rem", margin: "0 0 0.5rem 0" }}>Current plan</h3>
         {!hasSubscription && (
@@ -231,19 +281,43 @@ export function BillingDashboard() {
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={handleSubscribeOrChange}
-            disabled={isChangingPlan || !selectedPlanSlug || (hasSubscription && selectedPlanSlug === subscription?.plan.slug)}
-          >
-            {isChangingPlan ? "Saving..." : hasSubscription ? "Switch plan" : "Subscribe"}
-          </button>
+          {needsCheckout ? (
+            <button
+              type="button"
+              onClick={() => redirectTo(() => startCheckout(selectedPlanSlug, token ?? ""), "Could not open Stripe Checkout.")}
+              disabled={isRedirecting || selectedPlanSlug === subscription?.plan.slug}
+            >
+              {isRedirecting ? "Opening Stripe..." : "Pay with card (Stripe)"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubscribeOrChange}
+              disabled={isChangingPlan || !selectedPlanSlug || (hasSubscription && selectedPlanSlug === subscription?.plan.slug)}
+            >
+              {isChangingPlan ? "Saving..." : hasSubscription ? "Switch plan" : "Subscribe"}
+            </button>
+          )}
+          {provider?.can_manage_billing && (
+            <button
+              type="button"
+              onClick={() => redirectTo(() => openBillingPortal(token ?? ""), "Could not open the Stripe billing portal.")}
+              disabled={isRedirecting}
+            >
+              Manage billing (card, invoices)
+            </button>
+          )}
           {hasSubscription && subscription?.status !== "canceled" && (
             <button type="button" onClick={handleCancel} disabled={isCanceling}>
               {isCanceling ? "Canceling..." : "Cancel subscription"}
             </button>
           )}
         </div>
+        {provider?.checkout_enabled && (
+          <p style={{ fontSize: "0.8rem", color: "#666", marginTop: "0.5rem" }}>
+            Payments are handled by Stripe - card details never reach this system.
+          </p>
+        )}
       </section>
     </div>
   );
