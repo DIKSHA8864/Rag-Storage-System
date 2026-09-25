@@ -993,3 +993,30 @@ class EndUserMeResponse(BaseModel):
 
 class GenericMessageResponse(BaseModel):
     detail: str
+
+
+# ---------------------------------------------------------------------
+# Query log (app/api/activity_api.py)
+# ---------------------------------------------------------------------
+
+
+class QueryLogEntry(BaseModel):
+    id: int
+    created_at: str
+    purpose: str  # "end_user_query" | "owner_research" | "matter_research" | narrative/vision/relevance calls
+    query_text: str | None = None
+    model: str
+    input_tokens: int
+    output_tokens: int
+    latency_ms: int
+    # "grounded" | "insufficient_evidence" (honest gap) | "relevance_check_unavailable" |
+    # "template_only" | "fabricated_discarded" | "claude_error_fallback" | ...
+    citation_check_result: str | None = None
+    retrieved_count: int
+    top_score: float | None = None
+    matter_id: int | None = None
+
+
+class QueryLogResponse(BaseModel):
+    entries: list[QueryLogEntry]
+    total: int

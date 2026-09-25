@@ -100,17 +100,17 @@ class MetadataRepository(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def get_disclaimer(self) -> Optional[dict]:
+    def get_disclaimer(self, tenant_id: int = 1) -> Optional[dict]:
         """
-        Returns the Owner-edited disclaimer as
+        Returns `tenant_id`'s Owner-edited disclaimer as
         {"text": str, "updated_at": ..., "updated_by": Optional[str]},
-        or None if the Owner has never saved one yet.
+        or None if that organization has never saved one yet.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def update_disclaimer(self, text: str, updated_by: Optional[str] = None) -> dict:
-        """Create or replace the single disclaimer row and return it."""
+    def update_disclaimer(self, text: str, updated_by: Optional[str] = None, tenant_id: int = 1) -> dict:
+        """Create or replace `tenant_id`'s disclaimer and return it."""
         raise NotImplementedError
 
     # ------------------------------------------------------------------
@@ -118,9 +118,9 @@ class MetadataRepository(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def get_retrieval_settings(self) -> Optional[dict]:
+    def get_retrieval_settings(self, tenant_id: int = 1) -> Optional[dict]:
         """
-        Returns the Owner-edited retrieval settings as
+        Returns `tenant_id`'s Owner-edited retrieval settings as
         {"top_k": int, "score_threshold": float, "min_chunks": int,
         "updated_at": ..., "updated_by": Optional[str]}, or None if
         the Owner has never saved any yet.
@@ -134,8 +134,9 @@ class MetadataRepository(ABC):
         score_threshold: float,
         min_chunks: int,
         updated_by: Optional[str] = None,
+        tenant_id: int = 1,
     ) -> dict:
-        """Create or replace the single retrieval-settings row and return it."""
+        """Create or replace `tenant_id`'s retrieval settings and return them."""
         raise NotImplementedError
 
     # ------------------------------------------------------------------
@@ -457,6 +458,18 @@ class MetadataRepository(ABC):
         retrieved_chunk_scores: Optional[list] = None, citation_check_result: Optional[str] = None,
         tenant_id: int = 1,
     ) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_llm_usage_log(
+        self, tenant_id: int, limit: int = 50, offset: int = 0, questions_only: bool = False
+    ) -> tuple[list[dict], int]:
+        """
+        `tenant_id`'s llm_usage_log rows, newest first, and the total count.
+        `questions_only` keeps just the answered questions (rows with a
+        query_text) - leaving out narrative/vision/relevance-check calls.
+        retrieved_chunk_ids/scores come back as lists.
+        """
         raise NotImplementedError
 
     @abstractmethod

@@ -92,7 +92,7 @@ def end_user_query(request: Request, body: EndUserQueryRequest, matter: dict = D
 
     resolved_top_k = body.top_k
     if resolved_top_k is None:
-        resolved_top_k = _current_retrieval_settings().top_k
+        resolved_top_k = _current_retrieval_settings(matter["tenant_id"]).top_k
 
     if body.category is not None:
         results = retrieve(body.query, top_k=resolved_top_k, category=body.category, tenant_id=matter["tenant_id"])
@@ -165,12 +165,12 @@ def _sse_event(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _current_retrieval_settings():
+def _current_retrieval_settings(tenant_id: int):
     """Deferred import - see _current_disclaimer_text()'s docstring for why."""
 
     from app.api import storage_api
 
-    return get_current_retrieval_settings(storage_api.metadata_repository)
+    return get_current_retrieval_settings(storage_api.metadata_repository, tenant_id=tenant_id)
 
 
 @router.post("/threads", response_model=ThreadInfo)
@@ -260,7 +260,7 @@ async def _stream_query_answer(
         yield _sse_event("done", {})
         return
 
-    settings = _current_retrieval_settings()
+    settings = _current_retrieval_settings(matter["tenant_id"])
     resolved_top_k = top_k if top_k is not None else settings.top_k
 
     # The 200 status line is already sent by the time this generator
@@ -342,7 +342,7 @@ async def end_user_query_stream(
         media_type="text/event-stream",
     )
 
-def _current_disclaimer_text() -> str:
+def _current_disclaimer_text(tenant_id: int) -> str:
     """
     Deferred import to avoid a circular import: app/api/storage_api.py
     itself imports this router at the bottom of its module, so
@@ -356,7 +356,7 @@ def _current_disclaimer_text() -> str:
 
     from app.api import storage_api
 
-    return get_current_disclaimer_text(storage_api.metadata_repository)
+    return get_current_disclaimer_text(storage_api.metadata_repository, tenant_id=tenant_id)
 
 
 @router.post("/compare", response_model=AnalysisReport)
@@ -416,7 +416,7 @@ async def end_user_compare_export(
 
     _enforce_llm_usage_limit(matter["tenant_id"])
     report = build_analysis_report(input_chunks, category=category, tenant_id=matter["tenant_id"])
-    disclaimer_text = _current_disclaimer_text()
+    disclaimer_text = _current_disclaimer_text(matter["tenant_id"])
 
     if format == "docx":
         content = build_report_docx(report, disclaimer_text)

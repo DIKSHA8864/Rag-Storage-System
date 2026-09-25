@@ -106,6 +106,22 @@ CREATE TABLE IF NOT EXISTS retrieval_settings (
     updated_by TEXT
 );
 
+CREATE TABLE IF NOT EXISTS tenant_disclaimers (
+    tenant_id INTEGER PRIMARY KEY,
+    text TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_by TEXT
+);
+
+CREATE TABLE IF NOT EXISTS tenant_retrieval_settings (
+    tenant_id INTEGER PRIMARY KEY,
+    top_k INTEGER NOT NULL,
+    score_threshold REAL NOT NULL,
+    min_chunks INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    updated_by TEXT
+);
+
 CREATE TABLE IF NOT EXISTS intake_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     matter_id INTEGER NOT NULL,
@@ -627,28 +643,33 @@ class SQLiteMetadataRepository(MetadataRepository):
     # Disclaimer
     # ------------------------------------------------------------------
 
-    def get_disclaimer(self) -> Optional[dict]:
+    # Per organization; the old single-row tables are the Default
+    # Organization's fallback until it saves its own.
+
+    def get_disclaimer(self, tenant_id: int = 1) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT text, updated_at, updated_by FROM disclaimer WHERE id = 1"
+                "SELECT text, updated_at, updated_by FROM tenant_disclaimers WHERE tenant_id = ?", (tenant_id,)
             ).fetchone()
+            if row is None and tenant_id == 1:
+                row = conn.execute("SELECT text, updated_at, updated_by FROM disclaimer WHERE id = 1").fetchone()
 
             return dict(row) if row else None
 
-    def update_disclaimer(self, text: str, updated_by: Optional[str] = None) -> dict:
+    def update_disclaimer(self, text: str, updated_by: Optional[str] = None, tenant_id: int = 1) -> dict:
         now = _now()
 
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO disclaimer (id, text, updated_at, updated_by)
-                VALUES (1, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
+                INSERT INTO tenant_disclaimers (tenant_id, text, updated_at, updated_by)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(tenant_id) DO UPDATE SET
                     text = excluded.text,
                     updated_at = excluded.updated_at,
                     updated_by = excluded.updated_by
                 """,
-                (text, now, updated_by),
+                (tenant_id, text, now, updated_by),
             )
 
         return {"text": text, "updated_at": now, "updated_by": updated_by}
@@ -657,12 +678,14 @@ class SQLiteMetadataRepository(MetadataRepository):
     # Retrieval Settings
     # ------------------------------------------------------------------
 
-    def get_retrieval_settings(self) -> Optional[dict]:
+    def get_retrieval_settings(self, tenant_id: int = 1) -> Optional[dict]:
+        columns = "top_k, score_threshold, min_chunks, updated_at, updated_by"
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT top_k, score_threshold, min_chunks, updated_at, updated_by "
-                "FROM retrieval_settings WHERE id = 1"
+                f"SELECT {columns} FROM tenant_retrieval_settings WHERE tenant_id = ?", (tenant_id,)
             ).fetchone()
+            if row is None and tenant_id == 1:
+                row = conn.execute(f"SELECT {columns} FROM retrieval_settings WHERE id = 1").fetchone()
 
             return dict(row) if row else None
 
@@ -672,23 +695,24 @@ class SQLiteMetadataRepository(MetadataRepository):
         score_threshold: float,
         min_chunks: int,
         updated_by: Optional[str] = None,
+        tenant_id: int = 1,
     ) -> dict:
         now = _now()
 
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO retrieval_settings
-                    (id, top_k, score_threshold, min_chunks, updated_at, updated_by)
-                VALUES (1, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
+                INSERT INTO tenant_retrieval_settings
+                    (tenant_id, top_k, score_threshold, min_chunks, updated_at, updated_by)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(tenant_id) DO UPDATE SET
                     top_k = excluded.top_k,
                     score_threshold = excluded.score_threshold,
                     min_chunks = excluded.min_chunks,
                     updated_at = excluded.updated_at,
                     updated_by = excluded.updated_by
                 """,
-                (top_k, score_threshold, min_chunks, now, updated_by),
+                (tenant_id, top_k, score_threshold, min_chunks, now, updated_by),
             )
 
         return {
@@ -1340,6 +1364,27 @@ class SQLiteMetadataRepository(MetadataRepository):
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM llm_usage_log WHERE id = ?", (new_id,)).fetchone()
         return dict(row)
+
+    def list_llm_usage_log(
+        self, tenant_id: int, limit: int = 50, offset: int = 0, questions_only: bool = False
+    ) -> tuple[list[dict], int]:
+        import json
+
+        where = "tenant_id = ?" + (" AND query_text IS NOT NULL" if questions_only else "")
+        with self._connect() as conn:
+            total = conn.execute(f"SELECT COUNT(*) AS n FROM llm_usage_log WHERE {where}", (tenant_id,)).fetchone()["n"]
+            rows = conn.execute(
+                f"SELECT * FROM llm_usage_log WHERE {where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+                (tenant_id, limit, offset),
+            ).fetchall()
+
+        entries = []
+        for row in rows:
+            entry = dict(row)
+            for key in ("retrieved_chunk_ids", "retrieved_chunk_scores"):
+                entry[key] = json.loads(entry[key]) if entry[key] else []
+            entries.append(entry)
+        return entries, total
 
     def count_llm_usage_since(self, tenant_id: int, since: str) -> int:
         with self._connect() as conn:

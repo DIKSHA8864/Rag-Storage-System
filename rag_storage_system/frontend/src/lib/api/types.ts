@@ -492,3 +492,42 @@ export interface GenericMessageResponse {
 
 // Same shape the backend returns for Owner research sources (app/analysis/answer_generation.py's locked `sources`).
 export type EndUserQuerySource = OwnerResearchSource;
+
+// ---------------------------------------------------------------------
+// Settings (GET/PUT /admin/retrieval-settings, /admin/disclaimer) and
+// the Owner's question log (GET /admin/query-log) - all per organization.
+// ---------------------------------------------------------------------
+
+export interface RetrievalSettingsInfo {
+  top_k: number;
+  score_threshold: number;
+  min_chunks: number;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+export interface DisclaimerInfo {
+  text: string;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+export interface QueryLogEntry {
+  id: number;
+  created_at: string;
+  purpose: string;
+  query_text: string | null;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  latency_ms: number;
+  citation_check_result: string | null;
+  retrieved_count: number;
+  top_score: number | null;
+  matter_id: number | null;
+}
+
+export interface QueryLogResponse {
+  entries: QueryLogEntry[];
+  total: number;
+}

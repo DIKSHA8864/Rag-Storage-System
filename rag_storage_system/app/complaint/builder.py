@@ -99,5 +99,5 @@ def build_complaint_draft(
         generated_at=datetime.now(timezone.utc).isoformat(),
         plaintiff_name=matter_name,
         causes_of_action=causes_of_action,
-        disclaimer_text=get_current_disclaimer_text(metadata_repository),
+        disclaimer_text=get_current_disclaimer_text(metadata_repository, tenant_id=tenant_id),
     )

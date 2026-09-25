@@ -101,5 +101,5 @@ def build_structured_report(
         strengths=rag_sections["strengths"],
         weaknesses=rag_sections["weaknesses"],
         missing_information=rag_sections["missing_information"],
-        disclaimer_text=get_current_disclaimer_text(metadata_repository),
+        disclaimer_text=get_current_disclaimer_text(metadata_repository, tenant_id=tenant_id),
     )

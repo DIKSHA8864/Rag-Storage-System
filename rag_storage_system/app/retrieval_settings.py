@@ -42,10 +42,10 @@ class RetrievalSettings:
     min_chunks: int
 
 
-def get_current_retrieval_settings(metadata_repository: MetadataRepository) -> RetrievalSettings:
-    """Return the Owner-edited retrieval settings, or the built-in defaults if none saved yet."""
+def get_current_retrieval_settings(metadata_repository: MetadataRepository, tenant_id: int = 1) -> RetrievalSettings:
+    """Return `tenant_id`'s Owner-edited retrieval settings, or the built-in defaults if it hasn't saved any."""
 
-    saved = metadata_repository.get_retrieval_settings()
+    saved = metadata_repository.get_retrieval_settings(tenant_id=tenant_id)
 
     if saved is None:
         return RetrievalSettings(

@@ -307,6 +307,11 @@ from app.api.end_user_auth_api import router as end_user_auth_router  # noqa: E4
 app.include_router(users_router)
 app.include_router(end_user_auth_router)
 
+# Owner's per-question audit log (llm_usage_log read side). See app/api/activity_api.py.
+from app.api.activity_api import router as activity_router  # noqa: E402
+
+app.include_router(activity_router)
+
 
 @app.get("/")
 def root() -> dict:
@@ -459,15 +464,21 @@ def admin_stats() -> dict:
     }
 
 
+def _owner_tenant(owner: dict | None) -> int:
+    """The caller's organization - the Default Organization for the legacy admin key (no owner)."""
+
+    return owner["tenant_id"] if owner else 1
+
+
 @app.get(
     "/admin/disclaimer",
     response_model=DisclaimerResponse,
     dependencies=[Depends(require_admin_key)],
 )
-def get_disclaimer() -> DisclaimerResponse:
-    """Return the disclaimer currently shown on every DOCX/PDF analysis report export."""
+def get_disclaimer(owner: dict | None = Depends(require_admin_key)) -> DisclaimerResponse:
+    """Return the caller's organization's disclaimer (shown on every DOCX/PDF export)."""
 
-    disclaimer = metadata_repository.get_disclaimer()
+    disclaimer = metadata_repository.get_disclaimer(tenant_id=_owner_tenant(owner))
 
     if disclaimer is None:
         return DisclaimerResponse(text=DEFAULT_DISCLAIMER_TEXT)
@@ -494,7 +505,9 @@ def update_disclaimer(
     """
 
     updated_by = owner.get("email") if owner else None
-    disclaimer = metadata_repository.update_disclaimer(request.text, updated_by=updated_by)
+    disclaimer = metadata_repository.update_disclaimer(
+        request.text, updated_by=updated_by, tenant_id=_owner_tenant(owner)
+    )
 
     log_audit_event("update_disclaimer", actor=updated_by or "admin")
 
@@ -725,10 +738,10 @@ def get_matter_intake_session_detail(
     response_model=RetrievalSettingsResponse,
     dependencies=[Depends(require_admin_key)],
 )
-def get_retrieval_settings() -> RetrievalSettingsResponse:
+def get_retrieval_settings(owner: dict | None = Depends(require_admin_key)) -> RetrievalSettingsResponse:
     """Return the Top K / score threshold / minimum chunks currently used by POST /end-user/query and /end-user/query/stream."""
 
-    settings = metadata_repository.get_retrieval_settings()
+    settings = metadata_repository.get_retrieval_settings(tenant_id=_owner_tenant(owner))
 
     if settings is None:
         return RetrievalSettingsResponse(
@@ -766,6 +779,7 @@ def update_retrieval_settings(
         score_threshold=request.score_threshold,
         min_chunks=request.min_chunks,
         updated_by=updated_by,
+        tenant_id=_owner_tenant(owner),
     )
 
     log_audit_event("update_retrieval_settings", actor=updated_by or "admin")
@@ -1603,7 +1617,7 @@ async def owner_research_ask(request: OwnerResearchRequest, owner: dict = Depend
 
     _enforce_plan_limit(owner["tenant_id"], RESOURCE_LLM_CALLS)
 
-    settings = get_current_retrieval_settings(metadata_repository)
+    settings = get_current_retrieval_settings(metadata_repository, tenant_id=owner["tenant_id"])
     resolved_top_k = request.top_k if request.top_k is not None else settings.top_k
 
     results = retrieve(
@@ -1640,7 +1654,9 @@ async def owner_research_ask(request: OwnerResearchRequest, owner: dict = Depend
     "/research/export",
     dependencies=[Depends(require_admin_key)],
 )
-def owner_research_export(request: OwnerResearchExportRequest) -> Response:
+def owner_research_export(
+    request: OwnerResearchExportRequest, owner: dict | None = Depends(require_admin_key)
+) -> Response:
     """
     Render an already-returned POST /research/ask result as a
     downloadable .docx or .pdf file - same disclaimer mechanism as
@@ -1650,7 +1666,7 @@ def owner_research_export(request: OwnerResearchExportRequest) -> Response:
     can never say something different from what was shown on screen.
     """
 
-    disclaimer_text = get_current_disclaimer_text(metadata_repository)
+    disclaimer_text = get_current_disclaimer_text(metadata_repository, tenant_id=_owner_tenant(owner))
     sources = [source.model_dump() for source in request.sources]
 
     if request.format == "docx":
@@ -1688,7 +1704,7 @@ async def matter_research_ask(
     ensure_matter_access(owner, matter_id, metadata_repository)
     _enforce_plan_limit(owner["tenant_id"], RESOURCE_LLM_CALLS)
 
-    settings = get_current_retrieval_settings(metadata_repository)
+    settings = get_current_retrieval_settings(metadata_repository, tenant_id=owner["tenant_id"])
     resolved_top_k = request.top_k if request.top_k is not None else settings.top_k
 
     results = retrieve_for_matter(

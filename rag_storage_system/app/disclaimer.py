@@ -21,8 +21,8 @@ DEFAULT_DISCLAIMER_TEXT = (
 )
 
 
-def get_current_disclaimer_text(metadata_repository: MetadataRepository) -> str:
-    """Return the Owner-edited disclaimer, or the default if none has been saved yet."""
+def get_current_disclaimer_text(metadata_repository: MetadataRepository, tenant_id: int = 1) -> str:
+    """Return `tenant_id`'s Owner-edited disclaimer, or the default if it hasn't saved one."""
 
-    disclaimer = metadata_repository.get_disclaimer()
+    disclaimer = metadata_repository.get_disclaimer(tenant_id=tenant_id)
     return disclaimer["text"] if disclaimer else DEFAULT_DISCLAIMER_TEXT

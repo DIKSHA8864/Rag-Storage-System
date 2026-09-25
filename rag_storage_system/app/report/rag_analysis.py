@@ -81,7 +81,7 @@ def gather_fact_support(
     there is no Matter-specific namespace to include.
     """
 
-    settings = get_current_retrieval_settings(metadata_repository)
+    settings = get_current_retrieval_settings(metadata_repository, tenant_id=tenant_id)
     results = []
 
     for fact_text in facts:

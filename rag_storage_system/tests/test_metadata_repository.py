@@ -216,3 +216,76 @@ def test_every_extracted_content_type_the_pipeline_produces_can_be_stored(repo, 
     )
 
     assert [row["content_type"] for row in repo.list_extracted_information(uploaded["id"])] == [content_type]
+
+
+# ---------------------------------------------------------------------
+# Per-organization disclaimer and retrieval settings
+# ---------------------------------------------------------------------
+
+
+def _reset_settings(repo):
+    """Postgres persists between tests - clear settings rows and make sure tenant 2 exists."""
+
+    if isinstance(repo, SQLiteMetadataRepository):
+        return
+    with repo._connect() as conn:
+        conn.execute("TRUNCATE tenant_disclaimers, tenant_retrieval_settings")
+        conn.execute("DELETE FROM disclaimer")
+        conn.execute("DELETE FROM retrieval_settings")
+        conn.execute("INSERT INTO tenants (id, name, slug) VALUES (2, 'Second Firm', 'second-firm') ON CONFLICT DO NOTHING")
+
+
+def test_each_organization_has_its_own_disclaimer_and_retrieval_settings(repo):
+    _reset_settings(repo)
+
+    repo.update_disclaimer("Firm two's disclaimer.", updated_by="two@example.com", tenant_id=2)
+    repo.update_retrieval_settings(top_k=9, score_threshold=0.45, min_chunks=2, tenant_id=2)
+
+    assert repo.get_disclaimer(tenant_id=1) is None
+    assert repo.get_retrieval_settings(tenant_id=1) is None
+    assert repo.get_disclaimer(tenant_id=2)["text"] == "Firm two's disclaimer."
+    assert repo.get_retrieval_settings(tenant_id=2)["top_k"] == 9
+
+    repo.update_retrieval_settings(top_k=4, score_threshold=0.3, min_chunks=1, tenant_id=1)
+
+    assert repo.get_retrieval_settings(tenant_id=1)["top_k"] == 4
+    assert repo.get_retrieval_settings(tenant_id=2)["top_k"] == 9
+
+
+def test_default_organization_keeps_settings_saved_before_they_were_per_organization(repo):
+    _reset_settings(repo)
+    with repo._connect() as conn:
+        if isinstance(repo, SQLiteMetadataRepository):
+            conn.execute("INSERT INTO disclaimer (id, text, updated_at) VALUES (1, 'Saved earlier.', '2026-01-01')")
+            conn.execute(
+                "INSERT INTO retrieval_settings (id, top_k, score_threshold, min_chunks, updated_at) "
+                "VALUES (1, 7, 0.35, 1, '2026-01-01')"
+            )
+        else:
+            conn.execute("INSERT INTO disclaimer (id, text) VALUES (1, 'Saved earlier.')")
+            conn.execute("INSERT INTO retrieval_settings (id, top_k, score_threshold, min_chunks) VALUES (1, 7, 0.35, 1)")
+
+    assert repo.get_disclaimer(tenant_id=1)["text"] == "Saved earlier."
+    assert repo.get_retrieval_settings(tenant_id=1)["top_k"] == 7
+    # ...but another organization never inherits them.
+    assert repo.get_disclaimer(tenant_id=2) is None
+    assert repo.get_retrieval_settings(tenant_id=2) is None
+
+
+def test_list_llm_usage_log_is_per_organization_and_decodes_chunk_lists(repo):
+    if not isinstance(repo, SQLiteMetadataRepository):
+        with repo._connect() as conn:
+            conn.execute("TRUNCATE llm_usage_log")
+            conn.execute("INSERT INTO tenants (id, name, slug) VALUES (2, 'Second Firm', 'second-firm') ON CONFLICT DO NOTHING")
+
+    repo.add_llm_usage_log(None, None, "owner_research", "claude-opus-5", 100, 20, 900, query_text="q1",
+                           retrieved_chunk_ids=["a", "b"], retrieved_chunk_scores=[0.4, 0.6],
+                           citation_check_result="grounded", tenant_id=1)
+    repo.add_llm_usage_log(None, None, "owner_research", "n/a", 0, 0, 5, query_text="other firm", tenant_id=2)
+
+    rows, total = repo.list_llm_usage_log(1, questions_only=True)
+
+    assert total == 1
+    assert rows[0]["query_text"] == "q1"
+    assert rows[0]["retrieved_chunk_ids"] == ["a", "b"]
+    assert [float(s) for s in rows[0]["retrieved_chunk_scores"]] == [0.4, 0.6]
