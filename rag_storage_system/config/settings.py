@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     dropbox_app_secret: str = ""
     dropbox_refresh_token: str = ""
     dropbox_root_path: str = ""  # e.g. "/AshiLegal Library"; "" = the whole app folder
+    # Dropbox's hosts - change only to point at a local stand-in for testing (like STRIPE_API_BASE).
+    dropbox_api_base: str = "https://api.dropboxapi.com"
+    dropbox_content_base: str = "https://content.dropboxapi.com"
+    dropbox_web_base: str = "https://www.dropbox.com"
 
     # ------------------------------------------------------------------
     # Guided intake (flow v2)

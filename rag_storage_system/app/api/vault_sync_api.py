@@ -8,28 +8,33 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.schemas import VaultSyncRunInfo, VaultSyncStartResponse, VaultSyncStatusResponse
 from app.security.auth import require_owner_role
-from app.vault_sync.runner import configured_source, run_vault_sync_job
+from app.vault_sync.runner import run_vault_sync_job, tenant_source
 from config.settings import get_settings
 
 router = APIRouter(prefix="/admin/vault-sync", tags=["vault-sync"], dependencies=[Depends(require_owner_role)])
 
 
-def _is_synced_organization(owner: dict) -> bool:
-    return configured_source() is not None and owner["tenant_id"] == get_settings().vault_sync_tenant_id
+def _source(owner: dict) -> dict | None:
+    """This organization's sync source: its connected Dropbox folders, or the server-settings fallback."""
+
+    from app.api import storage_api
+
+    return tenant_source(storage_api.metadata_repository, owner["tenant_id"])
 
 
 @router.get("", response_model=VaultSyncStatusResponse)
 def vault_sync_status(owner: dict = Depends(require_owner_role)) -> VaultSyncStatusResponse:
     from app.api import storage_api
 
-    if not _is_synced_organization(owner):
+    source = _source(owner)
+    if source is None:
         return VaultSyncStatusResponse(configured=False, source=None, interval_seconds=None, last_run=None)
 
     settings = get_settings()
     last = storage_api.metadata_repository.latest_vault_sync_run(owner["tenant_id"])
     return VaultSyncStatusResponse(
         configured=True,
-        source=configured_source()[1],
+        source=source["description"],
         interval_seconds=settings.vault_sync_interval_seconds,
         last_run=VaultSyncRunInfo(
             id=last["id"], source=last["source"], status=last["status"], added=last["added"], updated=last["updated"],
@@ -43,11 +48,14 @@ def vault_sync_status(owner: dict = Depends(require_owner_role)) -> VaultSyncSta
 def start_vault_sync(allow_mass_delete: bool = False, owner: dict = Depends(require_owner_role)) -> VaultSyncStartResponse:
     from app.api import storage_api
 
-    if not _is_synced_organization(owner):
-        raise HTTPException(status_code=409, detail="Vault sync isn't set up for your organization.")
+    if _source(owner) is None:
+        raise HTTPException(
+            status_code=409, detail="Vault sync isn't set up for your organization - connect Dropbox and choose folders first."
+        )
 
     job = storage_api.get_job_queue().enqueue(
         run_vault_sync_job, allow_mass_delete,
         storage_api.metadata_repository, storage_api.storage_backend, storage_api.get_vector_store(),
+        owner["tenant_id"],
     )
     return VaultSyncStartResponse(job_id=job.id, status="queued")

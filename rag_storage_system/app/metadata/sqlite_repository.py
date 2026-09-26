@@ -106,6 +106,19 @@ CREATE TABLE IF NOT EXISTS retrieval_settings (
     updated_by TEXT
 );
 
+CREATE TABLE IF NOT EXISTS dropbox_connections (
+    tenant_id INTEGER PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    account_name TEXT,
+    account_email TEXT,
+    refresh_token_encrypted TEXT NOT NULL,
+    folders_json TEXT NOT NULL DEFAULT '[]',
+    connected_by TEXT,
+    connected_at TEXT NOT NULL,
+    updated_by TEXT,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS tenant_pleading_settings (
     tenant_id INTEGER PRIMARY KEY,
     attorney_name TEXT NOT NULL DEFAULT '',
@@ -1651,6 +1664,68 @@ class SQLiteMetadataRepository(MetadataRepository):
     # ------------------------------------------------------------------
     # Pleading settings and document templates
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Dropbox connection per organization (vault sync)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _decode_dropbox(row) -> Optional[dict]:
+        import json
+
+        if row is None:
+            return None
+        connection = dict(row)
+        connection["folders"] = json.loads(connection.pop("folders_json") or "[]")
+        return connection
+
+    def get_dropbox_connection(self, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM dropbox_connections WHERE tenant_id = ?", (tenant_id,)).fetchone()
+        return self._decode_dropbox(row)
+
+    def list_dropbox_connections(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM dropbox_connections ORDER BY tenant_id").fetchall()
+        return [self._decode_dropbox(r) for r in rows]
+
+    def save_dropbox_connection(self, tenant_id: int, account_id: str, account_name: Optional[str],
+                                account_email: Optional[str], refresh_token_encrypted: str, folders: list[str],
+                                connected_by: Optional[str]) -> dict:
+        import json
+
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO dropbox_connections (tenant_id, account_id, account_name, account_email,
+                    refresh_token_encrypted, folders_json, connected_by, connected_at, updated_by, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (tenant_id) DO UPDATE SET
+                    account_id = excluded.account_id, account_name = excluded.account_name,
+                    account_email = excluded.account_email, refresh_token_encrypted = excluded.refresh_token_encrypted,
+                    folders_json = excluded.folders_json, connected_by = excluded.connected_by,
+                    connected_at = excluded.connected_at, updated_by = excluded.updated_by, updated_at = excluded.updated_at
+                """,
+                (tenant_id, account_id, account_name, account_email, refresh_token_encrypted, json.dumps(folders),
+                 connected_by, now, connected_by, now),
+            )
+        return self.get_dropbox_connection(tenant_id)
+
+    def set_dropbox_folders(self, tenant_id: int, folders: list[str], updated_by: Optional[str]) -> Optional[dict]:
+        import json
+
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE dropbox_connections SET folders_json = ?, updated_by = ?, updated_at = ? WHERE tenant_id = ?",
+                (json.dumps(folders), updated_by, _now(), tenant_id),
+            )
+        return self.get_dropbox_connection(tenant_id)
+
+    def delete_dropbox_connection(self, tenant_id: int) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM dropbox_connections WHERE tenant_id = ?", (tenant_id,))
+        return cursor.rowcount > 0
 
     def get_pleading_settings(self, tenant_id: int) -> Optional[dict]:
         with self._connect() as conn:

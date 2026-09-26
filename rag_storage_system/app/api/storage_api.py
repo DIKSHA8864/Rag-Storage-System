@@ -359,6 +359,11 @@ from app.api.today_api import router as today_router  # noqa: E402
 
 app.include_router(today_router)
 
+# The owner's own Dropbox connection for vault sync. See app/api/dropbox_api.py.
+from app.api.dropbox_api import router as dropbox_router  # noqa: E402
+
+app.include_router(dropbox_router)
+
 
 @app.get("/")
 def root() -> dict:

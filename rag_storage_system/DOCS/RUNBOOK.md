@@ -15,12 +15,29 @@
   `Get-ChildItem -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force`
 
 ## Vault sync (Dropbox / Google Drive)
-- **Set up:** either `VAULT_SYNC_DIR` = a folder the Dropbox / Google Drive desktop
-  app keeps in sync on the server, or `DROPBOX_APP_KEY/SECRET/REFRESH_TOKEN`
-  (+ optional `DROPBOX_ROOT_PATH`) for the Dropbox API. Sub-folders become
-  library folders; files at the top level go to "Unfiled".
+- **Owner connects Dropbox (recommended, no server settings to change):**
+  Vault -> Automatic sync -> **Connect Dropbox** -> sign in on Dropbox's page
+  and Allow -> **Choose folders** -> tick the folders -> **Save and sync**.
+  Each ticked folder becomes a library folder (its sub-folders come along);
+  un-ticking one ("Remove") takes its files out of the library on the next
+  sync; **Disconnect** stops syncing and keeps the library. Each organization
+  has its own connection; the refresh token is stored encrypted (derived from
+  `JWT_SECRET_KEY` - rotating that key asks the owner to reconnect).
+- **One-time developer step for that:** register the AshiLegal app in the
+  Dropbox App Console (Scoped access, **Full Dropbox**; permissions
+  `files.metadata.read`, `files.content.read`, `account_info.read`; redirect
+  URI `<FRONTEND_BASE_URL>/vault/dropbox`, e.g.
+  `http://localhost:3000/vault/dropbox`), then set `DROPBOX_APP_KEY` and
+  `DROPBOX_APP_SECRET`. Nothing else - the owner does the rest.
+- **Server-settings fallback (one organization, `VAULT_SYNC_TENANT_ID`):**
+  `VAULT_SYNC_DIR` = a folder the Dropbox / Google Drive desktop app keeps in
+  sync on the server, or `DROPBOX_REFRESH_TOKEN` (+ optional
+  `DROPBOX_ROOT_PATH`). Sub-folders become library folders; files at the top
+  level go to "Unfiled". An owner's connected Dropbox takes precedence.
 - **Run it:** `python scripts/vault_sync.py --watch` (every
-  `VAULT_SYNC_INTERVAL_SECONDS`, default 5 min) as a service next to the worker,
+  `VAULT_SYNC_INTERVAL_SECONDS`, default 5 min, for every organization with a
+  source - an owner who connects later is picked up without a restart) as a
+  service next to the worker,
   or "Sync now" on the Vault page (Owner). Each run: add new files, replace
   changed ones (their old text leaves search at once), delete removed ones,
   then index. The Vault page shows the last run and every skipped file with

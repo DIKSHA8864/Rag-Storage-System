@@ -20,10 +20,22 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-TOKEN_URL = "https://api.dropboxapi.com/oauth2/token"
-LIST_URL = "https://api.dropboxapi.com/2/files/list_folder"
-LIST_CONTINUE_URL = "https://api.dropboxapi.com/2/files/list_folder/continue"
-DOWNLOAD_URL = "https://content.dropboxapi.com/2/files/download"
+def _api(path: str) -> str:
+    from config.settings import get_settings
+
+    return get_settings().dropbox_api_base.rstrip("/") + path
+
+
+def _content(path: str) -> str:
+    from config.settings import get_settings
+
+    return get_settings().dropbox_content_base.rstrip("/") + path
+
+
+TOKEN_PATH = "/oauth2/token"
+LIST_PATH = "/2/files/list_folder"
+LIST_CONTINUE_PATH = "/2/files/list_folder/continue"
+DOWNLOAD_PATH = "/2/files/download"
 
 INDEX_FILENAME = ".dropbox_index.json"  # hidden: folder_sync ignores dot-files
 
@@ -51,7 +63,7 @@ class DropboxMirror:
     def _token(self) -> str:
         if self._access_token is None:
             response = self._session.post(
-                TOKEN_URL,
+                _api(TOKEN_PATH),
                 data={"grant_type": "refresh_token", "refresh_token": self._refresh_token},
                 auth=(self._app_key, self._app_secret),
                 timeout=self._timeout,
@@ -72,10 +84,10 @@ class DropboxMirror:
     def _list_files(self) -> dict[str, dict]:
         """relative path (as shown in Dropbox) -> file entry, for every file under the root."""
 
-        page = self._rpc(LIST_URL, {"path": self._root, "recursive": True, "include_deleted": False})
+        page = self._rpc(_api(LIST_PATH), {"path": self._root, "recursive": True, "include_deleted": False})
         entries = list(page["entries"])
         while page.get("has_more"):
-            page = self._rpc(LIST_CONTINUE_URL, {"cursor": page["cursor"]})
+            page = self._rpc(_api(LIST_CONTINUE_PATH), {"cursor": page["cursor"]})
             entries.extend(page["entries"])
 
         files = {}
@@ -90,7 +102,7 @@ class DropboxMirror:
 
     def _download(self, entry: dict) -> bytes:
         response = self._session.post(
-            DOWNLOAD_URL,
+            _content(DOWNLOAD_PATH),
             headers={
                 "Authorization": f"Bearer {self._token()}",
                 "Dropbox-API-Arg": json.dumps({"path": entry["path_lower"]}),

@@ -1324,3 +1324,51 @@ class TodayResponse(BaseModel):
     library_uploads: int
     case_documents: int
     client_uploads: int
+
+
+# ---------------------------------------------------------------------
+# /admin/dropbox - the owner connects their own Dropbox and picks the
+# folders vault sync mirrors into the library (app/api/dropbox_api.py).
+# ---------------------------------------------------------------------
+
+
+class DropboxFolderChoice(BaseModel):
+    path: str
+    library_folder: str
+
+
+class DropboxStatusResponse(BaseModel):
+    available: bool  # the AshiLegal Dropbox app is registered on this server (DROPBOX_APP_KEY/SECRET)
+    redirect_uri: str
+    connected: bool
+    needs_reconnect: bool = False
+    account_name: str | None = None
+    account_email: str | None = None
+    connected_by: str | None = None
+    connected_at: str | None = None
+    folders: list[DropboxFolderChoice] = Field(default_factory=list)
+
+
+class DropboxConnectResponse(BaseModel):
+    authorize_url: str
+
+
+class DropboxConnectCompleteRequest(BaseModel):
+    code: str = Field(..., min_length=1, max_length=2000)
+    state: str = Field(..., min_length=1, max_length=4000)
+
+
+class DropboxFolderEntry(BaseModel):
+    name: str
+    path: str
+    selected: bool
+
+
+class DropboxFolderListResponse(BaseModel):
+    path: str
+    parent: str | None
+    folders: list[DropboxFolderEntry]
+
+
+class DropboxFoldersUpdateRequest(BaseModel):
+    paths: list[str] = Field(default_factory=list, max_length=20)

@@ -7,6 +7,7 @@ import type { VaultSyncStatusResponse } from "@/lib/api/types";
 import { getVaultSyncStatus, startVaultSync } from "@/lib/api/vaultSync";
 import { useAuth } from "@/lib/auth/useAuth";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
+import { DropboxConnect } from "@/components/vault/DropboxConnect";
 
 const POLL_MS = 3000;
 
@@ -63,8 +64,23 @@ export function VaultSyncPanel({ onSynced }: { onSynced: () => void }) {
     return () => clearTimeout(timer);
   }, [syncStartedAfter, isSyncing, latestRunId, load, onSynced]);
 
-  async function handleSync(allowMassDelete = false) {
+  async function handleSync(allowMassDelete = false, afterReload = false) {
     if (!token) return;
+    if (afterReload) {
+      // Folders were just chosen: the status (and the last run id) must be current before starting.
+      const fresh = await getVaultSyncStatus(token).catch(() => null);
+      if (fresh) setStatus(fresh);
+      if (!fresh?.configured) return;
+      setSyncStartedAfter(fresh.last_run?.id ?? 0);
+      try {
+        await startVaultSync(token, false);
+        await load();
+      } catch (err) {
+        setSyncStartedAfter(null);
+        setError(err instanceof ApiError ? err.message : "Could not start the sync.");
+      }
+      return;
+    }
     setError(null);
     try {
       setSyncStartedAfter(latestRunId);
@@ -91,11 +107,18 @@ export function VaultSyncPanel({ onSynced }: { onSynced: () => void }) {
         )}
       </div>
 
+      {token && (
+        <DropboxConnect
+          token={token}
+          onFoldersSaved={() => void handleSync(false, true)}
+          onDisconnected={() => void load()}
+        />
+      )}
+
       {!status.configured ? (
         <p style={{ fontSize: "0.85rem", color: "#666" }}>
-          Off. To keep the library in step with a Dropbox or Google Drive folder automatically, set{" "}
-          <code>VAULT_SYNC_DIR</code> (or the <code>DROPBOX_*</code> settings) on the server and run{" "}
-          <code>python scripts/vault_sync.py --watch</code>.
+          Sync is off until Dropbox is connected and at least one folder is chosen above. Scheduled syncs (every few
+          minutes) run while the sync service is running: <code>python scripts/vault_sync.py --watch</code>.
         </p>
       ) : (
         <div style={{ fontSize: "0.85rem", color: "#666" }}>

@@ -1072,6 +1072,67 @@ class PostgresMetadataRepository(MetadataRepository):
     # Pleading settings and document templates
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Dropbox connection per organization (vault sync)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _decode_dropbox(row) -> Optional[dict]:
+        import json
+
+        if row is None:
+            return None
+        connection = dict(row)
+        connection["folders"] = json.loads(connection.pop("folders_json") or "[]")
+        return connection
+
+    def get_dropbox_connection(self, tenant_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM dropbox_connections WHERE tenant_id = %s", (tenant_id,)).fetchone()
+        return self._decode_dropbox(row)
+
+    def list_dropbox_connections(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM dropbox_connections ORDER BY tenant_id").fetchall()
+        return [self._decode_dropbox(r) for r in rows]
+
+    def save_dropbox_connection(self, tenant_id: int, account_id: str, account_name: Optional[str],
+                                account_email: Optional[str], refresh_token_encrypted: str, folders: list[str],
+                                connected_by: Optional[str]) -> dict:
+        import json
+
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO dropbox_connections (tenant_id, account_id, account_name, account_email,
+                    refresh_token_encrypted, folders_json, connected_by, connected_at, updated_by, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, now(), %s, now())
+                ON CONFLICT (tenant_id) DO UPDATE SET
+                    account_id = excluded.account_id, account_name = excluded.account_name,
+                    account_email = excluded.account_email, refresh_token_encrypted = excluded.refresh_token_encrypted,
+                    folders_json = excluded.folders_json, connected_by = excluded.connected_by,
+                    connected_at = now(), updated_by = excluded.updated_by, updated_at = now()
+                """,
+                (tenant_id, account_id, account_name, account_email, refresh_token_encrypted, json.dumps(folders),
+                 connected_by, connected_by),
+            )
+        return self.get_dropbox_connection(tenant_id)
+
+    def set_dropbox_folders(self, tenant_id: int, folders: list[str], updated_by: Optional[str]) -> Optional[dict]:
+        import json
+
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE dropbox_connections SET folders_json = %s, updated_by = %s, updated_at = now() WHERE tenant_id = %s",
+                (json.dumps(folders), updated_by, tenant_id),
+            )
+        return self.get_dropbox_connection(tenant_id)
+
+    def delete_dropbox_connection(self, tenant_id: int) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM dropbox_connections WHERE tenant_id = %s", (tenant_id,))
+        return cursor.rowcount > 0
+
     def get_pleading_settings(self, tenant_id: int) -> Optional[dict]:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM tenant_pleading_settings WHERE tenant_id = %s", (tenant_id,)).fetchone()

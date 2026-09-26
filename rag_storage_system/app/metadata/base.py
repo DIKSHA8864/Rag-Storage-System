@@ -533,6 +533,31 @@ class MetadataRepository(ABC):
         "attorney_name", "bar_number", "firm_name", "address", "phone", "email", "attorney_for", "court_name", "county",
     )
 
+    # Dropbox connection per organization (app/api/dropbox_api.py): the owner's
+    # own Dropbox account and the folders vault sync mirrors into the library.
+    # `folders` is decoded to a list of Dropbox paths.
+    @abstractmethod
+    def get_dropbox_connection(self, tenant_id: int) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_dropbox_connections(self) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_dropbox_connection(self, tenant_id: int, account_id: str, account_name: Optional[str],
+                                account_email: Optional[str], refresh_token_encrypted: str, folders: list[str],
+                                connected_by: Optional[str]) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def set_dropbox_folders(self, tenant_id: int, folders: list[str], updated_by: Optional[str]) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_dropbox_connection(self, tenant_id: int) -> bool:
+        raise NotImplementedError
+
     @abstractmethod
     def get_pleading_settings(self, tenant_id: int) -> Optional[dict]:
         raise NotImplementedError

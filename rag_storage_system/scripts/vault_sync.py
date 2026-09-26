@@ -1,6 +1,7 @@
 """
-Sync the library from the configured Dropbox / Google Drive folder
-(VAULT_SYNC_DIR, or DROPBOX_* - see .env.example), then index the changes.
+Sync every organization's library from its source, then index the changes:
+the Dropbox folders its owner connected and chose on the Vault page, or (for
+VAULT_SYNC_TENANT_ID) the server settings VAULT_SYNC_DIR / DROPBOX_*.
 
 Usage:
     python scripts/vault_sync.py                  # one sync now
@@ -20,7 +21,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.vault_sync.runner import VaultSyncNotConfigured, run_vault_sync  # noqa: E402
+from app.metadata import get_metadata_repository  # noqa: E402
+from app.vault_sync.runner import run_vault_sync, synced_tenant_ids  # noqa: E402
 from config.settings import get_settings  # noqa: E402
 
 
@@ -42,15 +44,23 @@ def main() -> int:
     args = parser.parse_args()
     logging.basicConfig(level=logging.WARNING)
 
+    repository = get_metadata_repository()
     while True:
-        try:
-            run = run_vault_sync(allow_mass_delete=args.allow_mass_delete)
-        except VaultSyncNotConfigured as exc:
-            print(exc)
-            return 1
-        _print_run(run)
+        # Re-read every round: an owner who connects Dropbox later is picked up without a restart.
+        tenants = synced_tenant_ids(repository)
+        if not tenants:
+            print("Vault sync is off - no organization has connected Dropbox and chosen folders, "
+                  "and VAULT_SYNC_DIR / DROPBOX_* are not set.")
+            if not args.watch:
+                return 1
+        all_ok = True
+        for tenant_id in tenants:
+            run = run_vault_sync(repository=repository, allow_mass_delete=args.allow_mass_delete, tenant_id=tenant_id)
+            print(f"Organization {tenant_id}:")
+            _print_run(run)
+            all_ok = all_ok and run["status"] == "ok"
         if not args.watch:
-            return 0 if run["status"] == "ok" else 1
+            return 0 if all_ok else 1
         time.sleep(get_settings().vault_sync_interval_seconds)
 
 
