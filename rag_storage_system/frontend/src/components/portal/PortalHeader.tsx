@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { NavLink } from "@/components/layout/NavLink";
 import { useEndUserAuth } from "@/lib/clientAuth/useEndUserAuth";
 
 /** The signed-in end user's own navigation - only ever Ask and Intake; no library/admin pages exist on this side. */
@@ -34,8 +34,8 @@ export function PortalHeader() {
       }}
     >
       <nav style={{ display: "flex", gap: "1rem" }}>
-        <Link href="/ask">Ask</Link>
-        <Link href="/intake">My Intake</Link>
+        <NavLink href="/ask">Ask</NavLink>
+        <NavLink href="/intake">My Intake</NavLink>
       </nav>
       <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
         <span style={{ color: "#666", fontSize: "0.85rem" }}>{email}</span>

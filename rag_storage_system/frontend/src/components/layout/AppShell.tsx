@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { NavLink } from "@/components/layout/NavLink";
 import { useAuth } from "@/lib/auth/useAuth";
 import { isEndUserPath } from "@/lib/sessionIdentity";
 
@@ -37,18 +38,18 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         {showConsole && (
           <nav style={{ display: "flex", gap: "1rem" }}>
-            <Link href="/dashboard">Dashboard</Link>
-            <Link href="/research">Research</Link>
-            <Link href="/vault">Vault</Link>
-            <Link href="/matters">Matters</Link>
-            <Link href="/intake-checklist">Intake</Link>
-            <Link href="/requests">Requests</Link>
-            <Link href="/users">Users</Link>
-            <Link href="/prompts">Prompts</Link>
-            <Link href="/billing">Billing</Link>
-            <Link href="/activity">Activity</Link>
-            <Link href="/analytics">Analytics</Link>
-            <Link href="/settings">Settings</Link>
+            <NavLink href="/dashboard">Dashboard</NavLink>
+            <NavLink href="/research">Research</NavLink>
+            <NavLink href="/vault">Vault</NavLink>
+            <NavLink href="/matters">Matters</NavLink>
+            <NavLink href="/intake-checklist">Intake</NavLink>
+            <NavLink href="/requests">Requests</NavLink>
+            <NavLink href="/users">Users</NavLink>
+            <NavLink href="/prompts">Prompts</NavLink>
+            <NavLink href="/billing">Billing</NavLink>
+            <NavLink href="/activity">Activity</NavLink>
+            <NavLink href="/analytics">Analytics</NavLink>
+            <NavLink href="/settings">Settings</NavLink>
           </nav>
         )}
 
