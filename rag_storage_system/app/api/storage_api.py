@@ -123,6 +123,7 @@ from app.api.schemas import (
     MatterResearchSuggestionsResponse,
 )
 from app.security.auth import ensure_matter_access
+from app.api.today_api import can_see_matter
 from app.disclaimer import DEFAULT_DISCLAIMER_TEXT, get_current_disclaimer_text
 from app.ingestion.file_validator import validate_file_object
 from app.security.virus_scan import ScannerUnavailable, scan_bytes
@@ -352,6 +353,11 @@ from app.api.voice_handoff_api import end_user_router as voice_end_user_router  
 
 app.include_router(voice_end_user_router)
 app.include_router(handoff_admin_router)
+
+# The dashboard's "Today" panel. See app/api/today_api.py.
+from app.api.today_api import router as today_router  # noqa: E402
+
+app.include_router(today_router)
 
 
 @app.get("/")
@@ -948,9 +954,8 @@ def list_pending_reports(owner: dict = Depends(require_admin_key)) -> ReportRevi
         report = metadata_repository.get_report(review["report_id"])
         if report is None:
             continue
-        if owner.get("role") != "owner":
-            if metadata_repository.get_matter_assignment(int(owner["sub"]), report["matter_id"]) is None:
-                continue
+        if not can_see_matter(owner, report["matter_id"], metadata_repository):
+            continue
         pending.append(
             PendingReportInfo(
                 report_id=report["id"],

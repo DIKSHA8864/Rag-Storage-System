@@ -62,13 +62,19 @@ export interface AskStreamHandlers {
  * the answer appears gradually. Sources are locked by the backend
  * before any answer text is generated (citation lock).
  */
-export async function askStream(query: string, endUserToken: string, handlers: AskStreamHandlers): Promise<void> {
+export async function askStream(
+  query: string,
+  endUserToken: string,
+  handlers: AskStreamHandlers,
+  threadId: number | null = null
+): Promise<void> {
   const response = await endUserFetch(
     "/end-user/query/stream",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
+      // With a thread_id the backend saves this question and its answer to that (the caller's own) thread.
+      body: JSON.stringify(threadId === null ? { query } : { query, thread_id: threadId }),
     },
     endUserToken
   );
@@ -80,3 +86,40 @@ export async function askStream(query: string, endUserToken: string, handlers: A
   });
 }
 
+
+// ---------------------------------------------------------------------
+// The signed-in user's saved questions (app/api/end_user_api.py threads):
+// always the caller's own matter - the backend 404s anyone else's.
+// ---------------------------------------------------------------------
+
+export interface EndUserThreadInfo {
+  id: number;
+  matter_id: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EndUserThreadMessage {
+  id: number;
+  thread_id: number;
+  role: "user" | "assistant";
+  content: string;
+  sources: EndUserQuerySource[];
+  created_at: string;
+}
+
+export async function createEndUserThread(title: string, endUserToken: string): Promise<EndUserThreadInfo> {
+  return endUserRequest<EndUserThreadInfo>("/end-user/threads", { method: "POST", body: { title }, endUserToken });
+}
+
+export async function listEndUserThreads(endUserToken: string): Promise<{ threads: EndUserThreadInfo[] }> {
+  return endUserRequest<{ threads: EndUserThreadInfo[] }>("/end-user/threads", { endUserToken });
+}
+
+export async function getEndUserThreadMessages(
+  threadId: number,
+  endUserToken: string
+): Promise<{ thread_id: number; messages: EndUserThreadMessage[] }> {
+  return endUserRequest(`/end-user/threads/${threadId}/messages`, { endUserToken });
+}

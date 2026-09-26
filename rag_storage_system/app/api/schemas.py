@@ -1294,3 +1294,33 @@ class HandoffListResponse(BaseModel):
 
 class HandoffCloseRequest(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
+
+
+# ---------------------------------------------------------------------
+# GET /admin/today - the dashboard's "Today" panel (app/api/today_api.py).
+# ---------------------------------------------------------------------
+
+
+class TodayIntakeInfo(BaseModel):
+    intake_session_id: int
+    matter_id: int
+    matter_name: str
+    client_email: str | None = None
+    title: str
+    stage: str  # interview state, e.g. "screening" or "complete"; "not_started" before the first answer
+    created_at: str
+
+
+class TodayResponse(BaseModel):
+    since: str
+    new_intakes: list[TodayIntakeInfo]
+    intakes_started: int
+    intakes_completed: int
+    questions_asked: int
+    no_authority: int
+    reports_pending: int
+    requests_open: int
+    requests_claimed: int
+    library_uploads: int
+    case_documents: int
+    client_uploads: int

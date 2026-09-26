@@ -10,6 +10,7 @@ import type { AdminStats, CategoryInfo, DocumentInfo, PendingReportInfo } from "
 import { ApiError } from "@/lib/api/client";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { TodayPanel } from "@/components/dashboard/TodayPanel";
 
 const RECENT_UPLOADS_LIMIT = 5;
 
@@ -161,7 +162,11 @@ export default function DashboardPage() {
   return (
     <div style={{ maxWidth: 800, margin: "0 auto" }}>
       <h1>Dashboard</h1>
-      <p style={{ color: "#666" }}>A real-time view of the firm&apos;s document library.</p>
+      <p style={{ color: "#666" }}>What needs attention today, and a real-time view of the firm&apos;s document library.</p>
+
+      {token && <TodayPanel token={token} onUnauthorized={logout} />}
+
+      <h2 style={{ fontSize: "1.2rem", margin: "2rem 0 0" }}>Library</h2>
 
       {stats && (
         <section
@@ -261,7 +266,7 @@ export default function DashboardPage() {
       </section>
 
       <section style={{ marginTop: "1.5rem" }}>
-        <h2 style={{ fontSize: "1rem", color: "#555" }}>Pending client reports</h2>
+        <h2 id="pending-reports" style={{ fontSize: "1rem", color: "#555", scrollMarginTop: "1rem" }}>Pending client reports</h2>
         <p style={{ fontSize: "0.8rem", color: "#999" }}>
           Generated from a Client&apos;s completed intake interview - review and approve before the Client can
           download it.
