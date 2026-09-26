@@ -21,3 +21,7 @@ storage/embeddings/
 
 # Local copy of the Dropbox library (app/vault_sync/dropbox_source.py) - library content, never source.
 storage/vault_mirror/
+storage/vault_mirror_connected/
+
+# Redis snapshot files from a local redis-server - job data, never source.
+*.rdb
