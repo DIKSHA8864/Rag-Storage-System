@@ -49,7 +49,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ maxWidth: 360, margin: "3rem auto" }}>
+    <div className="c-auth" style={{ maxWidth: 360, margin: "3rem auto" }}>
       <h1>Administrator Login</h1>
       <p style={{ color: "#666", fontSize: "0.9rem" }}>
         Not an administrator? <Link href="/portal/login">Sign in to the user portal</Link>.

@@ -28,7 +28,7 @@ export default function HomePage() {
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: "4rem auto", padding: "0 1rem", textAlign: "center" }}>
+    <div className="c-auth" style={{ maxWidth: 420, margin: "4rem auto", padding: "0 1rem", textAlign: "center" }}>
       <h1>Welcome to AshiLegal</h1>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "2rem" }}>
         <Link

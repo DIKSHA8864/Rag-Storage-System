@@ -1,0 +1,200 @@
+/*
+ * The staff console's look (everything outside the client portal). Every
+ * rule is scoped under .console so it can never reach the portal, which
+ * has its own stylesheet (app/(client)/portal.css).
+ */
+
+body:has(.console) { margin: 0; }
+
+.console {
+  --c-ink: #1b2430;
+  --c-muted: #5a6573;
+  --c-line: #dde2e7;
+  --c-bg: #f4f6f8;
+  --c-surface: #ffffff;
+  --c-primary: #1f4e79;
+  --c-primary-hover: #173c5e;
+  --c-primary-soft: #e7eef6;
+  --c-side: #16283b;
+  --c-side-ink: #c9d3de;
+  --c-serif: Georgia, "Times New Roman", serif;
+  --c-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  min-height: 100vh;
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-family: var(--c-sans);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.console h1,
+.console h2,
+.console h3 {
+  font-family: var(--c-serif);
+  font-weight: 600;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+.console h1 { font-size: 1.75rem; margin: 0 0 0.5rem; color: var(--c-ink); }
+
+.console a { color: var(--c-primary); }
+.console a:hover { color: var(--c-primary-hover); }
+
+/* ---------- Controls ---------- */
+
+.console button {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--c-ink);
+  background: var(--c-surface);
+  border: 1px solid #c5ccd4;
+  border-radius: 7px;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.console button:hover:not(:disabled) { background: #eef1f4; border-color: #aeb7c1; }
+.console button[type="submit"] { color: #fff; background: var(--c-primary); border-color: var(--c-primary); }
+.console button[type="submit"]:hover:not(:disabled) { background: var(--c-primary-hover); border-color: var(--c-primary-hover); }
+.console button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.console input[type="text"],
+.console input[type="email"],
+.console input[type="password"],
+.console input[type="number"],
+.console input[type="search"],
+.console input[type="date"],
+.console input:not([type]),
+.console textarea,
+.console select {
+  font: inherit;
+  color: var(--c-ink);
+  background: var(--c-surface);
+  border: 1px solid #c5ccd4;
+  border-radius: 7px;
+  padding: 0.45rem 0.65rem;
+  box-sizing: border-box;
+}
+.console textarea { line-height: 1.5; }
+
+.console button:focus-visible,
+.console input:focus-visible,
+.console textarea:focus-visible,
+.console select:focus-visible,
+.console a:focus-visible {
+  outline: 3px solid rgba(31, 78, 121, 0.35);
+  outline-offset: 2px;
+}
+
+/* ---------- Tables ---------- */
+
+.console table { background: var(--c-surface); border-radius: 8px; }
+.console th {
+  text-align: left;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+  font-weight: 600;
+  background: #f7f8fa;
+}
+.console th,
+.console td { padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--c-line); vertical-align: top; }
+.console tbody tr:hover td { background: #fafbfc; }
+
+/* Bordered boxes the pages draw inline (cards, lists, panels) sit on white. */
+.console .c-main div[style*="border: 1px solid"],
+.console .c-main li[style*="border: 1px solid"],
+.console .c-main section[style*="border: 1px solid"] {
+  background-color: var(--c-surface);
+  border-color: var(--c-line) !important;
+  border-radius: 10px !important;
+}
+
+/* ---------- Shell ---------- */
+
+.console .c-shell { display: flex; min-height: 100vh; }
+
+.console .c-side {
+  width: 232px;
+  flex-shrink: 0;
+  background: var(--c-side);
+  color: var(--c-side-ink);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.console .c-brand { padding: 1.25rem 1.25rem 1rem; line-height: 1.15; }
+.console .c-brand b { display: block; font-family: var(--c-serif); font-size: 1.3rem; color: #fff; }
+.console .c-brand span { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: #8fa2b6; }
+
+.console .c-nav { flex: 1; padding: 0.25rem 0.75rem 1rem; }
+.console .c-group { margin-top: 1rem; }
+.console .c-group-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #7f93a8;
+  padding: 0 0.6rem 0.35rem;
+}
+.console .c-nav a {
+  display: block;
+  position: relative;
+  color: var(--c-side-ink);
+  text-decoration: none;
+  padding: 0.42rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.92rem;
+}
+.console .c-nav a:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.console .c-nav a[aria-current="page"] { background: rgba(255, 255, 255, 0.13); color: #fff; font-weight: 600 !important; }
+.console .c-nav a > span[aria-hidden] { position: absolute; right: 0.4rem; }
+.console .c-nav a:focus-visible { outline-color: rgba(255, 255, 255, 0.5); }
+
+.console .c-user { padding: 1rem 1.25rem 1.25rem; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.8rem; }
+.console .c-user div { color: #8fa2b6; margin-bottom: 0.5rem; overflow-wrap: anywhere; }
+.console .c-user button { width: 100%; background: transparent; color: var(--c-side-ink); border-color: rgba(255, 255, 255, 0.2); }
+.console .c-user button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.35); }
+
+.console .c-main { flex: 1; min-width: 0; padding: 2rem 2rem 4rem; }
+
+/* Signed-out pages (administrator sign-in, welcome): one centred card, no sidebar. */
+.console .c-topbar { background: var(--c-surface); border-bottom: 1px solid var(--c-line); }
+.console .c-topbar .c-brand b { color: var(--c-ink); font-size: 1.2rem; }
+.console .c-topbar .c-brand span { color: var(--c-muted); }
+.console .c-topbar .c-brand { max-width: 960px; margin: 0 auto; padding: 0.8rem 1rem; }
+.console .c-auth {
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  border-radius: 10px;
+  padding: 2rem 1.75rem !important;
+  box-shadow: 0 2px 10px rgba(20, 30, 45, 0.06);
+}
+.console .c-auth button[type="submit"] { width: 100%; padding: 0.6rem 1rem; }
+
+@media (max-width: 900px) {
+  .console .c-shell { flex-direction: column; }
+  .console .c-side { width: auto; height: auto; position: static; }
+  .console .c-brand { padding: 0.9rem 1rem 0.25rem; }
+  .console .c-nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; padding: 0 0.75rem 0.5rem; }
+  .console .c-group { margin-top: 0.5rem; }
+  .console .c-group > div:last-child { display: flex; flex-wrap: wrap; }
+  .console .c-nav a > span[aria-hidden] { display: none; }
+  .console .c-user { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.6rem 1rem; }
+  .console .c-user div { margin: 0; }
+  .console .c-user button { width: auto; }
+  .console .c-main { padding: 1.25rem 1rem 3rem; }
+}
+
+@media (max-width: 440px) {
+  .console .c-auth { margin: 1.5rem 1rem !important; padding: 1.5rem 1.25rem !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console * { transition: none !important; }
+}

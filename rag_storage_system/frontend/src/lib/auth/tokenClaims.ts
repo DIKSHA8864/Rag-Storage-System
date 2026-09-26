@@ -8,6 +8,7 @@ export const END_USER_ROLE = "end_user";
 
 interface TokenClaims {
   role?: string;
+  email?: string;
   exp?: number;
 }
 
