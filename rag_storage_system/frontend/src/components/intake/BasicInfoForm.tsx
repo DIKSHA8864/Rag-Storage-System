@@ -25,7 +25,7 @@ export function BasicInfoForm({ onSubmit, isSubmitting, error }: BasicInfoFormPr
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: "3rem auto", padding: "0 1rem" }}>
+    <div className="p-auth" style={{ maxWidth: 420, margin: "3rem auto", padding: "0 1rem" }}>
       <h1>Before we begin / Antes de comenzar</h1>
       <p style={{ color: "#666" }}>What&apos;s your name? / Cual es su nombre?</p>
 

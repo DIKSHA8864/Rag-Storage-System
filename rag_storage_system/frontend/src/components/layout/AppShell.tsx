@@ -16,6 +16,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   // member, and never on end-user portal pages (they have their own header).
   const showConsole = isAuthenticated && !isEndUserPath(pathname);
 
+  // The client portal draws its own header and page (app/(client)/layout.tsx).
+  if (isEndUserPath(pathname)) {
+    return <>{children}</>;
+  }
+
   function handleLogout() {
     logout();
     router.push("/login");

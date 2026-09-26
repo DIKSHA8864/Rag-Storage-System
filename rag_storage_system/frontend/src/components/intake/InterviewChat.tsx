@@ -161,7 +161,9 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
   }, [loadInterview]);
 
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Scroll only the transcript box, never the whole page (which hid the header).
+    const box = transcriptEndRef.current?.parentElement;
+    if (box) box.scrollTo({ top: box.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
   async function handleSend(rawMessage: string) {
@@ -266,15 +268,15 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
   ) : null;
 
   return (
-    <div style={{ maxWidth: 560, margin: "2rem auto", padding: "0 1rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <h1 style={{ fontSize: "1.25rem" }}>Client Intake</h1>
-        <button type="button" onClick={onStartOver} style={{ fontSize: "0.8rem" }}>
+    <div className="p-page p-intake" style={{ maxWidth: 680 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+        <h1 style={{ margin: 0 }}>{es ? "Su admision" : "Your intake"}</h1>
+        <button type="button" onClick={onStartOver} style={{ fontSize: "0.85rem" }}>
           New intake / Nueva admision
         </button>
       </div>
 
-      <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", margin: "0.75rem 0 1rem 0" }}>
+      <div className="p-steps">
         {stageOrder.map((stage, index) => {
           const label = STAGE_LABELS[stage][state.language === "es" ? "es" : "en"];
           const isCurrent = index === stageIndex;
@@ -282,14 +284,8 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
           return (
             <span
               key={stage}
-              style={{
-                fontSize: "0.75rem",
-                fontWeight: isCurrent ? 700 : 400,
-                padding: "0.2rem 0.5rem",
-                borderRadius: 4,
-                background: isCurrent ? "#eaf1fb" : isPast ? "#e8f5e9" : "#f0f0f0",
-                color: isCurrent ? "#1a5fb4" : isPast ? "#2e7d32" : "#777",
-              }}
+              className={`p-step${isCurrent ? " is-current" : isPast ? " is-done" : ""}`}
+              aria-current={isCurrent ? "step" : undefined}
             >
               {label}
             </span>
@@ -310,8 +306,8 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
       )}
 
       {state.question_number !== null && (
-        <div style={{ margin: "0 0 0.75rem 0" }}>
-          <p style={{ fontSize: "0.85rem", color: "#555", margin: "0 0 0.3rem 0" }}>
+        <div style={{ margin: "1rem 0 0.75rem 0" }}>
+          <p className="p-progress-label">
             {state.language === "es"
               ? `Pregunta ${state.question_number} de ${state.total_questions}`
               : `Question ${state.question_number} of ${state.total_questions}`}
@@ -326,45 +322,15 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
             {state.question_number === state.total_questions &&
               (state.language === "es" ? " - la ultima pregunta." : " - the last question.")}
           </p>
-          <div style={{ height: 6, background: "#eee", borderRadius: 3 }}>
-            <div
-              style={{
-                width: `${Math.round(((state.question_number - 1) / state.total_questions) * 100)}%`,
-                height: "100%",
-                background: "#1a5fb4",
-                borderRadius: 3,
-              }}
-            />
+          <div className="p-progress">
+            <div style={{ width: `${Math.round(((state.question_number - 1) / state.total_questions) * 100)}%` }} />
           </div>
         </div>
       )}
 
-      <div
-        style={{
-          border: "1px solid #e5e5e5",
-          borderRadius: 6,
-          padding: "1rem",
-          minHeight: 240,
-          maxHeight: 420,
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.6rem",
-        }}
-      >
+      <div className="p-transcript" aria-live="polite">
         {messages.map((message) => (
-          <div
-            key={message.id}
-            style={{
-              alignSelf: message.role === "user" ? "flex-end" : "flex-start",
-              maxWidth: "80%",
-              padding: "0.5rem 0.75rem",
-              borderRadius: 8,
-              background: message.role === "user" ? "#1a5fb4" : "#f0f0f0",
-              color: message.role === "user" ? "#fff" : "#1a1a1a",
-              whiteSpace: "pre-wrap",
-            }}
-          >
+          <div key={message.id} className={`p-bubble ${message.role === "user" ? "is-user" : "is-assistant"}`}>
             {message.content}
           </div>
         ))}
@@ -373,7 +339,7 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
 
       {/* A rejected date already says why in the reply itself. */}
       {lastTurnRejected && state.current_state !== "timeline" && (
-        <p style={{ fontSize: "0.8rem", color: "#8a6116", marginTop: "0.5rem" }}>
+        <p className="p-note is-warn">
           {state.language === "es"
             ? "No se entendio esa respuesta - por favor intente de nuevo."
             : "That answer wasn't recognized - please try again."}
@@ -383,14 +349,14 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
       {sendError && <ErrorMessage message={sendError} />}
 
       {isSending && state.current_state === "story" && (
-        <p style={{ fontSize: "0.8rem", color: "#555", marginTop: "0.5rem" }}>
+        <p className="p-note p-muted">
           {es ? "Leyendo su historia..." : "Reading your story..."}
         </p>
       )}
 
       {isComplete ? (
         <>
-          <p style={{ marginTop: "1rem", color: "#2e7d32", fontWeight: 600 }}>
+          <p className="p-done">
             {state.language === "es" ? "Su entrevista ha finalizado. Gracias." : "Your interview is complete. Thank you."}
           </p>
           {uploadPanel}
@@ -400,7 +366,7 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
       ) : (
         <div style={{ marginTop: "1rem" }}>
           {state.current_state === "language_selection" && (
-            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+            <div className="p-quick">
               {LANGUAGE_QUICK_REPLIES.map((option) => (
                 <button key={option.value} type="button" onClick={() => handleSend(option.value)} disabled={isSending}>
                   {option.label}
@@ -410,15 +376,15 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
           )}
 
           {state.current_state === "terms_acceptance" && (
-            <div style={{ marginBottom: "0.5rem" }}>
-              <button type="button" onClick={() => handleSend(termsQuickReply(state.language).value)} disabled={isSending}>
+            <div className="p-quick">
+              <button type="button" className="p-primary" onClick={() => handleSend(termsQuickReply(state.language).value)} disabled={isSending}>
                 {termsQuickReply(state.language).label}
               </button>
             </div>
           )}
 
           {quickReplies.length > 0 && (
-            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
+            <div className="p-quick">
               {quickReplies.map((option) => (
                 <button key={option.value} type="button" onClick={() => handleSend(option.value)} disabled={isSending}>
                   {option.label}
@@ -427,7 +393,7 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
             </div>
           )}
 
-          <form onSubmit={handleSubmit} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
+          <form onSubmit={handleSubmit} className="p-composer">
             {isLongAnswer ? (
               <textarea
                 value={draft}
@@ -435,7 +401,7 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
                 disabled={isSending}
                 rows={state.current_state === "story" || state.current_state === "general_narrative" ? 6 : 3}
                 placeholder={placeholder}
-                style={{ flex: 1, resize: "vertical" }}
+                style={{ resize: "vertical" }}
               />
             ) : (
               <input
@@ -444,7 +410,6 @@ export function InterviewChat({ sessionId, endUserToken, onStartOver, onUnauthor
                 onChange={(e) => setDraft(e.target.value)}
                 disabled={isSending}
                 placeholder={placeholder}
-                style={{ flex: 1 }}
               />
             )}
             <button type="submit" disabled={isSending || draft.trim() === ""} aria-busy={isSending}>

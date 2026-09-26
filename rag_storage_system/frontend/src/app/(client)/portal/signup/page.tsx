@@ -65,7 +65,7 @@ export default function PortalSignupPage() {
   }
 
   return (
-    <div style={{ maxWidth: 380, margin: "3rem auto", padding: "0 1rem" }}>
+    <div className="p-auth" style={{ maxWidth: 380, margin: "3rem auto", padding: "0 1rem" }}>
       <h1>Create your account</h1>
 
       {step === "email" ? (

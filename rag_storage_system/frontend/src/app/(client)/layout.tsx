@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { EndUserAuthProvider } from "@/lib/clientAuth/EndUserAuthContext";
 import { PortalHeader } from "@/components/portal/PortalHeader";
 
+import "./portal.css";
+
 /**
  * Every page under app/(client)/ is the end-user portal - signed in
  * with an individual end-user account (POST /end-user/auth/login,
@@ -12,8 +14,10 @@ import { PortalHeader } from "@/components/portal/PortalHeader";
 export default function ClientLayout({ children }: { children: ReactNode }) {
   return (
     <EndUserAuthProvider>
-      <PortalHeader />
-      {children}
+      <div className="portal">
+        <PortalHeader />
+        {children}
+      </div>
     </EndUserAuthProvider>
   );
 }

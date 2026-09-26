@@ -44,7 +44,7 @@ export default function PortalLoginPage() {
   }
 
   return (
-    <div style={{ maxWidth: 380, margin: "3rem auto", padding: "0 1rem" }}>
+    <div className="p-auth" style={{ maxWidth: 380, margin: "3rem auto", padding: "0 1rem" }}>
       <h1>Sign in</h1>
       <p style={{ color: "#666", fontSize: "0.9rem" }}>Use the email address your administrator invited.</p>
 

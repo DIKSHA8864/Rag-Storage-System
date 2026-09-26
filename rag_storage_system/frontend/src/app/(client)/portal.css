@@ -1,0 +1,269 @@
+/*
+ * The client portal's look (Ask, My Intake, sign-in pages). Every rule is
+ * scoped under .portal: Next.js keeps a stylesheet loaded after navigating
+ * away, so nothing here may touch the staff console.
+ */
+
+/* The root layout doesn't reset the page margin; do it only where the portal renders. */
+body:has(.portal) { margin: 0; }
+
+.portal {
+  --p-ink: #1b2430;
+  --p-muted: #5a6573;
+  --p-line: #dde2e7;
+  --p-bg: #f4f6f8;
+  --p-surface: #ffffff;
+  --p-primary: #1f4e79;
+  --p-primary-hover: #173c5e;
+  --p-primary-soft: #e7eef6;
+  --p-success: #2e7d32;
+  --p-success-soft: #e6f2e7;
+  --p-warn: #8a5a0f;
+  --p-danger: #b3261e;
+  --p-radius: 10px;
+  --p-serif: Georgia, "Times New Roman", serif;
+  --p-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  min-height: 100vh;
+  background: var(--p-bg);
+  color: var(--p-ink);
+  font-family: var(--p-sans);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.portal h1,
+.portal h2,
+.portal h3 {
+  font-family: var(--p-serif);
+  font-weight: 600;
+  line-height: 1.25;
+  text-wrap: balance;
+  color: var(--p-ink);
+}
+.portal h1 { font-size: 1.75rem; margin: 0 0 0.4rem; }
+.portal h2 { font-size: 1.25rem; }
+.portal h3 { font-size: 1.05rem; }
+
+.portal a { color: var(--p-primary); }
+.portal a:hover { color: var(--p-primary-hover); }
+
+/* ---------- Form controls ---------- */
+
+.portal button {
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--p-ink);
+  background: var(--p-surface);
+  border: 1px solid #c5ccd4;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.portal button:hover:not(:disabled) { background: #eef1f4; border-color: #aeb7c1; }
+.portal button[type="submit"],
+.portal button.p-primary {
+  color: #fff;
+  background: var(--p-primary);
+  border-color: var(--p-primary);
+}
+.portal button[type="submit"]:hover:not(:disabled),
+.portal button.p-primary:hover:not(:disabled) {
+  background: var(--p-primary-hover);
+  border-color: var(--p-primary-hover);
+}
+.portal button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.portal input[type="text"],
+.portal input[type="email"],
+.portal input[type="password"],
+.portal input[type="tel"],
+.portal input[type="date"],
+.portal input:not([type]),
+.portal textarea,
+.portal select {
+  font: inherit;
+  color: var(--p-ink);
+  background: var(--p-surface);
+  border: 1px solid #c5ccd4;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  box-sizing: border-box;
+}
+.portal textarea { line-height: 1.5; }
+.portal input::placeholder,
+.portal textarea::placeholder { color: #8a94a0; }
+
+.portal button:focus-visible,
+.portal input:focus-visible,
+.portal textarea:focus-visible,
+.portal select:focus-visible,
+.portal a:focus-visible {
+  outline: 3px solid rgba(31, 78, 121, 0.35);
+  outline-offset: 2px;
+}
+
+.portal label { font-weight: 500; font-size: 0.95rem; }
+.portal label > input,
+.portal label > textarea { margin-top: 0.3rem; font-weight: 400; }
+
+/* ---------- Layout ---------- */
+
+.portal .p-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+.portal .p-card {
+  background: var(--p-surface);
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-radius);
+  padding: 1.5rem;
+  box-shadow: 0 1px 2px rgba(20, 30, 45, 0.04);
+}
+
+.portal .p-lede { color: var(--p-muted); margin: 0 0 1.25rem; max-width: 62ch; }
+
+/* Sign-in, sign-up and password pages: one centred card. */
+.portal .p-auth {
+  background: var(--p-surface);
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-radius);
+  padding: 2rem 1.75rem !important;
+  box-shadow: 0 2px 10px rgba(20, 30, 45, 0.06);
+}
+.portal .p-auth button[type="submit"] { width: 100%; padding: 0.65rem 1rem; }
+
+/* ---------- Header ---------- */
+
+.portal .p-header {
+  background: var(--p-surface);
+  border-bottom: 1px solid var(--p-line);
+}
+.portal .p-header-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  flex-wrap: wrap;
+}
+.portal .p-brand { display: flex; flex-direction: column; line-height: 1.15; }
+.portal .p-brand b { font-family: var(--p-serif); font-size: 1.2rem; color: var(--p-ink); }
+.portal .p-brand span { font-size: 0.75rem; color: var(--p-muted); letter-spacing: 0.06em; text-transform: uppercase; }
+
+.portal .p-tabs { display: flex; gap: 0.25rem; }
+.portal .p-tabs a {
+  text-decoration: none;
+  color: var(--p-muted);
+  font-weight: 500;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+}
+.portal .p-tabs a { position: relative; }
+/* NavLink's pending "…" sits outside the pill so the tabs stay symmetric. */
+.portal .p-tabs a > span[aria-hidden] { position: absolute; right: -0.9em; }
+.portal .p-tabs a:hover { background: #eef1f4; color: var(--p-ink); }
+.portal .p-tabs a[aria-current="page"] { background: var(--p-primary-soft); color: var(--p-primary); font-weight: 600 !important; }
+
+.portal .p-account { display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem; color: var(--p-muted); }
+.portal .p-account button { font-size: 0.85rem; padding: 0.35rem 0.8rem; }
+
+@media (max-width: 640px) {
+  .portal .p-header-inner { padding: 0.6rem 1rem; }
+  .portal .p-account span { display: none; }
+  .portal .p-tabs { order: 3; width: 100%; }
+  .portal .p-tabs a { flex: 1; text-align: center; }
+}
+
+/* ---------- Ask ---------- */
+
+.portal .p-examples { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+.portal .p-examples button {
+  font-size: 0.875rem;
+  font-weight: 400;
+  text-align: left;
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  background: var(--p-primary-soft);
+  border-color: transparent;
+  color: var(--p-primary);
+}
+.portal .p-examples button:hover:not(:disabled) { background: #d8e4f0; border-color: transparent; }
+.portal .p-question { font-family: var(--p-serif); font-size: 1.15rem; font-weight: 600; margin: 0 0 0.75rem; }
+.portal .p-muted { color: var(--p-muted); }
+
+/* ---------- Intake ---------- */
+
+.portal .p-steps { display: flex; gap: 0.35rem; flex-wrap: wrap; margin: 0.75rem 0 1.25rem; padding: 0; list-style: none; }
+.portal .p-step {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: #e9ecef;
+  color: #6b7580;
+}
+.portal .p-step.is-done { background: var(--p-success-soft); color: var(--p-success); }
+.portal .p-step.is-done::before { content: "✓ "; }
+.portal .p-step.is-current { background: var(--p-primary); color: #fff; font-weight: 600; }
+
+.portal .p-progress-label { font-size: 0.85rem; color: var(--p-muted); margin: 0 0 0.35rem; }
+.portal .p-progress { height: 8px; background: #e3e7eb; border-radius: 999px; overflow: hidden; }
+.portal .p-progress > div { height: 100%; background: var(--p-primary); border-radius: 999px; transition: width 0.3s ease; }
+
+.portal .p-transcript {
+  background: var(--p-surface);
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-radius);
+  padding: 1rem;
+  min-height: 260px;
+  max-height: 460px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.portal .p-bubble {
+  max-width: 82%;
+  padding: 0.6rem 0.9rem;
+  border-radius: 14px;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+.portal .p-bubble.is-assistant { align-self: flex-start; background: #eef1f4; color: var(--p-ink); border-bottom-left-radius: 4px; }
+.portal .p-bubble.is-user { align-self: flex-end; background: var(--p-primary); color: #fff; border-bottom-right-radius: 4px; }
+
+.portal .p-quick { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.portal .p-quick button { min-width: 5.5rem; padding: 0.55rem 1.1rem; border-radius: 999px; font-weight: 600; }
+
+.portal .p-composer { display: flex; gap: 0.5rem; align-items: flex-end; }
+.portal .p-composer input,
+.portal .p-composer textarea { flex: 1; min-width: 0; }
+
+.portal .p-note { font-size: 0.85rem; margin-top: 0.5rem; }
+.portal .p-note.is-warn { color: var(--p-warn); }
+.portal .p-done {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--p-radius);
+  background: var(--p-success-soft);
+  color: var(--p-success);
+  font-weight: 600;
+}
+
+/* Panels inside the intake (voice, files, talk to a person, report) sit on white. */
+.portal .p-intake > div[style*="border"] { background: var(--p-surface); }
+
+@media (prefers-reduced-motion: reduce) {
+  .portal * { transition: none !important; }
+}
+
+@media (max-width: 440px) {
+  .portal .p-auth { margin: 1.5rem 1rem !important; padding: 1.5rem 1.25rem !important; }
+  .portal .p-bubble { max-width: 90%; }
+}

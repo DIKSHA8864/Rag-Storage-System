@@ -13,6 +13,12 @@ import { ResearchQueryForm } from "@/components/research/ResearchQueryForm";
 import { SourcesPanel } from "@/components/research/SourcesPanel";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 
+const EXAMPLE_QUESTIONS = [
+  "Is my employer required to pay overtime after 8 hours in a day?",
+  "Am I entitled to meal and rest breaks?",
+  "Can I be fired for complaining about harassment?",
+];
+
 interface AskResult {
   query: string;
   answer: string;
@@ -67,14 +73,30 @@ function AskContent() {
   }
 
   return (
-    <div style={{ maxWidth: 820, margin: "0 auto", padding: "0 1rem" }}>
-      <h1>Ask</h1>
-      <p style={{ color: "#666", fontSize: "0.9rem" }}>
+    <div className="p-page">
+      <h1>Ask a question</h1>
+      <p className="p-lede">
         Answers come only from the firm&apos;s legal library, with the sources they&apos;re based on. If the library
         doesn&apos;t cover your question, you&apos;ll be told so instead of getting a guess.
       </p>
 
-      <ResearchQueryForm onSubmit={handleAsk} isLoading={isAsking} />
+      <div className="p-card">
+        <ResearchQueryForm onSubmit={handleAsk} isLoading={isAsking} clearOnSubmit label="Your question" />
+        {!result && !isAsking && (
+          <div>
+            <p className="p-muted" style={{ fontSize: "0.85rem", margin: "1.25rem 0 0" }}>
+              Not sure where to start? Try one of these:
+            </p>
+            <div className="p-examples">
+              {EXAMPLE_QUESTIONS.map((example) => (
+                <button key={example} type="button" onClick={() => handleAsk(example)}>
+                  {example}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {error && (
         <div style={{ marginTop: "1rem" }}>
@@ -83,10 +105,10 @@ function AskContent() {
       )}
 
       {result && (
-        <div style={{ marginTop: "1.5rem" }}>
-          <p style={{ fontWeight: 600 }}>{result.query}</p>
+        <div className="p-card" style={{ marginTop: "1.25rem" }}>
+          <p className="p-question">{result.query}</p>
           {result.answer === "" && !result.isComplete ? (
-            <p style={{ color: "#777" }}>Searching the library...</p>
+            <p className="p-muted">Searching the library...</p>
           ) : (
             <AnswerPanel answer={result.answer} hasSupport={result.sources.length > 0} sources={result.sources} />
           )}
