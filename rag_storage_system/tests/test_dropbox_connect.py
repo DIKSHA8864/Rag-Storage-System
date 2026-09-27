@@ -34,7 +34,7 @@ class FakeDropbox:
     """Just enough of Dropbox's HTTP API v2: OAuth code + refresh, account, list_folder, metadata, download, revoke."""
 
     def __init__(self):
-        self.folders = {"/Clients", "/Clients/Diksha", "/Clients/Diksha/Wage", "/Firm Library", "/Personal"}
+        self.folders = {"/Clients", "/Clients/Alex", "/Clients/Alex/Wage", "/Firm Library", "/Personal"}
         self.files = {}  # path_display -> (rev, bytes)
         self.revoked = False
         self.codes = {"good-code": "refresh-A"}
@@ -66,7 +66,7 @@ class FakeDropbox:
             return _Response({"access_token": "tok"})
         assert headers["Authorization"] == "Bearer tok"
         if url.endswith("/users/get_current_account"):
-            return _Response({"account_id": "dbid:A", "name": {"display_name": "Diksha K"}, "email": "diksha@firm.com"})
+            return _Response({"account_id": "dbid:A", "name": {"display_name": "Alex Rivera"}, "email": "owner@firm.com"})
         if url.endswith("/files/list_folder"):
             return _Response({"entries": self._file_entries(json["path"], json["recursive"]), "cursor": "c", "has_more": False})
         if url.endswith("/files/get_metadata"):
@@ -136,7 +136,7 @@ def test_connect_flow_stores_an_encrypted_token_and_the_account(api, env):
     assert query["redirect_uri"] == ["http://portal.test/vault/dropbox"]
 
     status = _connect(api).json()
-    assert status["connected"] is True and status["account_email"] == "diksha@firm.com"
+    assert status["connected"] is True and status["account_email"] == "owner@firm.com"
     stored = env.repo.get_dropbox_connection(1)
     assert stored["refresh_token_encrypted"] != "refresh-A" and "refresh-A" not in stored["refresh_token_encrypted"]
 
@@ -168,20 +168,20 @@ def test_browse_and_choose_folders(api):
     assert [f["name"] for f in top["folders"]] == ["Clients", "Firm Library", "Personal"]
 
     inside = api.get("/admin/dropbox/folders", params={"path": "/clients"}, headers=_as()).json()
-    assert inside["parent"] == "" and [f["path"] for f in inside["folders"]] == ["/Clients/Diksha"]
+    assert inside["parent"] == "" and [f["path"] for f in inside["folders"]] == ["/Clients/Alex"]
 
-    saved = api.put("/admin/dropbox/folders", json={"paths": ["/clients/diksha", "/Firm Library"]}, headers=_as())
+    saved = api.put("/admin/dropbox/folders", json={"paths": ["/clients/alex", "/Firm Library"]}, headers=_as())
     assert saved.status_code == 200
     assert saved.json()["folders"] == [
-        {"path": "/Clients/Diksha", "library_folder": "Diksha"},
+        {"path": "/Clients/Alex", "library_folder": "Alex"},
         {"path": "/Firm Library", "library_folder": "Firm Library"},
     ]
     marked = api.get("/admin/dropbox/folders", params={"path": "/Clients"}, headers=_as()).json()["folders"]
-    assert marked == [{"name": "Diksha", "path": "/Clients/Diksha", "selected": True}]
+    assert marked == [{"name": "Alex", "path": "/Clients/Alex", "selected": True}]
 
     assert api.put("/admin/dropbox/folders", json={"paths": ["/Nope"]}, headers=_as()).status_code == 400
     assert api.put("/admin/dropbox/folders", json={"paths": [""]}, headers=_as()).status_code == 400
-    nested = api.put("/admin/dropbox/folders", json={"paths": ["/Clients", "/Clients/Diksha"]}, headers=_as())
+    nested = api.put("/admin/dropbox/folders", json={"paths": ["/Clients", "/Clients/Alex"]}, headers=_as())
     assert nested.status_code == 400 and "inside" in nested.json()["detail"]
     # another organization sees none of it
     assert api.get("/admin/dropbox", headers=_as(tenant_id=2)).json()["connected"] is False
@@ -190,27 +190,27 @@ def test_browse_and_choose_folders(api):
 
 def test_chosen_folders_sync_into_library_folders_and_unticking_removes_them(api, env, dropbox, _fake_vector_store):
     dropbox.files = {
-        "/Clients/Diksha/overtime.txt": ("r1", b"Overtime after 8 hours a day."),
-        "/Clients/Diksha/Wage/breaks.txt": ("r1", b"Meal breaks after 5 hours."),
+        "/Clients/Alex/overtime.txt": ("r1", b"Overtime after 8 hours a day."),
+        "/Clients/Alex/Wage/breaks.txt": ("r1", b"Meal breaks after 5 hours."),
         "/Firm Library/discovery.txt": ("r1", b"Discovery requires a noticed motion."),
         "/Personal/taxes.txt": ("r1", b"Never synced."),
     }
     _connect(api)
-    api.put("/admin/dropbox/folders", json={"paths": ["/Clients/Diksha", "/Firm Library"]}, headers=_as())
+    api.put("/admin/dropbox/folders", json={"paths": ["/Clients/Alex", "/Firm Library"]}, headers=_as())
     assert synced_tenant_ids(env.repo) == [1]
 
     run = run_vault_sync(repository=env.repo, storage_backend=env.storage, vector_store=_fake_vector_store,
                          process=False, tenant_id=1)
     assert run["status"] == "ok" and run["added"] == 3
     docs = {(d["category"], d["filename"]) for d in env.repo.list_documents(tenant_id=1)}
-    assert docs == {("Diksha", "overtime.txt"), ("Diksha/Wage", "breaks.txt"), ("Firm Library", "discovery.txt")}
-    assert "Dropbox (diksha@firm.com): Diksha, Firm Library" == run["source"]
+    assert docs == {("Alex", "overtime.txt"), ("Alex/Wage", "breaks.txt"), ("Firm Library", "discovery.txt")}
+    assert "Dropbox (owner@firm.com): Alex, Firm Library" == run["source"]
 
     status = api.get("/admin/vault-sync", headers=_as()).json()
     assert status["configured"] is True and status["last_run"]["added"] == 3
 
     # untick one folder: its files leave the library on the next run
-    api.put("/admin/dropbox/folders", json={"paths": ["/Clients/Diksha"]}, headers=_as())
+    api.put("/admin/dropbox/folders", json={"paths": ["/Clients/Alex"]}, headers=_as())
     run = run_vault_sync(repository=env.repo, storage_backend=env.storage, vector_store=_fake_vector_store,
                          process=False, tenant_id=1)
     assert run["deleted"] == 1

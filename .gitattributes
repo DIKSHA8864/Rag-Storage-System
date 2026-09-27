@@ -1,0 +1,10 @@
+# Library documents, client uploads, databases and logs are data, not code.
+# `git archive` leaves them out, so a copy of the code made with it (for a new
+# repository, or for a developer) never carries any of them.
+rag_storage_system/storage/*/** export-ignore
+rag_storage_system/storage/*/.gitkeep -export-ignore
+rag_storage_system/database/*.db export-ignore
+rag_storage_system/logs/** export-ignore
+rag_storage_system/logs/.gitkeep -export-ignore
+*.rdb export-ignore
+.claude/scheduled_tasks.lock export-ignore

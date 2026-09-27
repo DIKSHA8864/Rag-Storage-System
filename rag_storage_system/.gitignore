@@ -25,3 +25,19 @@ storage/vault_mirror_connected/
 
 # Redis snapshot files from a local redis-server - job data, never source.
 *.rdb
+
+# Library documents, client uploads, quarantined files, databases and logs:
+# data, never source. (Files committed before these rules stay tracked in the
+# old repository; a copy made with `git archive` leaves them out - see
+# /.gitattributes.)
+storage/originals/**
+!storage/originals/.gitkeep
+storage/quarantine/**
+!storage/quarantine/.gitkeep
+storage/intake/
+storage/intake_quarantine/
+storage/metadata/*
+!storage/metadata/.gitkeep
+database/*.db
+logs/*
+!logs/.gitkeep
