@@ -53,6 +53,10 @@ jobs:
           python-version: "3.13"
           cache: "pip"
 
+      # OCR_PROVIDER=tesseract calls the tesseract program, not just the Python package.
+      - name: Install Tesseract OCR
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+
       - name: Install dependencies
         working-directory: rag_storage_system
         run: pip install -r requirements.txt
