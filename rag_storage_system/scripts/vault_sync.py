@@ -42,7 +42,10 @@ def main() -> int:
     parser.add_argument("--watch", action="store_true")
     parser.add_argument("--allow-mass-delete", action="store_true")
     args = parser.parse_args()
-    logging.basicConfig(level=logging.WARNING)
+    logging.basicConfig(level=logging.WARNING, format="%(message)s")
+    # Show progress (each Dropbox download, then indexing) - a first sync of a big folder takes a while.
+    for name in ("app.vault_sync", "app.jobs.processing"):
+        logging.getLogger(name).setLevel(logging.INFO)
 
     repository = get_metadata_repository()
     while True:
@@ -55,6 +58,7 @@ def main() -> int:
                 return 1
         all_ok = True
         for tenant_id in tenants:
+            print(f"Syncing organization {tenant_id} - this can take a while the first time; keep this window open.")
             run = run_vault_sync(repository=repository, allow_mass_delete=args.allow_mass_delete, tenant_id=tenant_id)
             print(f"Organization {tenant_id}:")
             _print_run(run)

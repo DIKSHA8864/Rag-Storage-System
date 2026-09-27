@@ -157,6 +157,9 @@ def run_vault_sync(
         if result.changed and process:
             from app.jobs.processing import run_processing_job
 
+            logger.info("Indexing the changes (%d added, %d updated, %d removed) - reading, splitting and embedding...",
+                        result.added, result.updated, result.deleted)
+
             run["processing"] = run_processing_job(repository, vector_store)
     except SyncRefused as exc:
         run.update(status="refused", error=str(exc))

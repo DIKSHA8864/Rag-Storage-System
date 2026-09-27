@@ -125,11 +125,21 @@ class DropboxMirror:
         remote = self._list_files()
         counts = {"downloaded": 0, "removed": 0, "unchanged": 0}
 
+        to_download = [
+            relative for relative, entry in remote.items()
+            if not (index.get(relative) == entry["rev"] and (self._mirror_dir / relative).exists())
+        ]
+        if to_download:
+            logger.info("Dropbox %s: %d file(s) to download, %d unchanged.",
+                        self._root or "/", len(to_download), len(remote) - len(to_download))
+
         for relative, entry in remote.items():
             local = self._mirror_dir / relative
             if index.get(relative) == entry["rev"] and local.exists():
                 counts["unchanged"] += 1
                 continue
+            logger.info("  downloading %d of %d: %s (%s KB)", counts["downloaded"] + 1, len(to_download), relative,
+                        round((entry.get("size") or 0) / 1024))
             local.parent.mkdir(parents=True, exist_ok=True)
             partial = local.with_name(local.name + ".part")
             partial.write_bytes(self._download(entry))
