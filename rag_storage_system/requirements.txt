@@ -132,6 +132,7 @@ websockets==17.1
 yarl==1.24.5
 passlib[bcrypt]
 python-jose[cryptography]
+cryptography>=42.0  # used directly: app/security/secret_box.py encrypts stored Dropbox tokens
 python-multipart
 slowapi==0.1.9
 pytest-asyncio==1.3.0
