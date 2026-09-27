@@ -33,7 +33,13 @@ def get_job_queue() -> Queue:
     without needing a real Redis connection.
     """
 
-    return Queue(get_settings().processing_queue_name, connection=get_redis_connection())
+    settings = get_settings()
+    return Queue(
+        settings.processing_queue_name,
+        connection=get_redis_connection(),
+        # Every job (indexing, vault sync, intake uploads) gets this limit instead of RQ's 180 s.
+        default_timeout=settings.job_timeout_seconds,
+    )
 
 
 def fetch_job(job_id: str) -> Job | None:

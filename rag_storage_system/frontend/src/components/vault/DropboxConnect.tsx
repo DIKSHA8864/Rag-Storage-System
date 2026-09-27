@@ -221,6 +221,11 @@ export function DropboxConnect({
 
       {isPicking && (
         <div style={{ marginTop: "0.75rem" }}>
+          <p style={{ ...muted, marginTop: 0 }}>
+            <strong style={{ color: "#1b2430" }}>Add</strong> a folder: tick it. Use <strong>Open ›</strong> to see the
+            folders inside one. <strong style={{ color: "#1b2430" }}>Remove</strong> one: untick it, or use Remove below.
+            Then press <strong>Save and sync</strong>.
+          </p>
           <nav aria-label="Dropbox folder" style={{ fontSize: "0.9rem", display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
             <button type="button" onClick={() => openFolder("")} disabled={isWorking} style={{ padding: "0.15rem 0.5rem" }}>
               Dropbox
@@ -241,7 +246,9 @@ export function DropboxConnect({
           <ul style={{ listStyle: "none", margin: "0.6rem 0", padding: 0, maxHeight: 320, overflowY: "auto", border: "1px solid #dde2e7" }}>
             {!listing && <li style={{ padding: "0.6rem 0.8rem", ...muted }}>Loading folders...</li>}
             {listing && listing.folders.length === 0 && (
-              <li style={{ padding: "0.6rem 0.8rem", ...muted }}>No folders inside this one.</li>
+              <li style={{ padding: "0.6rem 0.8rem", ...muted }}>
+                {listing.path ? "No folders inside this one." : "Your Dropbox has no folders yet - create them in Dropbox, then come back."}
+              </li>
             )}
             {listing?.folders.map((folder) => {
               const checked = selectedLower.includes(folder.path.toLowerCase());
@@ -270,11 +277,31 @@ export function DropboxConnect({
             })}
           </ul>
 
-          <p style={muted}>
-            {draft.length === 0
-              ? "Tick the folders to sync. Each one becomes a library folder; the folders inside it come along."
-              : `Chosen: ${draft.map(folderName).join(", ")}`}
+          <p style={{ ...muted, fontWeight: 600, color: "#1b2430" }}>
+            Chosen folders ({draft.length} of {MAX_FOLDERS})
           </p>
+          {draft.length === 0 ? (
+            <p style={muted}>None yet. Each folder you tick becomes a library folder; the folders inside it come along.</p>
+          ) : (
+            <ul style={{ listStyle: "none", margin: "0.25rem 0", padding: 0, display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+              {draft.map((path) => (
+                <li key={path} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", fontSize: "0.9rem" }}>
+                  <span>
+                    📁 <code>{path}</code> → library folder <strong>{folderName(path)}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => toggle(path)}
+                    disabled={isWorking}
+                    aria-label={`Remove ${path}`}
+                    style={{ fontSize: "0.8rem", padding: "0.15rem 0.55rem" }}
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
             <button type="submit" onClick={() => saveFolders(draft)} disabled={isWorking}>
               {isWorking ? "Saving..." : "Save and sync"}

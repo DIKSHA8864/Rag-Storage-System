@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     redis_url: str = "redis://localhost:6379/0"
     processing_queue_name: str = "processing"
+    # How long one background job may run (seconds). RQ's own default is 180 - far too short for
+    # indexing a library or a first Dropbox sync, which download and embed every file.
+    job_timeout_seconds: int = 3600
 
     # Vault sync (app/vault_sync/) - mirror a folder that Dropbox / Google
     # Drive's desktop app keeps in sync (VAULT_SYNC_DIR), or a Dropbox folder
