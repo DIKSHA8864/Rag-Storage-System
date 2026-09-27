@@ -25,6 +25,8 @@ body:has(.portal) { margin: 0; }
   --p-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--p-bg);
   color: var(--p-ink);
   font-family: var(--p-sans);
@@ -153,12 +155,23 @@ body:has(.portal) { margin: 0; }
   gap: 0.75rem 1.5rem;
   flex-wrap: wrap;
 }
-.portal .p-brand { display: flex; flex-direction: column; line-height: 1.15; }
-.portal .p-brand b { font-family: var(--p-serif); font-size: 1.2rem; color: var(--p-ink); }
-.portal .p-brand span { font-size: 0.75rem; color: var(--p-muted); letter-spacing: 0.06em; text-transform: uppercase; }
+.portal .p-header { position: sticky; top: 0; z-index: 30; }
+.portal .p-brand { display: flex; align-items: center; gap: 0.6rem; line-height: 1.15; text-decoration: none; color: inherit; }
+.portal .p-logo {
+  width: 34px; height: 34px; border-radius: 9px;
+  display: grid; place-items: center;
+  font-family: var(--p-serif); font-weight: 700; font-size: 1.15rem;
+  background: linear-gradient(145deg, #2d6a9f, #1f4e79); color: #fff;
+}
+.portal .p-brand b { display: block; font-family: var(--p-serif); font-size: 1.2rem; color: var(--p-ink); }
+.portal .p-brand small { display: block; font-size: 0.7rem; color: var(--p-muted); letter-spacing: 0.08em; text-transform: uppercase; }
 
 .portal .p-tabs { display: flex; gap: 0.25rem; }
 .portal .p-tabs a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
   text-decoration: none;
   color: var(--p-muted);
   font-weight: 500;
@@ -167,16 +180,38 @@ body:has(.portal) { margin: 0; }
 }
 .portal .p-tabs a { position: relative; }
 /* NavLink's pending "…" sits outside the pill so the tabs stay symmetric. */
-.portal .p-tabs a > span[aria-hidden] { position: absolute; right: -0.9em; }
+.portal .p-tabs a > .nav-pending { position: absolute; right: -0.9em; }
 .portal .p-tabs a:hover { background: #eef1f4; color: var(--p-ink); }
 .portal .p-tabs a[aria-current="page"] { background: var(--p-primary-soft); color: var(--p-primary); font-weight: 600 !important; }
 
-.portal .p-account { display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem; color: var(--p-muted); }
-.portal .p-account button { font-size: 0.85rem; padding: 0.35rem 0.8rem; }
+.portal .p-account { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: var(--p-muted); }
+.portal .p-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--p-primary); color: #fff; font-weight: 700; font-size: 0.85rem;
+}
+.portal .p-account-email { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.portal .p-account button { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; padding: 0.35rem 0.8rem; }
+
+.portal .p-skip {
+  position: absolute; left: 0.75rem; top: -3rem; z-index: 100;
+  background: var(--p-surface); color: var(--p-primary);
+  padding: 0.5rem 0.9rem; border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(20, 30, 45, 0.2);
+}
+.portal .p-skip:focus { top: 0.75rem; }
+.portal .p-content { flex: 1; }
+
+.portal .p-footer { border-top: 1px solid var(--p-line); background: var(--p-surface); margin-top: 2rem; }
+.portal .p-footer-inner {
+  max-width: 960px; margin: 0 auto; padding: 1rem;
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem;
+  font-size: 0.8rem; color: var(--p-muted);
+}
 
 @media (max-width: 640px) {
   .portal .p-header-inner { padding: 0.6rem 1rem; }
-  .portal .p-account span { display: none; }
+  .portal .p-account-email { display: none; }
   .portal .p-tabs { order: 3; width: 100%; }
   .portal .p-tabs a { flex: 1; text-align: center; }
 }

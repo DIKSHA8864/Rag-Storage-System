@@ -15,8 +15,19 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
   return (
     <EndUserAuthProvider>
       <div className="portal">
+        <a href="#portal-main" className="p-skip">
+          Skip to content
+        </a>
         <PortalHeader />
-        {children}
+        <div id="portal-main" className="p-content">
+          {children}
+        </div>
+        <footer className="p-footer">
+          <div className="p-footer-inner">
+            <span>© AshiLegal</span>
+            <span>Answers come only from your firm&apos;s legal library. They are not legal advice.</span>
+          </div>
+        </footer>
       </div>
     </EndUserAuthProvider>
   );

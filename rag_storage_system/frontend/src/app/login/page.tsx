@@ -49,10 +49,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="c-auth" style={{ maxWidth: 360, margin: "3rem auto" }}>
-      <h1>Administrator Login</h1>
-      <p style={{ color: "#666", fontSize: "0.9rem" }}>
-        Not an administrator? <Link href="/portal/login">Sign in to the user portal</Link>.
+    <div className="c-auth" style={{ maxWidth: 380, margin: "4rem auto" }}>
+      <h1>Firm staff sign in</h1>
+      <p style={{ color: "#5a6573", fontSize: "0.9rem", marginTop: 0 }}>
+        For the firm&apos;s owner, attorneys and paralegals. Clients:{" "}
+        <Link href="/portal/login">sign in to the client portal</Link>.
       </p>
 
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>

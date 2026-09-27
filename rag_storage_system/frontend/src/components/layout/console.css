@@ -115,10 +115,23 @@ body:has(.console) { margin: 0; }
 
 /* ---------- Shell ---------- */
 
+.console .c-skip {
+  position: absolute;
+  left: 0.75rem;
+  top: -3rem;
+  z-index: 100;
+  background: var(--c-surface);
+  color: var(--c-primary);
+  padding: 0.5rem 0.9rem;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(20, 30, 45, 0.2);
+}
+.console .c-skip:focus { top: 0.75rem; }
+
 .console .c-shell { display: flex; min-height: 100vh; }
 
 .console .c-side {
-  width: 232px;
+  width: 248px;
   flex-shrink: 0;
   background: var(--c-side);
   color: var(--c-side-ink);
@@ -128,72 +141,252 @@ body:has(.console) { margin: 0; }
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  z-index: 40;
 }
-.console .c-brand { padding: 1.25rem 1.25rem 1rem; line-height: 1.15; }
-.console .c-brand b { display: block; font-family: var(--c-serif); font-size: 1.3rem; color: #fff; }
-.console .c-brand span { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: #8fa2b6; }
+.console .c-side-head { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1rem 0.75rem 1.1rem; }
 
-.console .c-nav { flex: 1; padding: 0.25rem 0.75rem 1rem; }
-.console .c-group { margin-top: 1rem; }
+.console .c-brand { display: flex; align-items: center; gap: 0.65rem; text-decoration: none; color: inherit; line-height: 1.15; }
+.console .c-logo {
+  width: 34px; height: 34px; border-radius: 9px;
+  display: grid; place-items: center;
+  font-family: var(--c-serif); font-weight: 700; font-size: 1.15rem;
+  background: linear-gradient(145deg, #2d6a9f, #1f4e79); color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+.console .c-brand b { display: block; font-family: var(--c-serif); font-size: 1.2rem; color: #fff; }
+.console .c-brand small { display: block; font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: #8fa2b6; }
+
+.console .c-nav { flex: 1; padding: 0 0.75rem 1rem; }
+.console .c-group { margin-top: 1.1rem; }
 .console .c-group-label {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #7f93a8;
-  padding: 0 0.6rem 0.35rem;
+  padding: 0 0.6rem 0.4rem;
 }
 .console .c-nav a {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
   position: relative;
   color: var(--c-side-ink);
   text-decoration: none;
-  padding: 0.42rem 0.6rem;
-  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  border-radius: 7px;
   font-size: 0.92rem;
+  margin-bottom: 2px;
 }
+.console .c-nav a svg { opacity: 0.8; }
 .console .c-nav a:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
-.console .c-nav a[aria-current="page"] { background: rgba(255, 255, 255, 0.13); color: #fff; font-weight: 600 !important; }
-.console .c-nav a > span[aria-hidden] { position: absolute; right: 0.4rem; }
-.console .c-nav a:focus-visible { outline-color: rgba(255, 255, 255, 0.5); }
+.console .c-nav a[aria-current="page"] {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-weight: 600 !important;
+  box-shadow: inset 3px 0 0 #6fa8dc;
+}
+.console .c-nav a[aria-current="page"] svg { opacity: 1; }
+.console .c-nav a > .nav-pending { position: absolute; right: 0.5rem; }
+.console .c-nav a:focus-visible { outline-color: rgba(255, 255, 255, 0.55); }
+.console .c-side-foot { padding: 0.9rem 1.2rem 1.1rem; font-size: 0.75rem; color: #7f93a8; border-top: 1px solid rgba(255, 255, 255, 0.07); }
 
-.console .c-user { padding: 1rem 1.25rem 1.25rem; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.8rem; }
-.console .c-user div { color: #8fa2b6; margin-bottom: 0.5rem; overflow-wrap: anywhere; }
-.console .c-user button { width: 100%; background: transparent; color: var(--c-side-ink); border-color: rgba(255, 255, 255, 0.2); }
-.console .c-user button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.35); }
+.console .c-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
-.console .c-main { flex: 1; min-width: 0; padding: 2rem 2rem 4rem; }
+.console .c-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 60px;
+  padding: 0.5rem 2rem;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--c-line);
+}
+.console .c-crumbs { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem; font-size: 0.88rem; color: var(--c-muted); }
+.console .c-crumbs span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.console .c-crumbs span[aria-current="page"] { color: var(--c-ink); font-weight: 600; }
 
-/* Signed-out pages (administrator sign-in, welcome): one centred card, no sidebar. */
-.console .c-topbar { background: var(--c-surface); border-bottom: 1px solid var(--c-line); }
-.console .c-topbar .c-brand b { color: var(--c-ink); font-size: 1.2rem; }
-.console .c-topbar .c-brand span { color: var(--c-muted); }
-.console .c-topbar .c-brand { max-width: 960px; margin: 0 auto; padding: 0.8rem 1rem; }
-.console .c-auth {
+.console .c-icon-button {
+  display: inline-grid; place-items: center;
+  width: 38px; height: 38px; padding: 0;
+  border-radius: 8px;
+}
+.console .c-side .c-icon-button { background: transparent; color: var(--c-side-ink); border-color: rgba(255, 255, 255, 0.2); }
+.console .c-only-mobile { display: none !important; }
+
+.console .c-account { position: relative; }
+.console .c-account-button { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.6rem 0.3rem 0.35rem; border-radius: 999px; }
+.console .c-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--c-primary); color: #fff; font-weight: 700; font-size: 0.85rem;
+}
+.console .c-account-name { font-size: 0.85rem; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.console .c-account-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 240px;
   background: var(--c-surface);
   border: 1px solid var(--c-line);
   border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(20, 30, 45, 0.14);
+  padding: 0.4rem;
+  z-index: 50;
+}
+.console .c-account-who { padding: 0.6rem 0.7rem 0.7rem; border-bottom: 1px solid var(--c-line); margin-bottom: 0.3rem; font-size: 0.85rem; overflow-wrap: anywhere; }
+.console .c-account-who span { display: block; color: var(--c-muted); text-transform: capitalize; margin-top: 0.15rem; }
+.console .c-account-menu button { width: 100%; display: flex; align-items: center; gap: 0.5rem; border: 0; background: transparent; text-align: left; }
+.console .c-account-menu button:hover:not(:disabled) { background: #f1f4f7; }
+
+.console .c-main { flex: 1; padding: 2rem 2rem 4rem; }
+
+/* Section headings inside pages read as headings, not grey captions. */
+.console .c-main h2 { color: var(--c-ink) !important; }
+
+.console .c-scrim { display: none; }
+
+/* ---------- Signed-out pages ---------- */
+
+.console .c-public-bar { background: var(--c-surface); border-bottom: 1px solid var(--c-line); }
+.console .c-public-inner { max-width: 1120px; margin: 0 auto; padding: 0.7rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.console .c-public-bar .c-brand b { color: var(--c-ink); }
+.console .c-public-bar .c-brand small { color: var(--c-muted); }
+.console .c-public-links { display: flex; align-items: center; gap: 1.1rem; font-size: 0.92rem; }
+.console .c-public-links a { text-decoration: none; font-weight: 500; }
+.console .c-button-link {
+  padding: 0.45rem 0.95rem;
+  border-radius: 8px;
+  background: var(--c-primary);
+  color: #fff !important;
+}
+.console .c-button-link:hover { background: var(--c-primary-hover); }
+
+.console .c-auth {
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  border-radius: 12px;
   padding: 2rem 1.75rem !important;
   box-shadow: 0 2px 10px rgba(20, 30, 45, 0.06);
 }
 .console .c-auth button[type="submit"] { width: 100%; padding: 0.6rem 1rem; }
 
+/* ---------- Welcome page ---------- */
+
+.console .c-landing { background: var(--c-surface); }
+.console .c-hero {
+  background:
+    radial-gradient(900px 400px at 85% -10%, rgba(111, 168, 220, 0.25), transparent 60%),
+    linear-gradient(180deg, #f3f7fb 0%, var(--c-surface) 100%);
+  border-bottom: 1px solid var(--c-line);
+}
+.console .c-hero-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 4.5rem 1.25rem 4rem;
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 3rem;
+  align-items: center;
+}
+.console .c-eyebrow { margin: 0 0 0.75rem; font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-primary); font-weight: 600; }
+.console .c-hero h1 { font-size: clamp(2rem, 4vw, 2.9rem); margin: 0 0 1rem; letter-spacing: -0.01em; }
+.console .c-lead { font-size: 1.08rem; color: var(--c-muted); max-width: 36rem; margin: 0 0 1.75rem; }
+.console .c-hero-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.console .c-cta {
+  display: inline-block;
+  padding: 0.75rem 1.4rem;
+  border-radius: 9px;
+  font-weight: 600;
+  text-decoration: none;
+  background: var(--c-primary);
+  color: #fff !important;
+  border: 1px solid var(--c-primary);
+  box-shadow: 0 4px 14px rgba(31, 78, 121, 0.25);
+}
+.console .c-cta:hover { background: var(--c-primary-hover); }
+.console .c-cta-ghost { background: var(--c-surface); color: var(--c-primary) !important; box-shadow: none; }
+.console .c-cta-ghost:hover { background: var(--c-primary-soft); }
+.console .c-hero-note { margin: 1.25rem 0 0; font-size: 0.9rem; color: var(--c-muted); }
+
+.console .c-hero-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  border-radius: 14px;
+  padding: 1.25rem;
+  box-shadow: 0 18px 50px rgba(20, 40, 70, 0.12);
+}
+.console .c-hero-q {
+  display: flex; gap: 0.5rem; align-items: flex-start;
+  background: var(--c-primary); color: #fff;
+  padding: 0.75rem 0.9rem; border-radius: 12px 12px 4px 12px;
+  font-size: 0.92rem; margin-left: 12%;
+}
+.console .c-hero-a { margin-top: 1rem; background: #f4f6f8; border-radius: 12px 12px 12px 4px; padding: 1rem; margin-right: 8%; }
+.console .c-line { display: block; height: 9px; border-radius: 5px; background: #d9e0e7; margin-bottom: 0.6rem; }
+.console .c-hero-src { display: inline-flex; align-items: center; gap: 0.35rem; margin-top: 0.35rem; font-size: 0.78rem; color: var(--c-primary); background: var(--c-primary-soft); padding: 0.25rem 0.55rem; border-radius: 999px; }
+
+.console .c-section { max-width: 1120px; margin: 0 auto; padding: 3.5rem 1.25rem 0; }
+.console .c-section-title { font-size: 1.6rem; margin: 0 0 1.5rem; text-align: center; }
+.console .c-features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+.console .c-feature { border: 1px solid var(--c-line); border-radius: 12px; padding: 1.5rem; background: var(--c-surface); }
+.console .c-feature h3 { font-size: 1.12rem; margin: 0.9rem 0 0.4rem; }
+.console .c-feature p { margin: 0; color: var(--c-muted); font-size: 0.93rem; }
+.console .c-feature-icon { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 10px; background: var(--c-primary-soft); color: var(--c-primary); }
+
+.console .c-how { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+.console .c-how li { display: flex; gap: 0.9rem; align-items: flex-start; }
+.console .c-how h3 { font-size: 1.05rem; margin: 0.2rem 0 0.3rem; }
+.console .c-how p { margin: 0; color: var(--c-muted); font-size: 0.93rem; }
+.console .c-how-num { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #fff; background: var(--c-primary); }
+
+.console .c-footer { margin-top: 4rem; border-top: 1px solid var(--c-line); background: #f7f8fa; }
+.console .c-footer-inner { max-width: 1120px; margin: 0 auto; padding: 1.5rem 1.25rem; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.75rem; font-size: 0.85rem; color: var(--c-muted); }
+
+/* ---------- Not found ---------- */
+
+.console .c-notfound { max-width: 480px; margin: 5rem auto; padding: 0 1.25rem; text-align: center; }
+.console .c-notfound-code { font-family: var(--c-serif); font-size: 4.5rem; line-height: 1; color: var(--c-primary); margin: 0 0 0.5rem; }
+.console .c-notfound p { color: var(--c-muted); }
+
+/* ---------- Phones and small tablets: the sidebar becomes a drawer ---------- */
+
 @media (max-width: 900px) {
-  .console .c-shell { flex-direction: column; }
-  .console .c-side { width: auto; height: auto; position: static; }
-  .console .c-brand { padding: 0.9rem 1rem 0.25rem; }
-  .console .c-nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; padding: 0 0.75rem 0.5rem; }
-  .console .c-group { margin-top: 0.5rem; }
-  .console .c-group > div:last-child { display: flex; flex-wrap: wrap; }
-  .console .c-nav a > span[aria-hidden] { display: none; }
-  .console .c-user { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.6rem 1rem; }
-  .console .c-user div { margin: 0; }
-  .console .c-user button { width: auto; }
+  .console .c-only-mobile { display: inline-grid !important; }
+  .console .c-side {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    height: auto;
+    width: min(280px, 84vw);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.25);
+  }
+  .console .c-side.is-open { transform: translateX(0); }
+  .console .c-scrim { display: block; position: fixed; inset: 0; background: rgba(15, 23, 35, 0.45); z-index: 35; }
+  .console .c-topbar { padding: 0.5rem 1rem; }
+  .console .c-account-name { display: none; }
   .console .c-main { padding: 1.25rem 1rem 3rem; }
+  .console .c-public-links { gap: 0.75rem; font-size: 0.85rem; }
+  .console .c-hero-inner { grid-template-columns: 1fr; padding: 3rem 1.25rem 2.75rem; gap: 2rem; }
+  .console .c-features,
+  .console .c-how { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 440px) {
   .console .c-auth { margin: 1.5rem 1rem !important; padding: 1.5rem 1.25rem !important; }
+  .console .c-crumbs span:not([aria-current="page"]) { display: none; }
+  .console .c-public-links a:not(.c-button-link) { display: none; }
+  .console .c-cta { flex: 1; text-align: center; }
 }
+
+/* Shared by LoadingSpinner everywhere (this file is always loaded). */
+@keyframes as-spin { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) {
   .console * { transition: none !important; }
