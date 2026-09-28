@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth/useAuth";
 import {
   createCategory,
+  deleteCategory,
   deleteDocument,
   getAdminStats,
   getProcessingStatus,
@@ -55,6 +56,9 @@ export default function VaultPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadResults, setUploadResults] = useState<UploadedFileResult[] | null>(null);
+
+  const [deletingFolder, setDeletingFolder] = useState<string | null>(null);
+  const [deleteFolderError, setDeleteFolderError] = useState<string | null>(null);
 
   const [deletingFilename, setDeletingFilename] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -185,6 +189,39 @@ export default function VaultPage() {
     setUploadResults(null);
     setUploadError(null);
     setDeleteError(null);
+    setDeleteFolderError(null);
+  }
+
+  async function handleDeleteFolder(path: string, documentCount: number) {
+    const name = path.split("/").pop();
+    const question =
+      documentCount > 0
+        ? `Delete the folder "${name}" and the ${documentCount} file${documentCount === 1 ? "" : "s"} in it (subfolders included)?`
+        : `Delete the folder "${name}"? It has no files.`;
+    const message =
+      `${question} This cannot be undone.\n\n` +
+      "If this folder comes from Dropbox sync, remove it in Dropbox (or untick it under Automatic sync) too, or the next sync brings it back.";
+    if (!window.confirm(message)) return;
+
+    setDeletingFolder(path);
+    setDeleteFolderError(null);
+
+    try {
+      if (!token) {
+        throw new ApiError(401, "Session expired. Please log in again.");
+      }
+      await deleteCategory(path, token);
+      // Leave the deleted folder (or anything inside it) for its parent.
+      if (currentPath === path || currentPath.startsWith(`${path}/`)) {
+        setCurrentPath(path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
+      }
+      await Promise.all([refreshCategories(), refreshStats()]);
+    } catch (err) {
+      if (handleAuthFailure(err)) return;
+      setDeleteFolderError(err instanceof ApiError ? err.message : "Could not delete this folder.");
+    } finally {
+      setDeletingFolder(null);
+    }
   }
 
   async function handleCreateFolder(name: string) {
@@ -307,6 +344,9 @@ export default function VaultPage() {
             onCreateFolder={handleCreateFolder}
             isCreatingFolder={isCreatingFolder}
             createFolderError={createFolderError}
+            onDeleteFolder={handleDeleteFolder}
+            deletingFolder={deletingFolder}
+            deleteFolderError={deleteFolderError}
           />
         )}
       </section>

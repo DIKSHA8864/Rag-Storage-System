@@ -84,6 +84,17 @@ export async function deleteDocument(
   );
 }
 
+/**
+ * Deletes a folder, its subfolders and every file in them (force=true -
+ * the caller has already confirmed with the owner how many files go).
+ */
+export async function deleteCategory(category: string, token: string): Promise<MessageResponse> {
+  return apiRequest<MessageResponse>(`/categories/${encodeCategoryPath(category)}?force=true`, {
+    method: "DELETE",
+    token,
+  });
+}
+
 export async function startProcessing(token: string): Promise<ProcessQueuedResponse> {
   return apiRequest<ProcessQueuedResponse>("/process", { method: "POST", token });
 }

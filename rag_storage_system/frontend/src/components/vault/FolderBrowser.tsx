@@ -11,6 +11,9 @@ interface FolderBrowserProps {
   onCreateFolder: (name: string) => Promise<void>;
   isCreatingFolder: boolean;
   createFolderError: string | null;
+  onDeleteFolder: (path: string, documentCount: number) => void;
+  deletingFolder: string | null;
+  deleteFolderError: string | null;
 }
 
 /**
@@ -26,6 +29,9 @@ export function FolderBrowser({
   onCreateFolder,
   isCreatingFolder,
   createFolderError,
+  onDeleteFolder,
+  deletingFolder,
+  deleteFolderError,
 }: FolderBrowserProps) {
   const [newFolderName, setNewFolderName] = useState("");
 
@@ -38,6 +44,7 @@ export function FolderBrowser({
   });
 
   const breadcrumbSegments = currentPath === "" ? [] : currentPath.split("/");
+  const currentFolder = categories.find((category) => category.name === currentPath);
 
   async function handleCreateFolder(event: FormEvent) {
     event.preventDefault();
@@ -50,40 +57,63 @@ export function FolderBrowser({
 
   return (
     <div>
-      <nav aria-label="Folder path" style={{ fontSize: "0.9rem", marginBottom: "0.75rem" }}>
-        <button type="button" onClick={() => onNavigate("")} style={{ fontWeight: currentPath === "" ? 700 : 400 }}>
-          Vault
-        </button>
-        {breadcrumbSegments.map((segment, index) => {
-          const path = breadcrumbSegments.slice(0, index + 1).join("/");
-          return (
-            <span key={path}>
-              {" / "}
-              <button
-                type="button"
-                onClick={() => onNavigate(path)}
-                style={{ fontWeight: path === currentPath ? 700 : 400 }}
-              >
-                {segment}
-              </button>
-            </span>
-          );
-        })}
-      </nav>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
+        <nav aria-label="Folder path" style={{ fontSize: "0.9rem" }}>
+          <button type="button" onClick={() => onNavigate("")} style={{ fontWeight: currentPath === "" ? 700 : 400 }}>
+            Vault
+          </button>
+          {breadcrumbSegments.map((segment, index) => {
+            const path = breadcrumbSegments.slice(0, index + 1).join("/");
+            return (
+              <span key={path}>
+                {" / "}
+                <button
+                  type="button"
+                  onClick={() => onNavigate(path)}
+                  style={{ fontWeight: path === currentPath ? 700 : 400 }}
+                >
+                  {segment}
+                </button>
+              </span>
+            );
+          })}
+        </nav>
+        {currentPath !== "" && (
+          <button
+            type="button"
+            onClick={() => onDeleteFolder(currentPath, currentFolder?.document_count ?? 0)}
+            disabled={deletingFolder !== null}
+            style={{ color: "#b3261e" }}
+          >
+            {deletingFolder === currentPath ? "Deleting..." : "Delete this folder"}
+          </button>
+        )}
+      </div>
+
+      {deleteFolderError && <p role="alert" style={{ color: "#c0392b", fontSize: "0.85rem" }}>{deleteFolderError}</p>}
 
       {childFolders.length > 0 && (
         <ul style={{ listStyle: "none", margin: "0 0 1rem 0", padding: 0, display: "flex", flexDirection: "column", gap: "0.4rem" }}>
           {childFolders.map((folder) => (
-            <li key={folder.name}>
+            <li key={folder.name} style={{ display: "flex", gap: "0.4rem" }}>
               <button
                 type="button"
                 onClick={() => onNavigate(folder.name)}
-                style={{ display: "flex", justifyContent: "space-between", width: "100%", textAlign: "left", padding: "0.4rem 0.6rem" }}
+                style={{ display: "flex", justifyContent: "space-between", flex: 1, textAlign: "left", padding: "0.4rem 0.6rem" }}
               >
                 <span>📁 {folder.name.split("/").pop()}</span>
                 <span style={{ color: "#777" }}>
                   {folder.document_count} document{folder.document_count === 1 ? "" : "s"}
                 </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onDeleteFolder(folder.name, folder.document_count)}
+                disabled={deletingFolder !== null}
+                aria-label={`Delete folder ${folder.name.split("/").pop()}`}
+                style={{ color: "#b3261e" }}
+              >
+                {deletingFolder === folder.name ? "Deleting..." : "Delete"}
               </button>
             </li>
           ))}
