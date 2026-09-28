@@ -1429,20 +1429,17 @@ def delete_document(category: str, filename: str, owner: dict = Depends(require_
         lambda store: store.delete_document_chunks(safe_category, safe_filename, owner["tenant_id"]),
     )
 
-    deleted = storage_backend.delete(_tenant_storage_category(category, owner["tenant_id"]), filename)
-
-    if not deleted:
-        log_audit_event(
-            "delete_document", category=category, filename=filename, status="not_found"
-        )
-        raise HTTPException(status_code=404, detail=f"File not found: {category}/{filename}")
+    # The library lists the file, so remove its record even when the file
+    # itself is already gone from storage (removed by hand, lost when the
+    # project moved folders): otherwise it could never be deleted.
+    file_was_there = storage_backend.delete(_tenant_storage_category(category, owner["tenant_id"]), filename)
 
     metadata_repository.delete_document(safe_category, safe_filename, tenant_id=owner["tenant_id"])
 
-    log_audit_event(
-        "delete_document", category=safe_category, filename=safe_filename,
-        detail=f"{removed_chunks} chunk(s) removed from the search index",
-    )
+    detail = f"{removed_chunks} chunk(s) removed from the search index"
+    if not file_was_there:
+        detail += "; the file was already missing from storage"
+    log_audit_event("delete_document", category=safe_category, filename=safe_filename, detail=detail)
 
     return MessageResponse(message=f"'{filename}' deleted from '{category}'.")
 
@@ -1554,8 +1551,22 @@ def delete_category(category: str, force: bool = False, owner: dict = Depends(re
         raise HTTPException(status_code=409, detail=str(exc))
 
     if not deleted:
-        log_audit_event("delete_category", category=safe_category, status="not_found")
-        raise HTTPException(status_code=404, detail=f"Category not found: {category}")
+        # The folder is gone from storage but the library still lists it (or
+        # files in it): remove those records rather than leave them stuck.
+        tenant_id = owner["tenant_id"]
+        listed = any(
+            f["name"] == safe_category or f["name"].startswith(f"{safe_category}/")
+            for f in metadata_repository.list_folders(tenant_id=tenant_id)
+        ) or bool(metadata_repository.list_documents(safe_category, tenant_id=tenant_id))
+        if not listed:
+            log_audit_event("delete_category", category=safe_category, status="not_found")
+            raise HTTPException(status_code=404, detail=f"Category not found: {category}")
+        if not force and metadata_repository.list_documents(safe_category, tenant_id=tenant_id):
+            log_audit_event("delete_category", category=safe_category, status="conflict")
+            raise HTTPException(
+                status_code=409,
+                detail=f"Category '{safe_category}' is not empty. Pass force=True to delete it anyway.",
+            )
 
     metadata_repository.delete_folder(safe_category, tenant_id=owner["tenant_id"])
 

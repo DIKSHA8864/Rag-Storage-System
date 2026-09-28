@@ -114,6 +114,22 @@ def test_delete_nonempty_category_requires_force(client):
     assert client.get("/documents").json()["documents"] == []
 
 
+def test_delete_category_whose_folder_is_already_gone(client, tmp_path):
+    import shutil
+
+    _upload(client, "Demo", "a.txt")
+    for folder in (tmp_path / "originals").rglob("Demo"):
+        shutil.rmtree(folder)
+
+    # Still listed with a file in it, so it needs force like any other folder.
+    assert client.delete("/categories/Demo").status_code == 409
+
+    response = client.delete("/categories/Demo?force=true")
+    assert response.status_code == 200
+    assert client.get("/documents").json()["documents"] == []
+    assert client.get("/categories").json()["categories"] == []
+
+
 def test_delete_missing_category_returns_404(client):
     response = client.delete("/categories/Nope")
     assert response.status_code == 404
@@ -207,6 +223,18 @@ def test_delete_document_does_not_shadow_delete_category(client):
     # The category itself must still exist - only the document was removed.
     names = {c["name"] for c in client.get("/categories").json()["categories"]}
     assert "Contracts/2024" in names
+
+
+def test_delete_document_whose_file_is_already_gone(client, tmp_path):
+    """The library still lists it, so delete must remove the record, not 404."""
+
+    _upload(client, "Demo", "export-in-word.pdf")
+    for stored in (tmp_path / "originals").rglob("export-in-word.pdf"):
+        stored.unlink()
+
+    response = client.delete("/categories/Demo/documents/export-in-word.pdf")
+    assert response.status_code == 200
+    assert client.get("/documents").json()["documents"] == []
 
 
 def test_delete_missing_document_returns_404(client):
